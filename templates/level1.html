@@ -1,0 +1,1323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Find Companies - Business Outreach</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --primary-light: #818cf8;
+            --secondary: #0ea5e9;
+            --success: #10b981;
+            --success-light: #d1fae5;
+            --warning: #f59e0b;
+            --warning-light: #fef3c7;
+            --danger: #ef4444;
+            --danger-light: #fee2e2;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-400: #9ca3af;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --gradient-1: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            --gradient-2: linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%);
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(180deg, var(--gray-50) 0%, var(--gray-100) 100%);
+            min-height: 100vh;
+            color: var(--gray-800);
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .fade-in { animation: fadeIn 0.4s ease-out forwards; }
+        .slide-in { animation: slideIn 0.3s ease-out forwards; }
+        .spinner { animation: spin 1s linear infinite; }
+        
+        /* Navbar */
+        .navbar {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 16px 24px;
+            box-shadow: var(--shadow);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .back-btn {
+            color: var(--gray-600);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            border-radius: 10px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        
+        .back-btn:hover { 
+            background: var(--gray-100); 
+            color: var(--gray-800);
+            transform: translateX(-2px);
+        }
+        
+        .nav-title {
+            font-size: 1.2em;
+            font-weight: 600;
+            background: var(--gradient-1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .nav-step {
+            margin-left: auto;
+            background: var(--gradient-2);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3);
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 32px 24px;
+        }
+        
+        /* Cards */
+        .card {
+            background: white;
+            border-radius: 16px;
+            border: 1px solid var(--gray-200);
+            margin-bottom: 24px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            transition: all 0.3s ease;
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+        
+        .card:hover {
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
+        }
+        
+        .card-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--gray-100);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: linear-gradient(180deg, white 0%, var(--gray-50) 100%);
+        }
+        
+        .card-title {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: var(--gray-800);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .card-title i { color: var(--primary); }
+        
+        .card-body { padding: 24px; }
+        
+        /* Form Elements */
+        .form-group { margin-bottom: 20px; }
+        
+        .form-label {
+            display: block;
+            font-size: 0.9em;
+            font-weight: 600;
+            color: var(--gray-700);
+            margin-bottom: 8px;
+        }
+        
+        .form-input {
+            width: 100%;
+            padding: 14px 18px;
+            border: 2px solid var(--gray-200);
+            border-radius: 12px;
+            font-size: 1em;
+            font-family: inherit;
+            transition: all 0.2s ease;
+            background: white;
+        }
+        
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+        }
+        
+        .form-input:hover:not(:focus) {
+            border-color: var(--gray-300);
+        }
+        
+        .form-hint {
+            font-size: 0.8em;
+            color: var(--gray-500);
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .form-hint i { color: var(--gray-400); }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        /* Buttons */
+        .btn {
+            padding: 14px 24px;
+            border-radius: 12px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-family: inherit;
+        }
+        
+        .btn-primary {
+            background: var(--gradient-1);
+            color: white;
+            box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+        }
+        
+        .btn-primary:active { transform: translateY(0); }
+        
+        .btn-primary:disabled {
+            background: var(--gray-300);
+            box-shadow: none;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-secondary {
+            background: white;
+            color: var(--primary);
+            border: 2px solid var(--gray-200);
+        }
+        
+        .btn-secondary:hover {
+            background: var(--gray-50);
+            border-color: var(--primary);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);
+        }
+        
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.5);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+        }
+        
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
+        }
+        
+        .btn-block { width: 100%; }
+        
+        /* Project Selector */
+        .project-selector {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        
+        .project-selector select { flex: 1; }
+        
+        /* Badge */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+        
+        .badge-primary { background: #e0e7ff; color: #4338ca; }
+        .badge-success { background: var(--success-light); color: #065f46; }
+        .badge-warning { background: var(--warning-light); color: #92400e; }
+        .badge-gray { background: var(--gray-100); color: var(--gray-600); }
+        
+        /* Results Header */
+        .results-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        
+        .results-count {
+            font-size: 0.95em;
+            color: var(--gray-600);
+            font-weight: 500;
+        }
+        
+        .results-count strong {
+            color: var(--gray-800);
+            font-size: 1.2em;
+        }
+        
+        .results-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        /* Company List */
+        .company-list {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        
+        .company-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .company-list::-webkit-scrollbar-track {
+            background: var(--gray-100);
+        }
+        
+        .company-list::-webkit-scrollbar-thumb {
+            background: var(--gray-300);
+            border-radius: 3px;
+        }
+        
+        .company-item {
+            display: flex;
+            align-items: center;
+            padding: 18px 24px;
+            border-bottom: 1px solid var(--gray-100);
+            gap: 16px;
+            transition: all 0.2s ease;
+        }
+        
+        .company-item:hover {
+            background: linear-gradient(90deg, rgba(99, 102, 241, 0.05) 0%, transparent 100%);
+        }
+        
+        .company-item:last-child { border-bottom: none; }
+        
+        .company-checkbox {
+            width: 22px;
+            height: 22px;
+            cursor: pointer;
+            accent-color: var(--primary);
+        }
+        
+        .company-info { flex: 1; min-width: 0; }
+        
+        .company-name {
+            font-weight: 600;
+            color: var(--gray-800);
+            margin-bottom: 6px;
+            font-size: 1.05em;
+        }
+        
+        .company-meta {
+            font-size: 0.85em;
+            color: var(--gray-500);
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .company-meta span {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .company-meta i {
+            color: var(--gray-400);
+            font-size: 0.9em;
+        }
+        
+        .company-meta a {
+            color: var(--primary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        
+        .company-meta a:hover { color: var(--primary-dark); }
+        
+        /* Skeleton Loading */
+        .skeleton {
+            background: linear-gradient(90deg, var(--gray-200) 25%, var(--gray-100) 50%, var(--gray-200) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 6px;
+        }
+        
+        .skeleton-item {
+            display: flex;
+            align-items: center;
+            padding: 18px 24px;
+            gap: 16px;
+            border-bottom: 1px solid var(--gray-100);
+        }
+        
+        .skeleton-checkbox { width: 22px; height: 22px; border-radius: 4px; }
+        .skeleton-text { height: 18px; flex: 1; }
+        .skeleton-text-sm { height: 14px; width: 200px; margin-top: 8px; }
+        
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+        }
+        
+        .empty-state-icon {
+            width: 100px;
+            height: 100px;
+            margin: 0 auto 20px;
+            background: var(--gray-100);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .empty-state-icon svg {
+            width: 50px;
+            height: 50px;
+            color: var(--gray-400);
+        }
+        
+        .empty-state h3 {
+            color: var(--gray-700);
+            margin-bottom: 8px;
+        }
+        
+        .empty-state p {
+            color: var(--gray-500);
+            max-width: 300px;
+            margin: 0 auto;
+        }
+        
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .modal.open { display: flex; }
+        
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            width: 100%;
+            max-width: 480px;
+            max-height: 90vh;
+            overflow: auto;
+            box-shadow: var(--shadow-lg);
+            animation: fadeIn 0.3s ease-out;
+        }
+        
+        .modal-header {
+            padding: 24px;
+            border-bottom: 1px solid var(--gray-100);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .modal-header-icon {
+            width: 44px;
+            height: 44px;
+            background: var(--gradient-1);
+            color: white;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+        }
+        
+        .modal-title {
+            font-size: 1.2em;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+        }
+        
+        .modal-close {
+            background: var(--gray-100);
+            border: none;
+            font-size: 1.3em;
+            color: var(--gray-500);
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 8px;
+            transition: all 0.2s;
+            line-height: 1;
+        }
+        
+        .modal-close:hover {
+            background: var(--gray-200);
+            color: var(--gray-700);
+        }
+        
+        .modal-body { padding: 24px; }
+        
+        .modal-footer {
+            padding: 20px 24px;
+            border-top: 1px solid var(--gray-100);
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            background: var(--gray-50);
+        }
+        
+        /* Progress */
+        .progress-container { margin: 20px 0; }
+        
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            font-size: 0.9em;
+        }
+        
+        .progress-label { color: var(--gray-600); font-weight: 500; }
+        .progress-value { color: var(--primary); font-weight: 600; }
+        
+        .progress-bar {
+            height: 12px;
+            background: var(--gray-200);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: var(--gradient-1);
+            border-radius: 6px;
+            transition: width 0.5s ease;
+            position: relative;
+        }
+        
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+        
+        .progress-text {
+            text-align: center;
+            color: var(--gray-500);
+            font-size: 0.9em;
+            margin-top: 12px;
+        }
+        
+        .progress-status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 8px;
+            font-size: 0.85em;
+            color: var(--gray-600);
+        }
+        
+        .progress-status .pulse {
+            width: 8px;
+            height: 8px;
+            background: var(--success);
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+        
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 40px 24px;
+            color: var(--gray-500);
+            font-size: 0.85em;
+        }
+        
+        .footer-logo {
+            height: 24px;
+            margin-left: 8px;
+            vertical-align: middle;
+            transition: transform 0.3s ease;
+        }
+        
+        .footer a:hover .footer-logo { transform: scale(1.05); }
+        
+        /* Responsive */
+        @media (max-width: 600px) {
+            .form-row { grid-template-columns: 1fr; }
+            .results-header { flex-direction: column; align-items: stretch; }
+            .results-actions { justify-content: stretch; }
+            .results-actions .btn { flex: 1; }
+            .project-selector { flex-wrap: wrap; }
+            .project-selector select { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <a href="/" class="back-btn">
+            <i class="fas fa-arrow-left"></i>
+            Home
+        </a>
+        <span class="nav-title">Find Companies</span>
+        <span class="nav-step"><i class="fas fa-search"></i> Step 1 of 3</span>
+    </nav>
+    
+    <div class="container">
+        <!-- Project Selection -->
+        <div class="card" id="projectCard">
+            <div class="card-header">
+                <span class="card-title"><i class="fas fa-folder-plus"></i> Select or Create Project</span>
+            </div>
+            <div class="card-body">
+                <div class="project-selector">
+                    <select id="projectSelect" class="form-input">
+                        <option value="">Choose existing project...</option>
+                    </select>
+                    <button class="btn btn-secondary" id="refreshBtn" title="Refresh">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                    <button class="btn btn-danger" id="deleteProjectBtn" title="Delete Project" style="display: none;">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                    <button class="btn btn-primary" id="newProjectBtn">
+                        <i class="fas fa-plus"></i> New
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Search Form -->
+        <div class="card" id="searchCard" style="display: none;">
+            <div class="card-header">
+                <span class="card-title"><i class="fas fa-cog"></i> Search Settings</span>
+                <span class="badge badge-primary" id="currentProject"></span>
+            </div>
+            <div class="card-body">
+                <form id="searchForm">
+                    <div class="form-group">
+                        <label class="form-label">PIN Code(s)</label>
+                        <input type="text" class="form-input" id="pinCode" placeholder="e.g., 400001, 400002, 400003" required>
+                        <div class="form-hint">
+                            <i class="fas fa-info-circle"></i>
+                            Enter one or more PIN codes, separated by commas
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Industry (Optional)</label>
+                            <input type="text" class="form-input" id="industry" placeholder="e.g., IT, Healthcare, Manufacturing">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Max Companies</label>
+                            <select class="form-input" id="maxCompanies">
+                                <option value="10">10 companies</option>
+                                <option value="20" selected>20 companies</option>
+                                <option value="30">30 companies</option>
+                                <option value="50">50 companies</option>
+                                <option value="100">100 companies</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; gap: 12px;">
+                        <button type="submit" class="btn btn-primary" style="flex: 1;" id="searchBtn">
+                            <i class="fas fa-search"></i>
+                            Search Google Places
+                        </button>
+                        <button type="button" class="btn btn-success" id="saveProjectBtn" style="display: none;">
+                            <i class="fas fa-save"></i>
+                            Save Project
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Results -->
+        <div class="card" id="resultsCard" style="display: none;">
+            <div class="card-header">
+                <div class="results-header">
+                    <span class="results-count"><strong id="companyCount">0</strong> companies found</span>
+                    <div class="results-actions">
+                        <button class="btn btn-secondary" id="selectAllBtn">
+                            <i class="fas fa-check-double"></i> Select All
+                        </button>
+                        <button class="btn btn-secondary" id="exportBtn">
+                            <i class="fas fa-file-excel"></i> Export
+                        </button>
+                        <button class="btn btn-danger" id="deleteBtn" style="display: none;">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                        <button class="btn btn-success" id="nextBtn">
+                            Next: Get Contacts <i class="fas fa-arrow-right"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body" style="padding: 0;">
+                <div class="company-list" id="companyList">
+                    <!-- Skeleton loading -->
+                    <div class="skeleton-item">
+                        <div class="skeleton skeleton-checkbox"></div>
+                        <div style="flex: 1;">
+                            <div class="skeleton skeleton-text"></div>
+                            <div class="skeleton skeleton-text-sm"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- New Project Modal -->
+    <div class="modal" id="projectModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title">
+                    <span class="modal-header-icon"><i class="fas fa-folder-plus"></i></span>
+                    Create New Project
+                </span>
+                <button class="modal-close" id="closeModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Project Name</label>
+                    <input type="text" class="form-input" id="projectName" placeholder="e.g., IT Companies Mumbai Q1">
+                    <div class="form-hint">
+                        <i class="fas fa-lightbulb"></i>
+                        Use a descriptive name to identify this search later
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelProject">Cancel</button>
+                <button class="btn btn-primary" id="createProject">
+                    <i class="fas fa-check"></i> Create Project
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Progress Modal -->
+    <div class="modal" id="progressModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title">
+                    <span class="modal-header-icon"><i class="fas fa-search"></i></span>
+                    Searching Companies
+                </span>
+            </div>
+            <div class="modal-body">
+                <div class="progress-container">
+                    <div class="progress-header">
+                        <span class="progress-label">Progress</span>
+                        <span class="progress-value" id="progressPercent">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                    </div>
+                    <div class="progress-text" id="progressText">Starting search...</div>
+                    <div class="progress-status">
+                        <span class="pulse"></span>
+                        <span id="progressStatus">Connecting to Google Places</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <footer class="footer">
+        Developed by 
+        <a href="https://aidea.digital" target="_blank">
+            <img src="https://aidea.digital/f634805c-58b8-4a71-b801-507dfd69aa6d__1_-removebg-preview.png" alt="Aidea Digital" class="footer-logo">
+        </a>
+    </footer>
+    
+    <script>
+        // Elements
+        const projectSelect = document.getElementById('projectSelect');
+        const searchCard = document.getElementById('searchCard');
+        const resultsCard = document.getElementById('resultsCard');
+        const searchForm = document.getElementById('searchForm');
+        const projectModal = document.getElementById('projectModal');
+        const progressModal = document.getElementById('progressModal');
+        const companyList = document.getElementById('companyList');
+        
+        let currentProject = '';
+        let companies = [];
+        let selectedIds = new Set();
+        
+        // Show skeleton loading
+        function showSkeleton() {
+            companyList.innerHTML = Array(5).fill(0).map(() => `
+                <div class="skeleton-item">
+                    <div class="skeleton skeleton-checkbox"></div>
+                    <div style="flex: 1;">
+                        <div class="skeleton skeleton-text"></div>
+                        <div class="skeleton skeleton-text-sm"></div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Load projects
+        async function loadProjects() {
+            try {
+                const res = await fetch('/api/level1/projects?_t=' + Date.now());
+                const data = await res.json();
+                const projects = data.projects || [];
+                
+                projectSelect.innerHTML = '<option value="">Choose existing project...</option>';
+                projects.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p.project_name;
+                    opt.textContent = `${p.project_name} (${p.company_count || 0} companies)`;
+                    projectSelect.appendChild(opt);
+                });
+                
+                // Check URL for project param
+                const urlParams = new URLSearchParams(window.location.search);
+                const projectParam = urlParams.get('project');
+                if (projectParam) {
+                    projectSelect.value = projectParam;
+                    selectProject(projectParam);
+                    document.getElementById('deleteProjectBtn').style.display = 'inline-flex';
+                }
+            } catch (e) {
+                console.error('Failed to load projects:', e);
+            }
+        }
+        
+        // Select project
+        async function selectProject(name) {
+            if (!name) {
+                searchCard.style.display = 'none';
+                resultsCard.style.display = 'none';
+                document.getElementById('saveProjectBtn').style.display = 'none';
+                return;
+            }
+            
+            currentProject = name;
+            document.getElementById('currentProject').textContent = name;
+            searchCard.style.display = 'block';
+            document.getElementById('saveProjectBtn').style.display = 'inline-flex';
+            
+            // Load project data
+            try {
+                const res = await fetch(`/api/level1/project-data?project_name=${encodeURIComponent(name)}`);
+                const data = await res.json();
+                
+                if (data.pin_codes) document.getElementById('pinCode').value = data.pin_codes;
+                if (data.industry) document.getElementById('industry').value = data.industry;
+                
+                if (data.companies && data.companies.length > 0) {
+                    companies = data.companies;
+                    renderCompanies();
+                    resultsCard.style.display = 'block';
+                }
+            } catch (e) {
+                console.error('Failed to load project data:', e);
+            }
+        }
+        
+        // Render companies
+        function renderCompanies() {
+            if (!companies.length) {
+                companyList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                            </svg>
+                        </div>
+                        <h3>No Companies Yet</h3>
+                        <p>Run a search to find companies from Google Places.</p>
+                    </div>
+                `;
+                document.getElementById('companyCount').textContent = '0';
+                return;
+            }
+            
+            document.getElementById('companyCount').textContent = companies.length;
+            companyList.innerHTML = companies.map((c, idx) => {
+                const id = c.place_id || c.company_name;
+                const checked = selectedIds.has(id) ? 'checked' : '';
+                return `
+                    <div class="company-item fade-in" style="animation-delay: ${idx * 30}ms">
+                        <input type="checkbox" class="company-checkbox" data-id="${id}" ${checked}>
+                        <div class="company-info">
+                            <div class="company-name">${escapeHtml(c.company_name || 'N/A')}</div>
+                            <div class="company-meta">
+                                ${c.industry ? `<span><i class="fas fa-industry"></i> ${escapeHtml(c.industry)}</span>` : ''}
+                                ${c.address ? `<span><i class="fas fa-map-marker-alt"></i> ${escapeHtml(c.address)}</span>` : ''}
+                                ${c.website ? `<a href="${c.website}" target="_blank"><i class="fas fa-globe"></i> Website</a>` : ''}
+                                ${c.phone ? `<a href="tel:${c.phone}"><i class="fas fa-phone"></i> ${c.phone}</a>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            // Add checkbox listeners
+            companyList.querySelectorAll('.company-checkbox').forEach(cb => {
+                cb.addEventListener('change', function() {
+                    const id = this.dataset.id;
+                    if (this.checked) selectedIds.add(id);
+                    else selectedIds.delete(id);
+                    updateDeleteBtn();
+                });
+            });
+        }
+        
+        function updateDeleteBtn() {
+            const deleteBtn = document.getElementById('deleteBtn');
+            deleteBtn.style.display = selectedIds.size > 0 ? 'inline-flex' : 'none';
+            deleteBtn.innerHTML = `<i class="fas fa-trash"></i> Delete (${selectedIds.size})`;
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+        
+        // Event listeners
+        projectSelect.addEventListener('change', () => {
+            selectProject(projectSelect.value);
+            document.getElementById('deleteProjectBtn').style.display = projectSelect.value ? 'inline-flex' : 'none';
+        });
+        
+        document.getElementById('refreshBtn').addEventListener('click', function() {
+            this.querySelector('i').classList.add('spinner');
+            loadProjects();
+            setTimeout(() => {
+                this.querySelector('i').classList.remove('spinner');
+            }, 1000);
+        });
+        
+        // Delete project
+        document.getElementById('deleteProjectBtn').addEventListener('click', async function() {
+            if (!currentProject) return;
+            if (!confirm(`Delete project "${currentProject}" and all its companies and contacts?\n\n⚠️ This will permanently delete:\n• All companies in this project\n• All contacts from Level 2\n• All saved batches\n\nThis action cannot be undone.`)) return;
+            
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner spinner"></i> Deleting...';
+            
+            try {
+                const res = await fetch('/api/level1/delete-project', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ project_name: currentProject })
+                });
+                
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to delete');
+                
+                const deletedLevel1 = data.deleted_level1 || 0;
+                const deletedLevel2 = data.deleted_level2 || 0;
+                
+                // Reset UI
+                currentProject = '';
+                companies = [];
+                selectedIds.clear();
+                searchCard.style.display = 'none';
+                resultsCard.style.display = 'none';
+                projectSelect.value = '';
+                this.style.display = 'none';
+                
+                // Refresh projects list
+                loadProjects();
+                
+                // Show success message
+                alert(`✅ Project deleted successfully!\n\nDeleted:\n• ${deletedLevel1} companies\n• ${deletedLevel2} contacts`);
+            } catch (e) {
+                alert('❌ Error deleting project: ' + e.message);
+            } finally {
+                this.disabled = false;
+                this.innerHTML = '<i class="fas fa-trash"></i>';
+            }
+        });
+        
+        document.getElementById('newProjectBtn').addEventListener('click', () => {
+            projectModal.classList.add('open');
+            document.getElementById('projectName').value = '';
+            setTimeout(() => document.getElementById('projectName').focus(), 100);
+        });
+        
+        document.getElementById('closeModal').addEventListener('click', () => {
+            projectModal.classList.remove('open');
+        });
+        
+        document.getElementById('cancelProject').addEventListener('click', () => {
+            projectModal.classList.remove('open');
+        });
+        
+        document.getElementById('createProject').addEventListener('click', () => {
+            const name = document.getElementById('projectName').value.trim();
+            if (!name) {
+                alert('Please enter a project name');
+                return;
+            }
+            if (name.length < 3) {
+                alert('Project name must be at least 3 characters');
+                return;
+            }
+            
+            projectModal.classList.remove('open');
+            currentProject = name;
+            document.getElementById('currentProject').textContent = name;
+            searchCard.style.display = 'block';
+            resultsCard.style.display = 'none';
+            companies = [];
+            selectedIds.clear();
+            document.getElementById('pinCode').value = '';
+            document.getElementById('industry').value = '';
+            document.getElementById('saveProjectBtn').style.display = 'inline-flex';
+            
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            projectSelect.appendChild(opt);
+            projectSelect.value = name;
+            document.getElementById('deleteProjectBtn').style.display = 'inline-flex';
+        });
+        
+        // Save Project button
+        document.getElementById('saveProjectBtn').addEventListener('click', async function() {
+            if (!currentProject) {
+                alert('Please select or create a project first');
+                return;
+            }
+            
+            const pinCode = document.getElementById('pinCode').value.trim();
+            const industry = document.getElementById('industry').value.trim();
+            
+            if (!pinCode && companies.length === 0) {
+                alert('Please enter PIN codes and search for companies first, or load an existing project');
+                return;
+            }
+            
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner spinner"></i> Saving...';
+            
+            try {
+                // If we have companies, they're already saved. Just refresh the project list.
+                // If we don't have companies yet, we need to save the project settings.
+                if (companies.length > 0) {
+                    // Companies already saved, just refresh
+                    await loadProjects();
+                    this.innerHTML = '<i class="fas fa-check"></i> Saved!';
+                    this.classList.remove('btn-success');
+                    this.classList.add('btn-primary');
+                    setTimeout(() => {
+                        this.innerHTML = '<i class="fas fa-save"></i> Save Project';
+                        this.classList.remove('btn-primary');
+                        this.classList.add('btn-success');
+                        this.disabled = false;
+                    }, 2000);
+                } else {
+                    // No companies yet, but project name exists - it will be saved when search is done
+                    alert('Project will be saved automatically when you search for companies.');
+                    this.disabled = false;
+                    this.innerHTML = '<i class="fas fa-save"></i> Save Project';
+                }
+            } catch (e) {
+                alert('Error saving project: ' + e.message);
+                this.disabled = false;
+                this.innerHTML = '<i class="fas fa-save"></i> Save Project';
+            }
+        });
+        
+        // Search
+        searchForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const pinCode = document.getElementById('pinCode').value.trim();
+            const industry = document.getElementById('industry').value.trim();
+            const maxCompanies = document.getElementById('maxCompanies').value;
+            
+            if (!pinCode) {
+                alert('Please enter at least one PIN code');
+                return;
+            }
+            
+            progressModal.classList.add('open');
+            document.getElementById('progressFill').style.width = '0%';
+            document.getElementById('progressPercent').textContent = '0%';
+            document.getElementById('progressText').textContent = 'Starting search...';
+            document.getElementById('progressStatus').textContent = 'Connecting to Google Places';
+            
+            try {
+                const response = await fetch('/api/level1/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        project_name: currentProject,
+                        pin_code: pinCode,
+                        industry: industry,
+                        max_companies: parseInt(maxCompanies)
+                    })
+                });
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const evt = JSON.parse(line.slice(6));
+                                
+                                if (evt.type === 'progress') {
+                                    const p = evt.data || {};
+                                    const pct = p.total > 0 ? Math.round((p.current / p.total) * 100) : 0;
+                                    document.getElementById('progressFill').style.width = pct + '%';
+                                    document.getElementById('progressPercent').textContent = pct + '%';
+                                    document.getElementById('progressText').textContent = p.message || 'Searching...';
+                                    document.getElementById('progressStatus').textContent = `Found ${p.companies_found || 0} companies`;
+                                }
+                                
+                                if (evt.type === 'complete') {
+                                    companies = evt.data?.companies || [];
+                                    renderCompanies();
+                                    resultsCard.style.display = 'block';
+                                    progressModal.classList.remove('open');
+                                    loadProjects();
+                                    resultsCard.scrollIntoView({ behavior: 'smooth' });
+                                    
+                                    // Show success message and update save button
+                                    const saveBtn = document.getElementById('saveProjectBtn');
+                                    if (saveBtn) {
+                                        saveBtn.innerHTML = '<i class="fas fa-check"></i> Saved!';
+                                        saveBtn.classList.remove('btn-success');
+                                        saveBtn.classList.add('btn-primary');
+                                        setTimeout(() => {
+                                            saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Project';
+                                            saveBtn.classList.remove('btn-primary');
+                                            saveBtn.classList.add('btn-success');
+                                        }, 3000);
+                                    }
+                                }
+                                
+                                if (evt.type === 'error') {
+                                    throw new Error(evt.data?.error || 'Search failed');
+                                }
+                            } catch (parseErr) {
+                                console.error('Parse error:', parseErr);
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                progressModal.classList.remove('open');
+                alert('Search failed: ' + err.message);
+            }
+        });
+        
+        // Select All
+        document.getElementById('selectAllBtn').addEventListener('click', function() {
+            const allSelected = selectedIds.size === companies.length;
+            selectedIds.clear();
+            
+            if (!allSelected) {
+                companies.forEach(c => selectedIds.add(c.place_id || c.company_name));
+            }
+            
+            renderCompanies();
+            updateDeleteBtn();
+            this.innerHTML = allSelected 
+                ? '<i class="fas fa-check-double"></i> Select All' 
+                : '<i class="fas fa-times"></i> Deselect All';
+        });
+        
+        // Export
+        document.getElementById('exportBtn').addEventListener('click', async function() {
+            if (!companies.length) return;
+            
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner spinner"></i> Exporting...';
+            
+            try {
+                const res = await fetch('/api/export', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ companies, project_name: currentProject })
+                });
+                
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${currentProject}_companies.xlsx`;
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch (e) {
+                alert('Export failed: ' + e.message);
+            } finally {
+                this.disabled = false;
+                this.innerHTML = '<i class="fas fa-file-excel"></i> Export';
+            }
+        });
+        
+        // Delete
+        document.getElementById('deleteBtn').addEventListener('click', async function() {
+            if (!selectedIds.size) return;
+            if (!confirm(`Delete ${selectedIds.size} selected company(s)?`)) return;
+            
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner spinner"></i> Deleting...';
+            
+            try {
+                await fetch('/api/level1/delete-companies', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        project_name: currentProject,
+                        identifiers: Array.from(selectedIds)
+                    })
+                });
+                
+                companies = companies.filter(c => !selectedIds.has(c.place_id || c.company_name));
+                selectedIds.clear();
+                renderCompanies();
+                updateDeleteBtn();
+            } catch (e) {
+                alert('Delete failed: ' + e.message);
+            } finally {
+                this.disabled = false;
+            }
+        });
+        
+        // Next Step
+        document.getElementById('nextBtn').addEventListener('click', async function() {
+            if (!selectedIds.size) {
+                companies.forEach(c => selectedIds.add(c.place_id || c.company_name));
+            }
+            
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner spinner"></i> Saving...';
+            
+            try {
+                await fetch('/api/level1/select-for-level2', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        project_name: currentProject,
+                        companies: companies.filter(c => selectedIds.has(c.place_id || c.company_name))
+                    })
+                });
+                
+                window.location.href = '/level2?project=' + encodeURIComponent(currentProject);
+            } catch (e) {
+                alert('Failed to save selection: ' + e.message);
+                this.disabled = false;
+                this.innerHTML = 'Next: Get Contacts <i class="fas fa-arrow-right"></i>';
+            }
+        });
+        
+        // Init
+        loadProjects();
+    </script>
+</body>
+</html>

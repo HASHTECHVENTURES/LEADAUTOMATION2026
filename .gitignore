@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Environment variables
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Flask
+instance/
+.webassets-cache
+
+# Output files
+*.csv
+*.xlsx
+output/
+*.log
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+
+
+
+LEADAUTOMATION2026/
+google_sheets_credentials.json

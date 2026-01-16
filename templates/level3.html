@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Send Campaign - Business Outreach</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --secondary: #0ea5e9;
+            --success: #10b981;
+            --success-light: #d1fae5;
+            --warning: #f59e0b;
+            --warning-light: #fef3c7;
+            --danger: #ef4444;
+            --danger-light: #fee2e2;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-400: #9ca3af;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --gradient-1: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            --gradient-success: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            --gradient-danger: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(180deg, var(--gray-50) 0%, var(--gray-100) 100%);
+            min-height: 100vh;
+            color: var(--gray-800);
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        
+        @keyframes confetti {
+            0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(-100px) rotate(720deg); opacity: 0; }
+        }
+        
+        .fade-in { animation: fadeIn 0.4s ease-out forwards; }
+        .spinner { animation: spin 1s linear infinite; }
+        
+        /* Navbar */
+        .navbar {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 16px 24px;
+            box-shadow: var(--shadow);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .back-btn {
+            color: var(--gray-600);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            border-radius: 10px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        
+        .back-btn:hover { 
+            background: var(--gray-100);
+            transform: translateX(-2px);
+        }
+        
+        .nav-title {
+            font-size: 1.2em;
+            font-weight: 600;
+            background: var(--gradient-1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .nav-step {
+            margin-left: auto;
+            background: var(--gradient-danger);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+        }
+        
+        .container { max-width: 900px; margin: 0 auto; padding: 32px 24px; }
+        
+        /* Cards */
+        .card {
+            background: white;
+            border-radius: 16px;
+            border: 1px solid var(--gray-200);
+            margin-bottom: 24px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            transition: all 0.3s ease;
+            animation: fadeIn 0.5s ease-out;
+        }
+        
+        .card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+        
+        .card-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--gray-100);
+            background: linear-gradient(180deg, white 0%, var(--gray-50) 100%);
+        }
+        
+        .card-title {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: var(--gray-800);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .card-title i { color: var(--primary); }
+        
+        .card-body { padding: 24px; }
+        
+        /* Form */
+        .form-input {
+            width: 100%;
+            padding: 14px 18px;
+            border: 2px solid var(--gray-200);
+            border-radius: 12px;
+            font-size: 1em;
+            font-family: inherit;
+            transition: all 0.2s ease;
+        }
+        
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+        }
+        
+        /* Buttons */
+        .btn {
+            padding: 14px 24px;
+            border-radius: 12px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-family: inherit;
+        }
+        
+        .btn-primary {
+            background: var(--gradient-1);
+            color: white;
+            box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+        }
+        
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5); }
+        .btn-primary:disabled { background: var(--gray-300); box-shadow: none; cursor: not-allowed; transform: none; }
+        
+        .btn-secondary {
+            background: white;
+            color: var(--primary);
+            border: 2px solid var(--gray-200);
+        }
+        
+        .btn-secondary:hover { background: var(--gray-50); border-color: var(--primary); }
+        
+        .btn-success {
+            background: var(--gradient-success);
+            color: white;
+            box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+        }
+        
+        .btn-block { width: 100%; }
+        
+        .selector-row { display: flex; gap: 12px; align-items: center; }
+        .selector-row select { flex: 1; }
+        
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            text-align: center;
+            border: 1px solid var(--gray-200);
+            transition: all 0.3s ease;
+        }
+        
+        .stat-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-md); }
+        
+        .stat-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 16px;
+            font-size: 1.4em;
+        }
+        
+        .stat-card.total .stat-icon { background: #e0e7ff; color: var(--primary); }
+        .stat-card.success .stat-icon { background: var(--success-light); color: var(--success); }
+        .stat-card.error .stat-icon { background: var(--danger-light); color: var(--danger); }
+        
+        .stat-value { font-size: 2.5em; font-weight: 700; color: var(--gray-800); line-height: 1; }
+        .stat-label { font-size: 0.9em; color: var(--gray-500); margin-top: 8px; font-weight: 500; }
+        
+        /* Preview List */
+        .preview-section { margin-bottom: 24px; }
+        .preview-title { 
+            font-weight: 600; 
+            margin-bottom: 12px; 
+            color: var(--gray-700);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .preview-list {
+            border: 1px solid var(--gray-200);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        .preview-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .preview-list::-webkit-scrollbar-track {
+            background: var(--gray-100);
+            border-radius: 3px;
+        }
+        
+        .preview-list::-webkit-scrollbar-thumb {
+            background: var(--gray-300);
+            border-radius: 3px;
+        }
+        
+        .preview-item {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--gray-100);
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            transition: all 0.2s;
+        }
+        
+        .preview-item:hover { background: var(--gray-50); }
+        .preview-item:last-child { border-bottom: none; }
+        
+        .preview-avatar {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            background: #e0e7ff;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .preview-info { flex: 1; }
+        .preview-name { font-weight: 600; color: var(--gray-800); }
+        .preview-meta { font-size: 0.85em; color: var(--gray-500); margin-top: 2px; }
+        
+        /* Progress */
+        .progress-section { margin: 24px 0; }
+        
+        .progress-header { display: flex; justify-content: space-between; margin-bottom: 12px; }
+        .progress-label { color: var(--gray-600); font-weight: 500; }
+        .progress-value { color: var(--primary); font-weight: 600; }
+        
+        .progress-bar {
+            height: 14px;
+            background: var(--gray-200);
+            border-radius: 7px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: var(--gradient-1);
+            border-radius: 7px;
+            transition: width 0.5s ease;
+            position: relative;
+        }
+        
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+        
+        .progress-text { text-align: center; color: var(--gray-500); font-size: 0.9em; margin-top: 12px; }
+        
+        /* Transfer Log */
+        .log-section { margin-top: 24px; }
+        .log-title { font-weight: 600; margin-bottom: 12px; color: var(--gray-700); }
+        
+        .transfer-log {
+            max-height: 350px;
+            overflow-y: auto;
+            border: 1px solid var(--gray-200);
+            border-radius: 12px;
+        }
+        
+        .transfer-log::-webkit-scrollbar { width: 6px; }
+        .transfer-log::-webkit-scrollbar-track { background: var(--gray-100); }
+        .transfer-log::-webkit-scrollbar-thumb { background: var(--gray-300); border-radius: 3px; }
+        
+        .log-item {
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--gray-100);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 0.9em;
+            animation: fadeIn 0.3s ease-out;
+        }
+        
+        .log-item:last-child { border-bottom: none; }
+        
+        .log-item .log-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 7px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8em;
+        }
+        
+        .log-item.success .log-icon { background: var(--success-light); color: var(--success); }
+        .log-item.error .log-icon { background: var(--danger-light); color: var(--danger); }
+        .log-item.skipped .log-icon { background: var(--warning-light); color: var(--warning); }
+        
+        .log-name { flex: 1; font-weight: 500; }
+        .log-status { color: var(--gray-500); font-size: 0.85em; }
+        
+        /* Success Box */
+        .success-box {
+            background: linear-gradient(135deg, var(--success-light) 0%, #ecfdf5 100%);
+            border: 2px solid #a7f3d0;
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+            margin-top: 24px;
+            animation: fadeIn 0.5s ease-out;
+        }
+        
+        .success-icon {
+            width: 80px;
+            height: 80px;
+            background: var(--gradient-success);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 2em;
+            color: white;
+            box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4);
+        }
+        
+        .success-box h3 { color: #065f46; font-size: 1.5em; margin-bottom: 8px; }
+        .success-box p { color: #047857; margin-bottom: 20px; }
+        
+        /* Empty State */
+        .empty-state { text-align: center; padding: 60px 20px; }
+        
+        .empty-state-icon {
+            width: 100px;
+            height: 100px;
+            margin: 0 auto 20px;
+            background: var(--gray-100);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .empty-state-icon svg { width: 50px; height: 50px; color: var(--gray-400); }
+        .empty-state h3 { color: var(--gray-700); margin-bottom: 8px; }
+        .empty-state p { color: var(--gray-500); max-width: 300px; margin: 0 auto; }
+        
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 40px 24px;
+            color: var(--gray-500);
+            font-size: 0.85em;
+        }
+        
+        .footer-logo { height: 24px; margin-left: 8px; vertical-align: middle; transition: transform 0.3s; }
+        .footer a:hover .footer-logo { transform: scale(1.05); }
+        
+        @media (max-width: 600px) {
+            .stats-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <a href="/level2" class="back-btn">
+            <i class="fas fa-arrow-left"></i>
+            Back
+        </a>
+        <span class="nav-title">Send Campaign</span>
+        <span class="nav-step"><i class="fas fa-rocket"></i> Step 3 of 3</span>
+    </nav>
+    
+    <div class="container">
+        <!-- Batch Selection -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title"><i class="fas fa-list-check"></i> Select Batch to Transfer</span>
+            </div>
+            <div class="card-body">
+                <div class="selector-row">
+                    <select class="form-input" id="batchSelect">
+                        <option value="">Choose a batch...</option>
+                    </select>
+                    <button class="btn btn-secondary" id="refreshBtn" title="Refresh">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                    <button class="btn btn-danger" id="deleteBatchBtn" title="Delete Selected Batch" style="display: none;">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Batch Info -->
+        <div class="card" id="batchInfo" style="display: none;">
+            <div class="card-header">
+                <span class="card-title"><i class="fas fa-chart-bar"></i> Transfer Overview</span>
+            </div>
+            <div class="card-body">
+                <div class="stats-grid">
+                    <div class="stat-card total">
+                        <div class="stat-icon"><i class="fas fa-users"></i></div>
+                        <div class="stat-value" id="contactCount">0</div>
+                        <div class="stat-label">Total Contacts</div>
+                    </div>
+                    <div class="stat-card success">
+                        <div class="stat-icon"><i class="fas fa-check"></i></div>
+                        <div class="stat-value" id="transferredCount">0</div>
+                        <div class="stat-label">Transferred</div>
+                    </div>
+                    <div class="stat-card error">
+                        <div class="stat-icon"><i class="fas fa-times"></i></div>
+                        <div class="stat-value" id="failedCount">0</div>
+                        <div class="stat-label">Failed</div>
+                    </div>
+                </div>
+                
+                <!-- Preview -->
+                <div class="preview-section" id="previewSection">
+                    <div class="preview-title"><i class="fas fa-users"></i> All Contacts (<span id="previewCount">0</span>)</div>
+                    <div class="preview-list" id="previewList" style="max-height: 400px; overflow-y: auto;"></div>
+                </div>
+                
+                <!-- Progress -->
+                <div class="progress-section" id="progressSection" style="display: none;">
+                    <div class="progress-header">
+                        <span class="progress-label">Transferring contacts...</span>
+                        <span class="progress-value" id="progressPercent">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                    </div>
+                    <div class="progress-text" id="progressText">0 of 0 contacts</div>
+                </div>
+                
+                <!-- Transfer Log -->
+                <div class="log-section" id="logSection" style="display: none;">
+                    <div class="log-title"><i class="fas fa-list"></i> Transfer Log</div>
+                    <div class="transfer-log" id="transferLog"></div>
+                </div>
+                
+                <!-- Success -->
+                <div class="success-box" id="successBox" style="display: none;">
+                    <div class="success-icon"><i class="fas fa-check"></i></div>
+                    <h3>Transfer Complete!</h3>
+                    <p id="successMessage">Contacts have been sent to Apollo.io</p>
+                    <a href="https://app.apollo.io" target="_blank" class="btn btn-success">
+                        <i class="fas fa-external-link-alt"></i>
+                        Open Apollo.io Dashboard
+                    </a>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div style="margin-top: 24px;" id="actionButtons">
+                    <button class="btn btn-primary btn-block" id="transferBtn">
+                        <i class="fas fa-paper-plane"></i>
+                        Transfer to Apollo.io
+                    </button>
+                </div>
+                
+                <div id="retrySection" style="display: none; margin-top: 16px;">
+                    <button class="btn btn-secondary btn-block" id="retryBtn">
+                        <i class="fas fa-redo"></i>
+                        Retry Failed Contacts
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <footer class="footer">
+        Developed by 
+        <a href="https://aidea.digital" target="_blank">
+            <img src="https://aidea.digital/f634805c-58b8-4a71-b801-507dfd69aa6d__1_-removebg-preview.png" alt="Aidea Digital" class="footer-logo">
+        </a>
+    </footer>
+    
+    <script>
+        const batchSelect = document.getElementById('batchSelect');
+        const batchInfo = document.getElementById('batchInfo');
+        const previewSection = document.getElementById('previewSection');
+        const previewList = document.getElementById('previewList');
+        const progressSection = document.getElementById('progressSection');
+        const logSection = document.getElementById('logSection');
+        const transferLog = document.getElementById('transferLog');
+        const successBox = document.getElementById('successBox');
+        const actionButtons = document.getElementById('actionButtons');
+        const retrySection = document.getElementById('retrySection');
+        
+        let contacts = [];
+        let failedContacts = [];
+        let currentProjectName = '';
+        
+        // Load batches
+        async function loadBatches() {
+            try {
+                const res = await fetch('/api/level2/batches');
+                const data = await res.json();
+                
+                batchSelect.innerHTML = '<option value="">Choose a batch...</option>';
+                (data.batches || []).forEach(b => {
+                    const opt = document.createElement('option');
+                    opt.value = b.batch_name;
+                    const projectLabel = b.project_name ? ` • ${b.project_name}` : '';
+                    opt.textContent = `${b.batch_name} (${b.contact_count} contacts${projectLabel})`;
+                    opt.dataset.project = b.project_name || '';
+                    batchSelect.appendChild(opt);
+                });
+                
+                // Store project name from first batch if available
+                if (data.batches && data.batches.length > 0) {
+                    currentProjectName = data.batches[0].project_name || '';
+                }
+                
+                const urlParams = new URLSearchParams(window.location.search);
+                const batchParam = urlParams.get('batch');
+                if (batchParam) {
+                    batchSelect.value = batchParam;
+                    loadBatch(batchParam);
+                }
+            } catch (e) {
+                console.error('Failed to load batches:', e);
+            }
+        }
+        
+        // Load batch contacts
+        async function loadBatch(batchName) {
+            try {
+                const res = await fetch(`/api/level3/contacts?batch_name=${encodeURIComponent(batchName)}`);
+                const data = await res.json();
+                contacts = data.contacts || [];
+                
+                document.getElementById('contactCount').textContent = contacts.length;
+                document.getElementById('transferredCount').textContent = '0';
+                document.getElementById('failedCount').textContent = '0';
+                document.getElementById('previewCount').textContent = contacts.length;
+                
+                // Show all contacts
+                if (contacts.length === 0) {
+                    previewList.innerHTML = `
+                        <div class="empty-state" style="padding: 40px 20px;">
+                            <div class="empty-state-icon"><i class="fas fa-users"></i></div>
+                            <h3>No Contacts</h3>
+                            <p>This batch has no contacts</p>
+                        </div>
+                    `;
+                } else {
+                    previewList.innerHTML = contacts.map((c, idx) => {
+                        const hasEmail = c.email ? '<i class="fas fa-envelope" style="color: var(--success); margin-left: 8px;" title="Has email"></i>' : '';
+                        return `
+                            <div class="preview-item fade-in" style="animation-delay: ${idx * 20}ms">
+                                <div class="preview-avatar"><i class="fas fa-user"></i></div>
+                                <div class="preview-info">
+                                    <div class="preview-name">
+                                        ${escapeHtml(c.name || c.contact_name || 'Unknown')}
+                                        ${hasEmail}
+                                    </div>
+                                    <div class="preview-meta">
+                                        ${escapeHtml(c.title || c.contact_type || '')} · ${escapeHtml(c.company_name || '')}
+                                        ${c.email ? `<span style="margin-left: 12px; color: var(--gray-500);"><i class="fas fa-envelope"></i> ${escapeHtml(c.email)}</span>` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+                
+                batchInfo.style.display = 'block';
+                previewSection.style.display = 'block';
+                progressSection.style.display = 'none';
+                logSection.style.display = 'none';
+                successBox.style.display = 'none';
+                actionButtons.style.display = 'block';
+                retrySection.style.display = 'none';
+                failedContacts = [];
+            } catch (e) {
+                console.error('Failed to load batch:', e);
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+        
+        // Event listeners
+        batchSelect.addEventListener('change', () => {
+            if (batchSelect.value) {
+                document.getElementById('deleteBatchBtn').style.display = 'inline-flex';
+                loadBatch(batchSelect.value);
+            } else {
+                document.getElementById('deleteBatchBtn').style.display = 'none';
+                batchInfo.style.display = 'none';
+            }
+        });
+        
+        document.getElementById('refreshBtn').addEventListener('click', function() {
+            this.querySelector('i').classList.add('spinner');
+            loadBatches();
+            setTimeout(() => this.querySelector('i').classList.remove('spinner'), 1000);
+        });
+        
+        // Delete batch
+        document.getElementById('deleteBatchBtn').addEventListener('click', async function() {
+            const batchName = batchSelect.value;
+            if (!batchName) return;
+            
+            if (!confirm(`Delete batch "${batchName}" and all its contacts?\n\nThis action cannot be undone.`)) return;
+            
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner spinner"></i>';
+            
+            try {
+                const res = await fetch('/api/level2/delete-batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ batch_name: batchName })
+                });
+                
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to delete batch');
+                
+                // Reset UI
+                batchSelect.value = '';
+                this.style.display = 'none';
+                batchInfo.style.display = 'none';
+                contacts = [];
+                failedContacts = [];
+                
+                // Refresh batches list
+                loadBatches();
+                
+                // Show success message
+                const btn = this;
+                btn.innerHTML = '<i class="fas fa-check"></i> Deleted!';
+                btn.classList.remove('btn-danger');
+                btn.classList.add('btn-success');
+                setTimeout(() => {
+                    btn.innerHTML = '<i class="fas fa-trash"></i>';
+                    btn.classList.remove('btn-success');
+                    btn.classList.add('btn-danger');
+                    btn.disabled = false;
+                }, 2000);
+            } catch (e) {
+                alert('Error deleting batch: ' + e.message);
+                this.disabled = false;
+                this.innerHTML = '<i class="fas fa-trash"></i>';
+            }
+        });
+        
+        // Transfer
+        document.getElementById('transferBtn').addEventListener('click', async function() {
+            if (!contacts.length) return;
+            
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner spinner"></i> Transferring...';
+            
+            previewSection.style.display = 'none';
+            progressSection.style.display = 'block';
+            logSection.style.display = 'block';
+            transferLog.innerHTML = '';
+            failedContacts = [];
+            
+            let transferred = 0;
+            let failed = 0;
+            
+            for (let i = 0; i < contacts.length; i++) {
+                const contact = contacts[i];
+                
+                try {
+                    const res = await fetch('/api/level3/transfer-one', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contact_id: contact.id })
+                    });
+                    
+                    const data = await res.json();
+                    const status = data.status || (data.success ? 'transferred' : 'failed');
+                    const name = contact.name || contact.contact_name || 'Unknown';
+                    
+                    if (status === 'transferred' || status === 'skipped') {
+                        transferred++;
+                        const statusClass = status === 'skipped' ? 'skipped' : 'success';
+                        const icon = status === 'skipped' ? 'minus' : 'check';
+                        const statusText = status === 'skipped' ? 'Already exists' : 'Transferred';
+                        transferLog.innerHTML += `
+                            <div class="log-item ${statusClass}">
+                                <div class="log-icon"><i class="fas fa-${icon}"></i></div>
+                                <span class="log-name">${escapeHtml(name)}</span>
+                                <span class="log-status">${statusText}</span>
+                            </div>
+                        `;
+                    } else {
+                        failed++;
+                        failedContacts.push(contact);
+                        transferLog.innerHTML += `
+                            <div class="log-item error">
+                                <div class="log-icon"><i class="fas fa-times"></i></div>
+                                <span class="log-name">${escapeHtml(name)}</span>
+                                <span class="log-status">${data.reason || 'Failed'}</span>
+                            </div>
+                        `;
+                    }
+                } catch (e) {
+                    failed++;
+                    failedContacts.push(contact);
+                    transferLog.innerHTML += `
+                        <div class="log-item error">
+                            <div class="log-icon"><i class="fas fa-times"></i></div>
+                            <span class="log-name">${escapeHtml(contact.name || 'Unknown')}</span>
+                            <span class="log-status">Network Error</span>
+                        </div>
+                    `;
+                }
+                
+                // Update progress
+                document.getElementById('transferredCount').textContent = transferred;
+                document.getElementById('failedCount').textContent = failed;
+                
+                const pct = Math.round(((i + 1) / contacts.length) * 100);
+                document.getElementById('progressFill').style.width = pct + '%';
+                document.getElementById('progressPercent').textContent = pct + '%';
+                document.getElementById('progressText').textContent = `${i + 1} of ${contacts.length} contacts processed`;
+                
+                transferLog.scrollTop = transferLog.scrollHeight;
+            }
+            
+            // Done
+            actionButtons.style.display = 'none';
+            
+            if (transferred > 0) {
+                successBox.style.display = 'block';
+                document.getElementById('successMessage').textContent = `${transferred} contacts successfully sent to Apollo.io`;
+            }
+            
+            if (failedContacts.length > 0) {
+                retrySection.style.display = 'block';
+            }
+            
+            this.disabled = false;
+            this.innerHTML = '<i class="fas fa-paper-plane"></i> Transfer to Apollo.io';
+        });
+        
+        // Retry failed
+        document.getElementById('retryBtn').addEventListener('click', async function() {
+            if (!failedContacts.length) return;
+            
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner spinner"></i> Retrying...';
+            
+            const toRetry = [...failedContacts];
+            failedContacts = [];
+            let transferred = parseInt(document.getElementById('transferredCount').textContent);
+            
+            for (const contact of toRetry) {
+                try {
+                    const res = await fetch('/api/level3/transfer-one', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contact_id: contact.id })
+                    });
+                    
+                    const data = await res.json();
+                    if (data.status === 'transferred' || data.status === 'skipped') {
+                        transferred++;
+                    } else {
+                        failedContacts.push(contact);
+                    }
+                } catch (e) {
+                    failedContacts.push(contact);
+                }
+            }
+            
+            document.getElementById('transferredCount').textContent = transferred;
+            document.getElementById('failedCount').textContent = failedContacts.length;
+            
+            if (failedContacts.length === 0) {
+                retrySection.style.display = 'none';
+                if (!successBox.style.display || successBox.style.display === 'none') {
+                    successBox.style.display = 'block';
+                    document.getElementById('successMessage').textContent = `${transferred} contacts sent to Apollo.io`;
+                }
+            }
+            
+            this.disabled = false;
+            this.innerHTML = '<i class="fas fa-redo"></i> Retry Failed Contacts';
+        });
+        
+        // Init
+        loadBatches();
+    </script>
+</body>
+</html>

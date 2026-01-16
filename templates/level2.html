@@ -1,0 +1,1760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Get Contacts - Business Outreach</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --primary-light: #818cf8;
+            --secondary: #0ea5e9;
+            --success: #10b981;
+            --success-light: #d1fae5;
+            --warning: #f59e0b;
+            --warning-light: #fef3c7;
+            --danger: #ef4444;
+            --danger-light: #fee2e2;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-400: #9ca3af;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --gray-900: #111827;
+            --gradient-1: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            --gradient-2: linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%);
+            --gradient-3: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(180deg, var(--gray-50) 0%, var(--gray-100) 100%);
+            min-height: 100vh;
+            color: var(--gray-800);
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+        
+        .fade-in { animation: fadeIn 0.4s ease-out forwards; }
+        .slide-in { animation: slideIn 0.3s ease-out forwards; }
+        
+        /* Navbar */
+        .navbar {
+            background: white;
+            padding: 16px 24px;
+            box-shadow: var(--shadow);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+            background: rgba(255, 255, 255, 0.95);
+        }
+        
+        .back-btn {
+            color: var(--gray-600);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            border-radius: 10px;
+            transition: all 0.2s ease;
+            font-weight: 500;
+        }
+        
+        .back-btn:hover { 
+            background: var(--gray-100); 
+            color: var(--gray-800);
+            transform: translateX(-2px);
+        }
+        
+        .nav-title { 
+            font-size: 1.2em; 
+            font-weight: 600; 
+            color: var(--gray-800);
+            background: var(--gradient-1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .nav-step {
+            margin-left: auto;
+            background: var(--gradient-3);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+        }
+        
+        .container { 
+            max-width: 100%; 
+            width: 100%;
+            margin: 0 auto; 
+            padding: 32px 24px; 
+        }
+        
+        /* Cards */
+        .card {
+            background: white;
+            border-radius: 16px;
+            border: 1px solid var(--gray-200);
+            margin-bottom: 24px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            transition: all 0.3s ease;
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+        
+        .card:hover {
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
+        }
+        
+        .card-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--gray-100);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: linear-gradient(180deg, white 0%, var(--gray-50) 100%);
+        }
+        
+        .card-title { 
+            font-size: 1.1em; 
+            font-weight: 600; 
+            color: var(--gray-800);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .card-title i {
+            color: var(--primary);
+        }
+        
+        .card-body { padding: 24px; }
+        
+        /* Form Elements */
+        .form-input {
+            width: 100%;
+            padding: 14px 18px;
+            border: 2px solid var(--gray-200);
+            border-radius: 12px;
+            font-size: 1em;
+            font-family: inherit;
+            transition: all 0.2s ease;
+            background: white;
+        }
+        
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+        }
+        
+        .form-input:hover:not(:focus) {
+            border-color: var(--gray-300);
+        }
+        
+        /* Buttons */
+        .btn {
+            padding: 14px 24px;
+            border-radius: 12px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-family: inherit;
+        }
+        
+        .btn-primary { 
+            background: var(--gradient-1);
+            color: white;
+            box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+        }
+        
+        .btn-primary:hover { 
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+        }
+        
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+        
+        .btn-primary:disabled { 
+            background: var(--gray-300);
+            box-shadow: none;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-secondary { 
+            background: white;
+            color: var(--primary);
+            border: 2px solid var(--gray-200);
+        }
+        
+        .btn-secondary:hover { 
+            background: var(--gray-50);
+            border-color: var(--primary);
+        }
+        
+        .btn-success { 
+            background: var(--gradient-3);
+            color: white;
+            box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+        }
+        
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
+        }
+        
+        .btn-block { width: 100%; }
+        
+        .btn .spinner {
+            animation: spin 1s linear infinite;
+        }
+        
+        /* Selector Row */
+        .selector-row {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        
+        .selector-row select { flex: 1; }
+        
+        /* Project Info */
+        .project-info {
+            display: none;
+            margin-top: 20px;
+            padding: 16px 20px;
+            background: linear-gradient(135deg, var(--gray-50) 0%, white 100%);
+            border-radius: 12px;
+            border: 1px solid var(--gray-200);
+            animation: fadeIn 0.3s ease-out;
+        }
+        
+        .project-info.visible { display: block; }
+        
+        .project-info-grid {
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+        
+        .project-info-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9em;
+            color: var(--gray-600);
+        }
+        
+        .project-info-item i {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            font-size: 0.9em;
+        }
+        
+        .project-info-item.pins i { background: #dbeafe; color: #2563eb; }
+        .project-info-item.industry i { background: #d1fae5; color: #059669; }
+        .project-info-item.count i { background: #fef3c7; color: #d97706; }
+        
+        /* Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+        
+        .badge-primary { background: #e0e7ff; color: #4338ca; }
+        .badge-success { background: var(--success-light); color: #065f46; }
+        .badge-warning { background: var(--warning-light); color: #92400e; }
+        .badge-danger { background: var(--danger-light); color: #991b1b; }
+        .badge-gray { background: var(--gray-100); color: var(--gray-600); }
+        
+        /* Company Table */
+        .table-container {
+            overflow-x: auto;
+            border-radius: 12px;
+            border: 1px solid var(--gray-200);
+            width: 100%;
+        }
+        
+        .company-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 100%;
+        }
+        
+        .company-table th {
+            padding: 14px 18px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.85em;
+            color: var(--gray-500);
+            background: var(--gray-50);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid var(--gray-200);
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+        }
+        
+        .company-table th:hover {
+            background: var(--gray-100);
+            color: var(--primary);
+        }
+        
+        .company-table th.sorted {
+            color: var(--primary);
+        }
+        
+        .company-table th .sort-icon {
+            margin-left: 6px;
+            opacity: 0.5;
+            transition: all 0.2s;
+        }
+        
+        .company-table th:hover .sort-icon,
+        .company-table th.sorted .sort-icon {
+            opacity: 1;
+        }
+        
+        .company-table td {
+            padding: 16px 18px;
+            border-bottom: 1px solid var(--gray-100);
+            transition: all 0.2s;
+        }
+        
+        .company-table tbody tr {
+            transition: all 0.2s;
+        }
+        
+        .company-table tbody tr:hover {
+            background: linear-gradient(90deg, rgba(99, 102, 241, 0.05) 0%, transparent 100%);
+        }
+        
+        .company-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .company-checkbox {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: var(--primary);
+        }
+        
+        .company-name-cell {
+            font-weight: 600;
+            color: var(--gray-800);
+        }
+        
+        .company-industry-cell {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        /* Skeleton Loading */
+        .skeleton {
+            background: linear-gradient(90deg, var(--gray-200) 25%, var(--gray-100) 50%, var(--gray-200) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 6px;
+        }
+        
+        .skeleton-row {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px 18px;
+            border-bottom: 1px solid var(--gray-100);
+        }
+        
+        .skeleton-checkbox { width: 20px; height: 20px; border-radius: 4px; }
+        .skeleton-text { height: 16px; flex: 1; }
+        .skeleton-text-sm { height: 14px; width: 80px; }
+        .skeleton-badge { height: 24px; width: 60px; border-radius: 12px; }
+        
+        /* Stats Row */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid var(--gray-200);
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+        
+        .stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 12px;
+            font-size: 1.2em;
+        }
+        
+        .stat-card.primary .stat-icon { background: #e0e7ff; color: var(--primary); }
+        .stat-card.success .stat-icon { background: var(--success-light); color: var(--success); }
+        .stat-card.warning .stat-icon { background: var(--warning-light); color: var(--warning); }
+        
+        .stat-value {
+            font-size: 2em;
+            font-weight: 700;
+            color: var(--gray-800);
+            line-height: 1;
+        }
+        
+        .stat-label {
+            font-size: 0.85em;
+            color: var(--gray-500);
+            margin-top: 6px;
+            font-weight: 500;
+        }
+        
+        /* Contact Cards */
+        .contacts-container {
+            max-height: 600px;
+            overflow-y: auto;
+            padding-right: 8px;
+        }
+        
+        .contacts-container::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .contacts-container::-webkit-scrollbar-track {
+            background: var(--gray-100);
+            border-radius: 3px;
+        }
+        
+        .contacts-container::-webkit-scrollbar-thumb {
+            background: var(--gray-300);
+            border-radius: 3px;
+        }
+        
+        .company-group {
+            background: var(--gray-50);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+            border: 1px solid var(--gray-200);
+            animation: fadeIn 0.4s ease-out;
+        }
+        
+        .company-group-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--gray-200);
+        }
+        
+        .company-group-name {
+            font-weight: 600;
+            color: var(--gray-800);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.05em;
+        }
+        
+        .company-group-name i {
+            color: var(--primary);
+        }
+        
+        .contacts-grid {
+            display: grid;
+            gap: 12px;
+        }
+        
+        .contact-card {
+            background: white;
+            border: 1px solid var(--gray-200);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            transition: all 0.2s ease;
+        }
+        
+        .contact-card:hover {
+            border-color: var(--primary-light);
+            box-shadow: var(--shadow);
+            transform: translateX(4px);
+        }
+        
+        .contact-avatar {
+            width: 52px;
+            height: 52px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3em;
+            flex-shrink: 0;
+        }
+        
+        .contact-avatar.founder { background: #fce7f3; color: #be185d; }
+        .contact-avatar.hr { background: #dbeafe; color: #1d4ed8; }
+        .contact-avatar.director { background: #e0e7ff; color: #4338ca; }
+        .contact-avatar.default { background: var(--gray-100); color: var(--gray-500); }
+        
+        .contact-info { flex: 1; min-width: 0; }
+        
+        .contact-name { 
+            font-weight: 600; 
+            color: var(--gray-800); 
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .contact-title { 
+            font-size: 0.85em; 
+            margin-bottom: 8px;
+        }
+        
+        .contact-details {
+            font-size: 0.85em;
+            color: var(--gray-500);
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        
+        .contact-details a { 
+            color: var(--primary);
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        
+        .contact-details a:hover { 
+            color: var(--primary-dark);
+        }
+        
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--gray-500);
+            animation: fadeIn 0.5s ease-out;
+        }
+        
+        .empty-state-icon {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto 24px;
+            background: var(--gray-100);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .empty-state-icon svg {
+            width: 60px;
+            height: 60px;
+            color: var(--gray-400);
+        }
+        
+        .empty-state h3 {
+            font-size: 1.2em;
+            color: var(--gray-700);
+            margin-bottom: 8px;
+        }
+        
+        .empty-state p {
+            max-width: 300px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+        
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .modal.open { display: flex; }
+        
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            width: 100%;
+            max-width: 480px;
+            box-shadow: var(--shadow-lg);
+            animation: fadeIn 0.3s ease-out;
+            overflow: hidden;
+        }
+        
+        .modal-header {
+            padding: 24px;
+            border-bottom: 1px solid var(--gray-100);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .modal-header i {
+            width: 40px;
+            height: 40px;
+            background: var(--gradient-1);
+            color: white;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-title { font-size: 1.2em; font-weight: 600; }
+        .modal-body { padding: 24px; }
+        
+        .modal-footer {
+            padding: 20px 24px;
+            border-top: 1px solid var(--gray-100);
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            background: var(--gray-50);
+        }
+        
+        /* Progress */
+        .progress-container {
+            margin: 24px 0;
+        }
+        
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            font-size: 0.9em;
+        }
+        
+        .progress-label {
+            color: var(--gray-600);
+            font-weight: 500;
+        }
+        
+        .progress-value {
+            color: var(--primary);
+            font-weight: 600;
+        }
+        
+        .progress-bar {
+            height: 12px;
+            background: var(--gray-200);
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: var(--gradient-1);
+            border-radius: 6px;
+            transition: width 0.5s ease;
+            position: relative;
+        }
+        
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+        
+        .progress-text {
+            text-align: center;
+            color: var(--gray-500);
+            font-size: 0.9em;
+            margin-top: 12px;
+        }
+        
+        .progress-status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 8px;
+            font-size: 0.85em;
+            color: var(--gray-600);
+        }
+        
+        .progress-status .pulse {
+            width: 8px;
+            height: 8px;
+            background: var(--success);
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+        
+        /* Action Bar */
+        .action-bar {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 1px solid var(--gray-200);
+        }
+        
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 40px 24px;
+            color: var(--gray-500);
+            font-size: 0.85em;
+        }
+        
+        .footer-logo {
+            height: 24px;
+            margin-left: 8px;
+            vertical-align: middle;
+            transition: transform 0.3s ease;
+        }
+        
+        .footer a:hover .footer-logo {
+            transform: scale(1.05);
+        }
+        
+        /* Responsive */
+        @media (max-width: 600px) {
+            .stats-grid { grid-template-columns: 1fr 1fr; }
+            .action-bar { flex-direction: column; }
+            .action-bar .btn { width: 100%; }
+            .project-info-grid { flex-direction: column; gap: 12px; }
+            .selector-row { flex-wrap: wrap; }
+            .selector-row select { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <a href="/level1" class="back-btn">
+            <i class="fas fa-arrow-left"></i>
+            Back
+        </a>
+        <span class="nav-title">Get Contacts</span>
+        <span class="nav-step"><i class="fas fa-check"></i> Step 2 of 3</span>
+    </nav>
+    
+    <div class="container">
+        <!-- Project Selection -->
+        <div class="card" id="selectCard">
+            <div class="card-header">
+                <span class="card-title"><i class="fas fa-folder-open"></i> Select Project</span>
+            </div>
+            <div class="card-body">
+                <div class="selector-row">
+                    <select class="form-input" id="projectSelect">
+                        <option value="">Choose a project...</option>
+                    </select>
+                    <button class="btn btn-secondary" id="refreshBtn" title="Refresh">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+                <div class="project-info" id="projectInfo">
+                    <div class="project-info-grid">
+                        <div class="project-info-item pins">
+                            <i class="fas fa-map-marker-alt"></i>
+                            <span><strong>PIN Codes:</strong> <span id="projectPins">-</span></span>
+                        </div>
+                        <div class="project-info-item industry">
+                            <i class="fas fa-industry"></i>
+                            <span><strong>Industry:</strong> <span id="projectIndustry">-</span></span>
+                        </div>
+                        <div class="project-info-item count">
+                            <i class="fas fa-building"></i>
+                            <span><strong>Companies:</strong> <span id="projectCompanyCount">0</span></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Companies to Process -->
+        <div class="card" id="companiesCard" style="display: none;">
+            <div class="card-header">
+                <span class="card-title"><i class="fas fa-building"></i> Companies</span>
+                <span class="badge badge-primary" id="companiesCount">0 selected</span>
+            </div>
+            <div class="card-body" style="border-bottom: 1px solid var(--gray-100); padding: 16px;">
+                <div class="action-bar" style="display: flex; gap: 12px;">
+                    <button class="btn btn-danger" id="deleteUnselectedBtn" style="display: none; flex: 1;">
+                        <i class="fas fa-trash"></i>
+                        Delete Unselected
+                    </button>
+                    <button class="btn btn-success" id="exportBtn" style="flex: 1;">
+                        <i class="fas fa-file-excel"></i>
+                        Export to Excel
+                    </button>
+                </div>
+            </div>
+            <div class="card-body" style="padding: 0; width: 100%;">
+                <div class="table-container" style="width: 100%;">
+                    <table class="company-table" style="width: 100%;">
+                        <thead>
+                            <tr>
+                                <th style="width: 50px;"><input type="checkbox" class="company-checkbox" id="selectAllCompanies"></th>
+                                <th data-sort="company_name">Company <i class="fas fa-sort sort-icon"></i></th>
+                                <th data-sort="website">Website <i class="fas fa-sort sort-icon"></i></th>
+                                <th data-sort="address">Address <i class="fas fa-sort sort-icon"></i></th>
+                                <th data-sort="phone">Phone <i class="fas fa-sort sort-icon"></i></th>
+                                <th data-sort="industry">Industry <i class="fas fa-sort sort-icon"></i></th>
+                                <th data-sort="pin_code">Location <i class="fas fa-sort sort-icon"></i></th>
+                            </tr>
+                        </thead>
+                        <tbody id="companiesTable">
+                            <!-- Skeleton loading -->
+                            <tr class="skeleton-row"><td colspan="7"><div class="skeleton skeleton-text"></div></td></tr>
+                            <tr class="skeleton-row"><td colspan="7"><div class="skeleton skeleton-text"></div></td></tr>
+                            <tr class="skeleton-row"><td colspan="7"><div class="skeleton skeleton-text"></div></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card-body" style="border-top: 1px solid var(--gray-100);">
+                <button class="btn btn-primary btn-block" id="processBtn">
+                    <i class="fas fa-magic"></i>
+                    Find Contacts from Apollo.io
+                </button>
+            </div>
+        </div>
+        
+        <!-- Contact Results -->
+        <div class="card" id="contactsCard" style="display: none;">
+            <div class="card-header">
+                <span class="card-title"><i class="fas fa-users"></i> Contacts Found</span>
+            </div>
+            <div class="card-body">
+                <div class="stats-grid">
+                    <div class="stat-card primary">
+                        <div class="stat-icon"><i class="fas fa-user-tie"></i></div>
+                        <div class="stat-value" id="totalContacts">0</div>
+                        <div class="stat-label">Total Contacts</div>
+                    </div>
+                    <div class="stat-card success">
+                        <div class="stat-icon"><i class="fas fa-building"></i></div>
+                        <div class="stat-value" id="totalCompanies">0</div>
+                        <div class="stat-label">Companies</div>
+                    </div>
+                    <div class="stat-card warning">
+                        <div class="stat-icon"><i class="fas fa-envelope"></i></div>
+                        <div class="stat-value" id="totalEmails">0</div>
+                        <div class="stat-label">With Email</div>
+                    </div>
+                    <div class="stat-card" style="background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);">
+                        <div class="stat-icon" style="background: #6366f1; color: white;"><i class="fas fa-users"></i></div>
+                        <div class="stat-value" id="totalEmployees" style="color: #4338ca;">0</div>
+                        <div class="stat-label" style="color: #4338ca;">Total Employees</div>
+                    </div>
+                </div>
+                
+                <div class="contacts-container" id="contactsList"></div>
+                
+                <div class="action-bar">
+                    <button class="btn btn-secondary" id="saveBatchBtn">
+                        <i class="fas fa-save"></i>
+                        Save Batch
+                    </button>
+                    <button class="btn btn-success" id="nextStepBtn">
+                        Next: Send Campaign <i class="fas fa-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Saved Batches -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title"><i class="fas fa-history"></i> Saved Batches</span>
+            </div>
+            <div class="card-body">
+                <div class="selector-row">
+                    <select class="form-input" id="batchSelect">
+                        <option value="">Load a saved batch...</option>
+                    </select>
+                    <button class="btn btn-danger" id="deleteBatchBtn" title="Delete Selected Batch" style="display: none;">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Processing Modal -->
+    <div class="modal" id="processingModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <i class="fas fa-search"></i>
+                <span class="modal-title">Finding Contacts...</span>
+            </div>
+            <div class="modal-body">
+                <div class="progress-container">
+                    <div class="progress-header">
+                        <span class="progress-label">Processing companies</span>
+                        <span class="progress-value" id="progressPercent">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                    </div>
+                    <div class="progress-text" id="progressText">Initializing...</div>
+                    <div class="progress-status">
+                        <span class="pulse"></span>
+                        <span id="progressStatus">Connecting to Apollo.io</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Save Batch Modal -->
+    <div class="modal" id="saveModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <i class="fas fa-save"></i>
+                <span class="modal-title">Save Batch</span>
+            </div>
+            <div class="modal-body">
+                <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--gray-700);">Batch Name</label>
+                <input type="text" class="form-input" id="batchName" placeholder="e.g., IT Mumbai - Jan 2026">
+                <p style="margin-top: 12px; font-size: 0.85em; color: var(--gray-500);">
+                    <i class="fas fa-info-circle"></i> This batch will be available in Level 3 for email campaigns.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelSave">Cancel</button>
+                <button class="btn btn-primary" id="confirmSave">
+                    <i class="fas fa-check"></i> Save Batch
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <footer class="footer">
+        Developed by 
+        <a href="https://aidea.digital" target="_blank">
+            <img src="https://aidea.digital/f634805c-58b8-4a71-b801-507dfd69aa6d__1_-removebg-preview.png" alt="Aidea Digital" class="footer-logo">
+        </a>
+    </footer>
+    
+    <script>
+        const projectSelect = document.getElementById('projectSelect');
+        const batchSelect = document.getElementById('batchSelect');
+        const companiesCard = document.getElementById('companiesCard');
+        const contactsCard = document.getElementById('contactsCard');
+        const companiesTable = document.getElementById('companiesTable');
+        const contactsList = document.getElementById('contactsList');
+        const processingModal = document.getElementById('processingModal');
+        const saveModal = document.getElementById('saveModal');
+        
+        let currentProject = '';
+        let companies = [];
+        let selectedCompanyIds = new Set();
+        let contacts = [];
+        let currentBatchName = '';
+        let sortColumn = '';
+        let sortDirection = 'asc';
+        
+        // Allowed titles
+        const ALLOWED_TITLES = ['founder', 'hr director', 'hr manager', 'chro', 'director', 'hr', 'owner', 'ceo', 'co-founder'];
+        
+        let projectsData = [];
+        
+        // Show skeleton loading
+        function showTableSkeleton() {
+            companiesTable.innerHTML = Array(5).fill(0).map(() => `
+                <tr>
+                    <td><div class="skeleton skeleton-checkbox"></div></td>
+                    <td><div class="skeleton skeleton-text" style="width: 70%;"></div></td>
+                    <td><div class="skeleton skeleton-badge"></div></td>
+                    <td><div class="skeleton skeleton-text-sm"></div></td>
+                </tr>
+            `).join('');
+        }
+        
+        // Load projects
+        async function loadProjects() {
+            try {
+                const res = await fetch('/api/level1/projects?_t=' + Date.now());
+                const data = await res.json();
+                projectsData = data.projects || [];
+                
+                projectSelect.innerHTML = '<option value="">Choose a project...</option>';
+                projectsData.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p.project_name;
+                    opt.textContent = `${p.project_name} (${p.company_count || 0} companies)`;
+                    projectSelect.appendChild(opt);
+                });
+                
+                // Check URL param
+                const urlParams = new URLSearchParams(window.location.search);
+                const projectParam = urlParams.get('project');
+                if (projectParam) {
+                    projectSelect.value = projectParam;
+                    showProjectInfo(projectParam);
+                    loadCompanies(projectParam);
+                }
+            } catch (e) {
+                console.error('Failed to load projects:', e);
+            }
+        }
+        
+        // Show project info
+        function showProjectInfo(projectName) {
+            const project = projectsData.find(p => p.project_name === projectName);
+            const infoDiv = document.getElementById('projectInfo');
+            
+            if (project) {
+                document.getElementById('projectPins').textContent = project.pin_codes || 'All';
+                document.getElementById('projectIndustry').textContent = project.industry || 'All Industries';
+                document.getElementById('projectCompanyCount').textContent = project.company_count || 0;
+                infoDiv.classList.add('visible');
+            } else {
+                infoDiv.classList.remove('visible');
+            }
+        }
+        
+        // Load batches
+        async function loadBatches() {
+            try {
+                const res = await fetch('/api/level2/batches');
+                const data = await res.json();
+                
+                batchSelect.innerHTML = '<option value="">Load a saved batch...</option>';
+                (data.batches || []).forEach(b => {
+                    const opt = document.createElement('option');
+                    opt.value = b.batch_name;
+                    opt.textContent = `${b.batch_name} (${b.contact_count} contacts)`;
+                    batchSelect.appendChild(opt);
+                });
+            } catch (e) {
+                console.error('Failed to load batches:', e);
+            }
+        }
+        
+        // Load companies
+        async function loadCompanies(projectName) {
+            currentProject = projectName;
+            companiesCard.style.display = 'block';
+            showTableSkeleton();
+            
+            try {
+                const res = await fetch(`/api/level2/companies?project_name=${encodeURIComponent(projectName)}&limit=50`);
+                const data = await res.json();
+                
+                companies = data.companies || [];
+                selectedCompanyIds = new Set(companies.map(c => c.place_id));
+                
+                renderCompanies();
+                contactsCard.style.display = 'none';
+            } catch (e) {
+                console.error('Failed to load companies:', e);
+                companiesTable.innerHTML = `<tr><td colspan="7" class="empty-state"><p>Error loading companies</p></td></tr>`;
+            }
+        }
+        
+        // Render companies
+        function renderCompanies() {
+            if (!companies.length) {
+                companiesTable.innerHTML = `
+                    <tr>
+                        <td colspan="7">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">
+                                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                                    </svg>
+                                </div>
+                                <h3>No Companies Found</h3>
+                                <p>This project doesn't have any companies yet. Go back to Level 1 to search for companies.</p>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            // Sort if needed
+            let sortedCompanies = [...companies];
+            if (sortColumn) {
+                sortedCompanies.sort((a, b) => {
+                    const aVal = (a[sortColumn] || '').toLowerCase();
+                    const bVal = (b[sortColumn] || '').toLowerCase();
+                    return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+                });
+            }
+            
+            companiesTable.innerHTML = sortedCompanies.map((c, idx) => {
+                const id = c.place_id;
+                const checked = selectedCompanyIds.has(id) ? 'checked' : '';
+                const website = c.website || '';
+                const address = c.address || '';
+                const phone = c.phone || '';
+                return `
+                    <tr class="fade-in" style="animation-delay: ${idx * 30}ms">
+                        <td><input type="checkbox" class="company-checkbox" data-id="${id}" ${checked}></td>
+                        <td class="company-name-cell">${escapeHtml(c.company_name)}</td>
+                        <td>
+                            ${website ? `<a href="${website.startsWith('http') ? website : 'https://' + website}" target="_blank" rel="noopener noreferrer" style="color: var(--primary); text-decoration: none;">
+                                <i class="fas fa-external-link-alt" style="font-size: 0.85em; margin-right: 4px;"></i>
+                                ${escapeHtml(website.replace(/^https?:\/\//, ''))}
+                            </a>` : '<span style="color: var(--gray-400);">-</span>'}
+                        </td>
+                        <td>${escapeHtml(address) || '<span style="color: var(--gray-400);">-</span>'}</td>
+                        <td>
+                            ${phone ? `<a href="tel:${phone}" style="color: var(--primary); text-decoration: none;">
+                                <i class="fas fa-phone" style="font-size: 0.85em; margin-right: 4px;"></i>
+                                ${escapeHtml(phone)}
+                            </a>` : '<span style="color: var(--gray-400);">-</span>'}
+                        </td>
+                        <td>
+                            <span class="badge badge-gray">${escapeHtml(c.industry || 'N/A')}</span>
+                        </td>
+                        <td>${escapeHtml(c.pin_code || '-')}</td>
+                    </tr>
+                `;
+            }).join('');
+            
+            updateCompaniesCount();
+            
+            // Checkbox listeners
+            companiesTable.querySelectorAll('.company-checkbox').forEach(cb => {
+                cb.addEventListener('change', function() {
+                    if (this.checked) selectedCompanyIds.add(this.dataset.id);
+                    else selectedCompanyIds.delete(this.dataset.id);
+                    updateCompaniesCount();
+                });
+            });
+        }
+        
+        function updateCompaniesCount() {
+            const countEl = document.getElementById('companiesCount');
+            countEl.textContent = `${selectedCompanyIds.size} selected`;
+            countEl.className = selectedCompanyIds.size > 0 ? 'badge badge-success' : 'badge badge-gray';
+            
+            // Show/hide delete unselected button
+            const deleteUnselectedBtn = document.getElementById('deleteUnselectedBtn');
+            const totalCompanies = companies.length;
+            const selectedCount = selectedCompanyIds.size;
+            
+            if (totalCompanies > 0 && selectedCount < totalCompanies) {
+                const unselectedCount = totalCompanies - selectedCount;
+                deleteUnselectedBtn.style.display = 'flex';
+                deleteUnselectedBtn.innerHTML = `<i class="fas fa-trash"></i> Delete ${unselectedCount} Unselected`;
+            } else {
+                deleteUnselectedBtn.style.display = 'none';
+            }
+        }
+        
+        // Get contact avatar class
+        function getAvatarClass(title) {
+            const t = (title || '').toLowerCase();
+            if (t.includes('founder') || t.includes('owner') || t.includes('ceo')) return 'founder';
+            if (t.includes('hr') || t.includes('human') || t.includes('recruit')) return 'hr';
+            if (t.includes('director')) return 'director';
+            return 'default';
+        }
+        
+        // Render contacts
+        function renderContacts() {
+            // Filter and dedupe
+            const seen = new Set();
+            const filtered = contacts.filter(c => {
+                const title = (c.title || c.contact_type || '').toLowerCase();
+                if (!ALLOWED_TITLES.some(t => title.includes(t))) return false;
+                
+                const key = `${(c.company_name || '').toLowerCase()}|${(c.email || c.name || '')}|${title}`;
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+            
+            if (!filtered.length) {
+                contactsList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                            </svg>
+                        </div>
+                        <h3>No Matching Contacts</h3>
+                        <p>No founders, HR, or directors found for these companies.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Group by company
+            const groups = {};
+            filtered.forEach(c => {
+                const company = c.company_name || 'Unknown';
+                if (!groups[company]) groups[company] = [];
+                groups[company].push(c);
+            });
+            
+            const emailCount = filtered.filter(c => c.email).length;
+            
+            // Calculate total employees from contacts (get unique company employees)
+            const companyEmployees = {};
+            contacts.forEach(c => {
+                const company = c.company_name || '';
+                if (company && !companyEmployees[company]) {
+                    // Try to get from company_total_employees field
+                    const employees = c.company_total_employees || '';
+                    if (employees) {
+                        const empNum = typeof employees === 'string' ? parseInt(employees.replace(/,/g, '')) : employees;
+                        if (!isNaN(empNum) && empNum > 0) {
+                            companyEmployees[company] = empNum;
+                        }
+                    }
+                }
+            });
+            
+            // Also try to get from companies data if available
+            companies.forEach(c => {
+                const company = c.company_name || '';
+                if (company && !companyEmployees[company]) {
+                    const employees = c.total_employees || c.active_members || '';
+                    if (employees) {
+                        const empNum = typeof employees === 'string' ? parseInt(employees.replace(/,/g, '')) : employees;
+                        if (!isNaN(empNum) && empNum > 0) {
+                            companyEmployees[company] = empNum;
+                        }
+                    }
+                }
+            });
+            
+            const totalEmployees = Object.values(companyEmployees).reduce((sum, emp) => sum + emp, 0);
+            
+            document.getElementById('totalContacts').textContent = filtered.length;
+            document.getElementById('totalCompanies').textContent = Object.keys(groups).length;
+            document.getElementById('totalEmails').textContent = emailCount;
+            document.getElementById('totalEmployees').textContent = totalEmployees > 0 ? totalEmployees.toLocaleString() : '0';
+            
+            contactsList.innerHTML = Object.entries(groups).map(([company, contactList], idx) => {
+                const companyEmpCount = companyEmployees[company] || 0;
+                const empDisplay = companyEmpCount > 0 ? ` • ${companyEmpCount.toLocaleString()} employees` : '';
+                return `
+                <div class="company-group fade-in" style="animation-delay: ${idx * 50}ms">
+                    <div class="company-group-header">
+                        <span class="company-group-name">
+                            <i class="fas fa-building"></i>
+                            ${escapeHtml(company)}
+                            ${empDisplay ? `<span style="color: var(--gray-500); font-weight: 400; margin-left: 8px;">${empDisplay}</span>` : ''}
+                        </span>
+                        <span class="badge badge-primary">${contactList.length} contacts</span>
+                    </div>
+                    <div class="contacts-grid">
+                        ${contactList.map(c => {
+                            const avatarClass = getAvatarClass(c.title || c.contact_type);
+                            const title = c.title || c.contact_type || '';
+                            const badgeClass = title.toLowerCase().includes('founder') || title.toLowerCase().includes('owner') || title.toLowerCase().includes('ceo') 
+                                ? 'badge-warning' 
+                                : title.toLowerCase().includes('hr') ? 'badge-primary' : 'badge-gray';
+                            return `
+                            <div class="contact-card">
+                                <div class="contact-avatar ${avatarClass}">
+                                    <i class="fas fa-user"></i>
+                                </div>
+                                <div class="contact-info">
+                                    <div class="contact-name">
+                                        ${escapeHtml(c.name || c.contact_name || 'Unknown')}
+                                        ${c.email ? '<i class="fas fa-check-circle" style="color: var(--success); font-size: 0.8em;" title="Has email"></i>' : ''}
+                                    </div>
+                                    <div class="contact-title">
+                                        <span class="badge ${badgeClass}">${escapeHtml(title)}</span>
+                                    </div>
+                                    <div class="contact-details">
+                                        ${c.email ? `<a href="mailto:${c.email}"><i class="fas fa-envelope"></i> ${c.email}</a>` : ''}
+                                        ${c.phone || c.phone_number ? `<span><i class="fas fa-phone"></i> ${c.phone || c.phone_number}</span>` : ''}
+                                        ${c.linkedin_url ? `<a href="${c.linkedin_url}" target="_blank"><i class="fab fa-linkedin"></i> LinkedIn</a>` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+            }).join('');
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+        
+        // Event listeners
+        projectSelect.addEventListener('change', () => {
+            if (projectSelect.value) {
+                showProjectInfo(projectSelect.value);
+                loadCompanies(projectSelect.value);
+            } else {
+                document.getElementById('projectInfo').classList.remove('visible');
+                companiesCard.style.display = 'none';
+                contactsCard.style.display = 'none';
+            }
+        });
+        
+        document.getElementById('refreshBtn').addEventListener('click', function() {
+            this.querySelector('i').style.animation = 'spin 1s linear';
+            loadProjects();
+            loadBatches();
+            setTimeout(() => {
+                this.querySelector('i').style.animation = '';
+            }, 1000);
+        });
+        
+        document.getElementById('selectAllCompanies').addEventListener('change', function() {
+            if (this.checked) {
+                companies.forEach(c => selectedCompanyIds.add(c.place_id));
+            } else {
+                selectedCompanyIds.clear();
+            }
+            renderCompanies();
+        });
+        
+        // Sortable columns
+        document.querySelectorAll('.company-table th[data-sort]').forEach(th => {
+            th.addEventListener('click', function() {
+                const column = this.dataset.sort;
+                if (sortColumn === column) {
+                    sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+                } else {
+                    sortColumn = column;
+                    sortDirection = 'asc';
+                }
+                
+                // Update UI
+                document.querySelectorAll('.company-table th').forEach(h => h.classList.remove('sorted'));
+                this.classList.add('sorted');
+                this.querySelector('.sort-icon').className = `fas fa-sort-${sortDirection === 'asc' ? 'up' : 'down'} sort-icon`;
+                
+                renderCompanies();
+            });
+        });
+        
+        // Delete unselected companies
+        document.getElementById('deleteUnselectedBtn').addEventListener('click', async function() {
+            const totalCompanies = companies.length;
+            const selectedCount = selectedCompanyIds.size;
+            const unselectedCount = totalCompanies - selectedCount;
+            
+            if (unselectedCount === 0) {
+                alert('No unselected companies to delete');
+                return;
+            }
+            
+            if (!confirm(`Delete ${unselectedCount} unselected company/companies?\n\nThis will permanently remove them from the project.\n\nThis action cannot be undone.`)) {
+                return;
+            }
+            
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner spinner"></i> Deleting...';
+            
+            try {
+                // Get unselected company IDs
+                const unselectedIds = companies
+                    .filter(c => !selectedCompanyIds.has(c.place_id))
+                    .map(c => c.place_id);
+                
+                const res = await fetch('/api/level2/delete-companies', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        project_name: currentProject,
+                        place_ids: unselectedIds
+                    })
+                });
+                
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to delete companies');
+                
+                // Remove deleted companies from local array
+                companies = companies.filter(c => selectedCompanyIds.has(c.place_id));
+                
+                // Refresh display
+                renderCompanies();
+                updateCompaniesCount();
+                
+                alert(`✅ Successfully deleted ${unselectedCount} company/companies!`);
+            } catch (e) {
+                alert('❌ Error deleting companies: ' + e.message);
+            } finally {
+                this.disabled = false;
+                this.innerHTML = '<i class="fas fa-trash"></i> Delete Unselected';
+            }
+        });
+        
+        // Export to Excel
+        document.getElementById('exportBtn').addEventListener('click', async function() {
+            if (!companies.length) {
+                alert('No companies to export');
+                return;
+            }
+            
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner spinner"></i> Exporting...';
+            
+            try {
+                const res = await fetch('/api/export', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        companies: companies,
+                        project_name: currentProject || 'companies'
+                    })
+                });
+                
+                if (!res.ok) {
+                    const errorData = await res.json().catch(() => ({}));
+                    throw new Error(errorData.error || 'Export failed');
+                }
+                
+                // Download Excel file
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const safeProjectName = (currentProject || 'companies').replace(/[^a-zA-Z0-9\s\-_]/g, '').substring(0, 50);
+                a.download = `${safeProjectName}_companies.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+            } catch (e) {
+                alert('❌ Export failed: ' + e.message);
+            } finally {
+                this.disabled = false;
+                this.innerHTML = '<i class="fas fa-file-excel"></i> Export to Excel';
+            }
+        });
+        
+        // Process companies
+        document.getElementById('processBtn').addEventListener('click', async function() {
+            if (!selectedCompanyIds.size) {
+                alert('Please select at least one company');
+                return;
+            }
+            
+            // Save selection first
+            await fetch('/api/level2/selection', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    project_name: currentProject,
+                    selected_place_ids: Array.from(selectedCompanyIds)
+                })
+            });
+            
+            processingModal.classList.add('open');
+            document.getElementById('progressFill').style.width = '0%';
+            document.getElementById('progressPercent').textContent = '0%';
+            document.getElementById('progressText').textContent = 'Starting...';
+            document.getElementById('progressStatus').textContent = 'Connecting to Apollo.io';
+            
+            let batchNumber = 1;
+            let totalProcessed = 0;
+            let totalContacts = 0;
+            
+            while (true) {
+                try {
+                    const res = await fetch('/api/level2/process', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            project_name: currentProject,
+                            batch_size: 1,
+                            batch_number: batchNumber
+                        })
+                    });
+                    
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error);
+                    
+                    totalProcessed = data.processed || 0;
+                    totalContacts += data.contacts_found || 0;
+                    const total = data.total_companies || selectedCompanyIds.size;
+                    
+                    const pct = total > 0 ? Math.round((totalProcessed / total) * 100) : 0;
+                    document.getElementById('progressFill').style.width = pct + '%';
+                    document.getElementById('progressPercent').textContent = pct + '%';
+                    document.getElementById('progressText').textContent = `${totalProcessed} of ${total} companies processed`;
+                    document.getElementById('progressStatus').textContent = data.current_company 
+                        ? `Processing: ${data.current_company}` 
+                        : `Found ${totalContacts} contacts`;
+                    
+                    if (data.completed) break;
+                    batchNumber++;
+                    
+                    await new Promise(r => setTimeout(r, 300));
+                } catch (e) {
+                    processingModal.classList.remove('open');
+                    alert('Error: ' + e.message);
+                    return;
+                }
+            }
+            
+            // Load contacts
+            try {
+                const res = await fetch(`/api/level2/contacts?project_name=${encodeURIComponent(currentProject)}`);
+                const data = await res.json();
+                contacts = data.contacts || [];
+                
+                processingModal.classList.remove('open');
+                companiesCard.style.display = 'none';
+                contactsCard.style.display = 'block';
+                contactsCard.scrollIntoView({ behavior: 'smooth' });
+                renderContacts();
+            } catch (e) {
+                processingModal.classList.remove('open');
+                alert('Error loading contacts: ' + e.message);
+            }
+        });
+        
+        // Load batch
+        batchSelect.addEventListener('change', async function() {
+            if (!this.value) {
+                document.getElementById('deleteBatchBtn').style.display = 'none';
+                return;
+            }
+            
+            document.getElementById('deleteBatchBtn').style.display = 'inline-flex';
+            
+            try {
+                const res = await fetch(`/api/level2/contacts?batch_name=${encodeURIComponent(this.value)}`);
+                const data = await res.json();
+                contacts = data.contacts || [];
+                currentBatchName = this.value;
+                
+                companiesCard.style.display = 'none';
+                contactsCard.style.display = 'block';
+                renderContacts();
+            } catch (e) {
+                alert('Error loading batch: ' + e.message);
+            }
+        });
+        
+        // Delete batch
+        document.getElementById('deleteBatchBtn').addEventListener('click', async function() {
+            const batchName = batchSelect.value;
+            if (!batchName) return;
+            
+            if (!confirm(`Delete batch "${batchName}" and all its contacts?\n\nThis action cannot be undone.`)) return;
+            
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner spinner"></i>';
+            
+            try {
+                const res = await fetch('/api/level2/delete-batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ batch_name: batchName })
+                });
+                
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to delete batch');
+                
+                // Reset UI
+                batchSelect.value = '';
+                this.style.display = 'none';
+                contactsCard.style.display = 'none';
+                companiesCard.style.display = 'block';
+                contacts = [];
+                currentBatchName = '';
+                
+                // Refresh batches list
+                loadBatches();
+                
+                // Show success message
+                const btn = this;
+                btn.innerHTML = '<i class="fas fa-check"></i> Deleted!';
+                btn.classList.remove('btn-danger');
+                btn.classList.add('btn-success');
+                setTimeout(() => {
+                    btn.innerHTML = '<i class="fas fa-trash"></i>';
+                    btn.classList.remove('btn-success');
+                    btn.classList.add('btn-danger');
+                    btn.disabled = false;
+                }, 2000);
+            } catch (e) {
+                alert('Error deleting batch: ' + e.message);
+                this.disabled = false;
+                this.innerHTML = '<i class="fas fa-trash"></i>';
+            }
+        });
+        
+        // Save batch
+        document.getElementById('saveBatchBtn').addEventListener('click', () => {
+            document.getElementById('batchName').value = `${currentProject} - ${new Date().toLocaleDateString('en-IN')}`;
+            saveModal.classList.add('open');
+        });
+        
+        document.getElementById('cancelSave').addEventListener('click', () => {
+            saveModal.classList.remove('open');
+        });
+        
+        document.getElementById('confirmSave').addEventListener('click', async function() {
+            const name = document.getElementById('batchName').value.trim();
+            if (!name) {
+                alert('Please enter a batch name');
+                return;
+            }
+            
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner spinner"></i> Saving...';
+            
+            try {
+                await fetch('/api/level2/save-batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        project_name: currentProject,
+                        batch_name: name
+                    })
+                });
+                
+                currentBatchName = name;
+                saveModal.classList.remove('open');
+                loadBatches();
+                
+                // Show success feedback
+                const btn = document.getElementById('saveBatchBtn');
+                btn.innerHTML = '<i class="fas fa-check"></i> Saved!';
+                btn.classList.remove('btn-secondary');
+                btn.classList.add('btn-success');
+                setTimeout(() => {
+                    btn.innerHTML = '<i class="fas fa-save"></i> Save Batch';
+                    btn.classList.remove('btn-success');
+                    btn.classList.add('btn-secondary');
+                }, 2000);
+            } catch (e) {
+                alert('Error saving batch: ' + e.message);
+            } finally {
+                this.disabled = false;
+                this.innerHTML = '<i class="fas fa-check"></i> Save Batch';
+            }
+        });
+        
+        // Next step
+        document.getElementById('nextStepBtn').addEventListener('click', async function() {
+            if (!currentBatchName) {
+                // Auto-save
+                currentBatchName = `${currentProject} - ${new Date().toISOString().split('T')[0]}`;
+                await fetch('/api/level2/save-batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        project_name: currentProject,
+                        batch_name: currentBatchName
+                    })
+                });
+            }
+            
+            window.location.href = '/level3?batch=' + encodeURIComponent(currentBatchName);
+        });
+        
+        // Init
+        loadProjects();
+        loadBatches();
+    </script>
+</body>
+</html>
