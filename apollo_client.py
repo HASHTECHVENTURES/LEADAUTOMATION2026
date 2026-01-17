@@ -254,8 +254,8 @@ class ApolloClient:
         Returns people without emails/phones - need enrichment
         """
         people = []
-        titles = titles or ['Founder', 'HR Director', 'HR Manager', 'CHRO', 'Director', 'HR']
-        seniorities = seniorities or ['owner', 'founder', 'c_suite', 'vp', 'head', 'director', 'manager']
+        titles = titles or ['Founder', 'HR Director', 'HR Manager', 'CHRO', 'Director', 'HR', 'Manager', 'VP', 'Vice President', 'Head', 'Chief', 'Owner', 'CEO', 'CTO', 'CFO', 'COO']
+        seniorities = seniorities or ['owner', 'founder', 'c_suite', 'vp', 'head', 'director', 'manager', 'senior', 'lead']
         
         try:
             url = f"{self.api_search_base}/mixed_people/api_search"
@@ -264,9 +264,9 @@ class ApolloClient:
                 'q_organization_domains_list': [domain],
                 'person_titles': titles,
                 'person_seniorities': seniorities,
-                'include_similar_titles': False,  # ONLY exact title matches - no "Employee" etc.
+                'include_similar_titles': True,  # Allow similar titles to get more results
                 'page': 1,
-                'per_page': 25  # Get more results since it's free
+                'per_page': 50  # Get more results
             }
 
             # Try current-employee filter first; if Apollo rejects, fallback without it
@@ -324,18 +324,18 @@ class ApolloClient:
             import traceback
             traceback.print_exc()
         
-        # Filter to only keep contacts with matching titles
-        allowed_titles = ['founder', 'hr director', 'hr manager', 'chro', 'director', 'hr', 
-                          'chief human resources officer', 'human resources director', 
-                          'human resources manager', 'co-founder', 'owner', 'managing director']
+        # Less restrictive filtering - keep more contacts
+        # Only filter out obvious non-relevant titles
+        blocked_titles = ['intern', 'student', 'volunteer', 'freelancer', 'contractor']
         filtered_people = []
         for person in people:
             title = (person.get('title') or '').lower()
-            # Check if any allowed title is in the person's title
-            if any(allowed in title for allowed in allowed_titles):
-                filtered_people.append(person)
-            else:
-                print(f"    ⚠️ Filtered out: {person.get('name')} - Title: {person.get('title')} (not in allowed list)")
+            # Skip only if it's a clearly blocked title
+            if any(blocked in title for blocked in blocked_titles):
+                print(f"    ⚠️ Filtered out: {person.get('name')} - Title: {person.get('title')} (blocked)")
+                continue
+            # Keep everyone else (we'll filter by email/phone later if needed)
+            filtered_people.append(person)
         
         print(f"    ✅ After filtering: {len(filtered_people)} contacts (from {len(people)})")
         return filtered_people
@@ -380,22 +380,40 @@ class ApolloClient:
             try:
                 enriched_person = self.enrich_single_person(person_id)
                 if enriched_person:
-                    # VALIDATE: Check if person's email domain matches target
+                    # Less strict validation - include if email domain matches OR if no email (might have phone)
                     person_email = enriched_person.get('email', '')
-                    if person_email and '@' in person_email:
-                        email_domain = person_email.split('@')[1].lower()
-                        target_clean = target_domain.lower().replace('www.', '').replace('http://', '').replace('https://', '')
-                        
-                        # Check if email domain matches target domain
-                        if target_clean in email_domain or email_domain in target_clean:
-                            enriched.append(enriched_person)
-                            print(f"    ✅ [{idx}/{min(len(person_ids), 20)}] {enriched_person.get('name')} - {person_email} (VERIFIED)")
+                    person_phone = enriched_person.get('phone', '')
+                    
+                    # Include if has email OR phone (we want more contacts!)
+                    if person_email or person_phone:
+                        if person_email and '@' in person_email:
+                            email_domain = person_email.split('@')[1].lower()
+                            target_clean = target_domain.lower().replace('www.', '').replace('http://', '').replace('https://', '')
+                            
+                            # Check if email domain matches target domain
+                            if target_clean in email_domain or email_domain in target_clean:
+                                enriched.append(enriched_person)
+                                print(f"    ✅ [{idx}/{min(len(person_ids), 20)}] {enriched_person.get('name')} - {person_email} (VERIFIED)")
+                            else:
+                                # Still include if has phone number (domain might be different but person works there)
+                                if person_phone:
+                                    enriched.append(enriched_person)
+                                    print(f"    ✅ [{idx}/{min(len(person_ids), 20)}] {enriched_person.get('name')} - {person_email} (domain mismatch but has phone)")
+                                else:
+                                    print(f"    ⚠️  [{idx}/{min(len(person_ids), 20)}] REJECTED: {enriched_person.get('name')} - {person_email} (domain mismatch)")
                         else:
-                            print(f"    ❌ [{idx}/{min(len(person_ids), 20)}] REJECTED: {enriched_person.get('name')} - {person_email} (domain: {email_domain} != {target_clean})")
+                            # No email but has phone - include
+                            if person_phone:
+                                enriched.append(enriched_person)
+                                print(f"    ✅ [{idx}/{min(len(person_ids), 20)}] {enriched_person.get('name')} - No email but has phone")
+                            else:
+                                # No email, no phone - still include (might have LinkedIn)
+                                enriched.append(enriched_person)
+                                print(f"    ⚠️  [{idx}/{min(len(person_ids), 20)}] {enriched_person.get('name')} - No email/phone but including")
                     else:
-                        # No email to validate - include anyway (might be from LinkedIn)
+                        # No email or phone - still include (might have LinkedIn)
                         enriched.append(enriched_person)
-                        print(f"    ⚠️  [{idx}/{min(len(person_ids), 20)}] {enriched_person.get('name')} - No email to validate")
+                        print(f"    ⚠️  [{idx}/{min(len(person_ids), 20)}] {enriched_person.get('name')} - No email/phone but including")
                 time.sleep(0.3)
             except Exception as e2:
                 print(f"    Failed to enrich person {person_id}: {str(e2)}")
@@ -717,15 +735,10 @@ class ApolloClient:
             person['company_name'] = company_name
             person['company_website'] = website
         
-        # MASTER FILTER: Only keep contacts with allowed titles
-        # Remove ANY "Employee" or unwanted titles
-        allowed_keywords = ['founder', 'co-founder', 'owner', 'hr', 'human resources', 
-                           'chro', 'chief human', 'director', 'managing director']
-        blocked_keywords = ['employee', 'engineer', 'developer', 'analyst', 'consultant', 
-                           'manager' , 'executive', 'associate', 'specialist', 'coordinator']
-        
-        # But allow these specific manager titles
-        allowed_manager_titles = ['hr manager', 'human resources manager']
+        # Less restrictive filtering - only remove clearly irrelevant contacts
+        # Keep all contacts with valid titles (not just specific ones)
+        blocked_titles = ['intern', 'student', 'volunteer', 'freelancer', 'contractor', 'trainee']
+        generic_titles = ['employee', 'staff', 'worker', 'team member', 'member']
         
         filtered_people = []
         for person in people:
@@ -733,29 +746,21 @@ class ApolloClient:
             
             # Skip if empty title
             if not title:
+                print(f"    ⚠️ Skipping: {person.get('name')} - No title")
                 continue
             
-            # Check if it's a blocked title (but not an allowed one)
-            is_blocked = any(blocked in title for blocked in blocked_keywords)
-            is_allowed = any(allowed in title for allowed in allowed_keywords)
-            is_allowed_manager = any(mgr in title for mgr in allowed_manager_titles)
-            
-            # If title is "Employee" or similar generic title - SKIP
-            if title in ['employee', 'staff', 'worker', 'team member']:
-                print(f"    ❌ FILTERED OUT: {person.get('name')} - '{title}' (generic title)")
+            # Skip only clearly blocked titles
+            if any(blocked in title for blocked in blocked_titles):
+                print(f"    ❌ FILTERED OUT: {person.get('name')} - '{title}' (blocked)")
                 continue
             
-            # If it has allowed keywords OR is an allowed manager title - KEEP
-            if is_allowed or is_allowed_manager:
-                filtered_people.append(person)
-            elif is_blocked and not is_allowed:
-                print(f"    ❌ FILTERED OUT: {person.get('name')} - '{title}' (blocked keyword)")
-            else:
-                # Unknown title - check if it contains any of our target keywords
-                if any(kw in title for kw in ['founder', 'hr', 'director', 'chro', 'owner']):
-                    filtered_people.append(person)
-                else:
-                    print(f"    ❌ FILTERED OUT: {person.get('name')} - '{title}' (no match)")
+            # Skip only generic "Employee" type titles
+            if title in generic_titles:
+                print(f"    ❌ FILTERED OUT: {person.get('name')} - '{title}' (generic)")
+                continue
+            
+            # Keep everyone else - we want more contacts!
+            filtered_people.append(person)
         
         print(f"  📊 FINAL: {len(filtered_people)} contacts after filtering (from {len(people)})")
         return filtered_people
