@@ -1398,6 +1398,69 @@ def export_contacts():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/apollo/webhook', methods=['POST'])
+def apollo_webhook():
+    """
+    Webhook endpoint to receive phone numbers from Apollo.io
+    Apollo sends phone numbers via webhook after enrichment request
+    """
+    try:
+        data = request.json or {}
+        
+        # Apollo webhook payload structure
+        person = data.get('person', {}) or data.get('data', {}).get('person', {})
+        if not person:
+            print("⚠️  Apollo webhook: No person data in payload")
+            return jsonify({'success': False, 'error': 'No person data'}), 400
+        
+        person_id = person.get('id') or data.get('person_id')
+        email = person.get('email', '')
+        phone_numbers = person.get('phone_numbers', [])
+        
+        print(f"📞 Apollo webhook received for person_id: {person_id}, email: {email}")
+        print(f"📞 Phone numbers: {phone_numbers}")
+        
+        # Extract phone number
+        phone = ''
+        if phone_numbers and len(phone_numbers) > 0:
+            phone_obj = phone_numbers[0]
+            phone = (
+                phone_obj.get('raw_number', '') or
+                phone_obj.get('sanitized_number', '') or
+                phone_obj.get('number', '') or
+                phone_obj.get('phone', '')
+            )
+        
+        if phone:
+            print(f"✅ Extracted phone from webhook: {phone}")
+            # Update contact in database with phone number
+            # Match by email (most reliable)
+            if email:
+                try:
+                    # Update contacts with this email in level2_contacts table
+                    supabase = get_supabase_client()
+                    # Update all contacts with matching email
+                    result = supabase.client.table('level2_contacts').update({
+                        'phone_number': phone
+                    }).eq('email', email).execute()
+                    
+                    if result.data:
+                        print(f"✅ Updated {len(result.data)} contact(s) with phone number: {phone}")
+                    else:
+                        print(f"⚠️  No contacts found with email: {email}")
+                except Exception as e:
+                    print(f"⚠️  Could not update contact with phone: {str(e)}")
+        else:
+            print(f"⚠️  No phone number in webhook payload")
+        
+        return jsonify({'success': True, 'phone': phone}), 200
+        
+    except Exception as e:
+        print(f"❌ Error processing Apollo webhook: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 # Vercel serverless handler (required for Vercel Python runtime)
 # Vercel expects the app to be directly callable
 # The @vercel/python builder automatically wraps Flask apps

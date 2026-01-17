@@ -432,8 +432,10 @@ class ApolloClient:
             # METHOD 1: Try people/match endpoint with phone number request
             # IMPORTANT: Apollo.io requires webhook_url to deliver phone numbers
             # Phone numbers come via webhook, not in immediate response
-            webhook_url = getattr(Config, 'APOLLO_WEBHOOK_URL', None) or \
-                        f"{getattr(Config, 'BASE_URL', 'https://leadautomation-2026.vercel.app')}/api/apollo/webhook"
+            # Get webhook URL from environment or use default Vercel URL
+            import os
+            webhook_url = os.getenv('APOLLO_WEBHOOK_URL') or \
+                        os.getenv('BASE_URL', 'https://leadautomation-2026.vercel.app') + '/api/apollo/webhook'
             
             url = f"{self.base_url}/people/match"
             payloads_to_try = [
@@ -488,8 +490,9 @@ class ApolloClient:
                 print(f"    ⚠️  people/match failed (status {response.status_code if response else 'None'}), trying GET /people/{person_id}")
                 # METHOD 2: If match fails, try to get person by ID directly
                 # Note: GET endpoint might not support webhook, but try anyway
-                webhook_url = getattr(Config, 'APOLLO_WEBHOOK_URL', None) or \
-                            f"{getattr(Config, 'BASE_URL', 'https://leadautomation-2026.vercel.app')}/api/apollo/webhook"
+                import os
+                webhook_url = os.getenv('APOLLO_WEBHOOK_URL') or \
+                            os.getenv('BASE_URL', 'https://leadautomation-2026.vercel.app') + '/api/apollo/webhook'
                 
                 url2 = f"{self.base_url}/people/{person_id}"
                 # Try multiple parameter combinations
