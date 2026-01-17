@@ -564,6 +564,9 @@
         </a>
     </footer>
     
+    <!-- Production utilities -->
+    <script src="/static/js/production-utils.js"></script>
+    
     <script>
         const batchSelect = document.getElementById('batchSelect');
         const batchInfo = document.getElementById('batchInfo');
@@ -742,15 +745,20 @@
         // Export to Excel
         document.getElementById('exportBtn').addEventListener('click', async function() {
             if (!contacts.length) {
-                alert('No contacts to export');
+                showUserFriendlyError('No contacts to export');
                 return;
             }
             
-            this.disabled = true;
-            this.innerHTML = '<i class="fas fa-spinner spinner"></i> Exporting...';
+            setLoadingState(this, true, 'Exporting...');
             
             try {
-                const res = await fetch('/api/export-contacts', {
+                if (!isOnline()) {
+                    showUserFriendlyError('You are offline. Please check your internet connection.');
+                    setLoadingState(this, false);
+                    return;
+                }
+                
+                const res = await fetchWithRetry('/api/export-contacts', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -777,10 +785,10 @@
                 window.URL.revokeObjectURL(url);
                 
             } catch (e) {
-                alert('❌ Export failed: ' + e.message);
+                const errorMsg = formatErrorMessage(e);
+                showUserFriendlyError('Export failed: ' + errorMsg);
             } finally {
-                this.disabled = false;
-                this.innerHTML = '<i class="fas fa-file-excel"></i> Export to Excel';
+                setLoadingState(this, false);
             }
         });
         

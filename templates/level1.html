@@ -826,6 +826,9 @@
         </a>
     </footer>
     
+    <!-- Production utilities -->
+    <script src="/static/js/production-utils.js"></script>
+    
     <script>
         // Elements
         const projectSelect = document.getElementById('projectSelect');
@@ -1129,7 +1132,8 @@
                     this.innerHTML = '<i class="fas fa-save"></i> Save Project';
                 }
             } catch (e) {
-                alert('Error saving project: ' + e.message);
+                const errorMsg = formatErrorMessage(e);
+                showUserFriendlyError('Failed to save project: ' + errorMsg);
                 this.disabled = false;
                 this.innerHTML = '<i class="fas fa-save"></i> Save Project';
             }
@@ -1143,13 +1147,16 @@
             const industry = document.getElementById('industry').value.trim();
             const maxCompanies = document.getElementById('maxCompanies').value;
             
-            if (!pinCode) {
-                alert('Please enter at least one PIN code');
+            // Validate inputs
+            const pinValidation = validatePinCode(pinCode);
+            if (!pinValidation.valid) {
+                showUserFriendlyError(pinValidation.error);
+                document.getElementById('pinCode').focus();
                 return;
             }
             
             if (!currentProject || currentProject.trim() === '') {
-                alert('Please create or select a project first');
+                showUserFriendlyError('Please create or select a project first');
                 document.getElementById('projectName').focus();
                 return;
             }
@@ -1162,7 +1169,14 @@
             document.getElementById('progressStatus').textContent = 'Starting search...';
             
             try {
-                const response = await fetch('/api/level1/search', {
+                // Check if online
+                if (!isOnline()) {
+                    showUserFriendlyError('You are offline. Please check your internet connection.');
+                    progressModal.classList.remove('open');
+                    return;
+                }
+                
+                const response = await fetchWithRetry('/api/level1/search', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1171,7 +1185,7 @@
                         industry: industry,
                         max_companies: parseInt(maxCompanies)
                     })
-                });
+                }, 3, 1000);
                 
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
@@ -1235,7 +1249,9 @@
                 }
             } catch (err) {
                 progressModal.classList.remove('open');
-                alert('Search failed: ' + err.message);
+                const errorMsg = formatErrorMessage(err);
+                showUserFriendlyError(errorMsg);
+                console.error('Search error:', err);
             }
         });
         

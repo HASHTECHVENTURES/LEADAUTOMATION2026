@@ -236,6 +236,9 @@
         </form>
     </div>
     
+    <!-- Production utilities -->
+    <script src="/static/js/production-utils.js"></script>
+    
     <script>
         const loginForm = document.getElementById('loginForm');
         const loginBtn = document.getElementById('loginBtn');
@@ -283,7 +286,8 @@
                     loginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Sign In';
                 }
             } catch (error) {
-                showError('Login failed. Please try again.');
+                const errorMsg = formatErrorMessage(error);
+                showError(errorMsg || 'Login failed. Please try again.');
                 loginBtn.disabled = false;
                 loginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Sign In';
             }

@@ -1486,15 +1486,20 @@
         // Export to Excel
         document.getElementById('exportBtn').addEventListener('click', async function() {
             if (!companies.length) {
-                alert('No companies to export');
+                showUserFriendlyError('No companies to export');
                 return;
             }
             
-            this.disabled = true;
-            this.innerHTML = '<i class="fas fa-spinner spinner"></i> Exporting...';
+            setLoadingState(this, true, 'Exporting...');
             
             try {
-                const res = await fetch('/api/export', {
+                if (!isOnline()) {
+                    showUserFriendlyError('You are offline. Please check your internet connection.');
+                    setLoadingState(this, false);
+                    return;
+                }
+                
+                const res = await fetchWithRetry('/api/export', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1521,17 +1526,22 @@
                 window.URL.revokeObjectURL(url);
                 
             } catch (e) {
-                alert('❌ Export failed: ' + e.message);
+                const errorMsg = formatErrorMessage(e);
+                showUserFriendlyError('Export failed: ' + errorMsg);
             } finally {
-                this.disabled = false;
-                this.innerHTML = '<i class="fas fa-file-excel"></i> Export to Excel';
+                setLoadingState(this, false);
             }
         });
         
         // Process companies
         document.getElementById('processBtn').addEventListener('click', async function() {
             if (!selectedCompanyIds.size) {
-                alert('Please select at least one company');
+                showUserFriendlyError('Please select at least one company');
+                return;
+            }
+            
+            if (!isOnline()) {
+                showUserFriendlyError('You are offline. Please check your internet connection.');
                 return;
             }
             
