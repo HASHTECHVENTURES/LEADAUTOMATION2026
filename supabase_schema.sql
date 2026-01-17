@@ -96,3 +96,31 @@ ALTER TABLE IF EXISTS level2_contacts ADD COLUMN IF NOT EXISTS company_total_emp
 -- Migration: Add title column to store original job title from Apollo.io
 ALTER TABLE IF EXISTS level2_contacts ADD COLUMN IF NOT EXISTS title TEXT;
 
+-- Table: progress_tracking
+-- Stores progress information for long-running operations (serverless-friendly)
+CREATE TABLE IF NOT EXISTS progress_tracking (
+    id BIGSERIAL PRIMARY KEY,
+    session_key TEXT NOT NULL UNIQUE,  -- Unique identifier for the operation (e.g., project_name)
+    stage TEXT,  -- Current stage: 'searching_places', 'saving', 'processing', etc.
+    message TEXT,  -- Human-readable progress message
+    current INTEGER DEFAULT 0,  -- Current progress count
+    total INTEGER DEFAULT 0,  -- Total items to process
+    companies_found INTEGER DEFAULT 0,  -- Number of companies found
+    status TEXT DEFAULT 'in_progress',  -- 'in_progress', 'completed', 'error'
+    error_message TEXT,  -- Error message if status is 'error'
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Indexes for faster queries
+CREATE INDEX IF NOT EXISTS idx_progress_session_key ON progress_tracking(session_key);
+CREATE INDEX IF NOT EXISTS idx_progress_status ON progress_tracking(status);
+CREATE INDEX IF NOT EXISTS idx_progress_updated_at ON progress_tracking(updated_at DESC);
+
+-- Create trigger to auto-update updated_at for progress_tracking
+DROP TRIGGER IF EXISTS update_progress_tracking_updated_at ON progress_tracking;
+CREATE TRIGGER update_progress_tracking_updated_at 
+    BEFORE UPDATE ON progress_tracking 
+    FOR EACH ROW 
+    EXECUTE FUNCTION update_updated_at_column();
+

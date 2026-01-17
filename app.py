@@ -35,10 +35,8 @@ except Exception as e:
     print("❌ Also ensure you've run the SQL schema in Supabase (see supabase_schema.sql)")
     raise  # Fail fast if Supabase is not available
 
-# Store for progress tracking (in-memory, cleared on serverless cold start)
-# Note: In serverless environments, this won't persist across invocations
-# For production, consider using Supabase or Redis for progress tracking
-progress_store = {}
+# Progress tracking is now handled by Supabase (see supabase_client.py)
+# This keeps progress persistent across serverless invocations
 
 # Indian states list
 INDIAN_STATES = [
@@ -209,17 +207,18 @@ def level1_search():
                 # Use project_name as the session identifier
                 session_key = project_name
                 
-                # Initialize progress
-                progress_store[session_key] = {
+                # Initialize progress in Supabase
+                initial_progress = {
                     'stage': 'searching_places',
                     'message': 'Searching Google Places...',
                     'current': 0,
                     'total': 0,
                     'companies_found': 0,
-                    'companies': []
+                    'status': 'in_progress'
                 }
+                supabase_client.save_progress(session_key, initial_progress)
                 
-                yield f"data: {json.dumps({'type': 'progress', 'data': progress_store[session_key]})}\n\n"
+                yield f"data: {json.dumps({'type': 'progress', 'data': initial_progress})}\n\n"
                 
                 # Step 1: Search Google Places for all PIN codes
                 all_companies = []
@@ -264,9 +263,17 @@ def level1_search():
                     yield f"data: {json.dumps({'type': 'complete', 'data': {'companies': [], 'message': error_msg, 'total_companies': 0}})}\n\n"
                     return
                 
-                progress_store[session_key]['total'] = len(companies)
-                progress_store[session_key]['companies_found'] = len(companies)
-                yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'saving', 'message': f'Found {len(companies)} companies. Saving to database...', 'current': 0, 'total': len(companies), 'companies_found': len(companies)}})}\n\n"
+                # Update progress in Supabase
+                saving_progress = {
+                    'stage': 'saving',
+                    'message': f'Found {len(companies)} companies. Saving to database...',
+                    'current': 0,
+                    'total': len(companies),
+                    'companies_found': len(companies),
+                    'status': 'in_progress'
+                }
+                supabase_client.save_progress(session_key, saving_progress)
+                yield f"data: {json.dumps({'type': 'progress', 'data': saving_progress})}\n\n"
                 
                 # Save to Supabase database
                 try:
@@ -290,11 +297,28 @@ def level1_search():
                 
                 # Send incremental company updates
                 for idx, company in enumerate(companies, 1):
-                    progress_store[session_key]['current'] = idx
-                    progress_store[session_key]['message'] = f'Processed {company.get("company_name", "")}... ({idx}/{len(companies)})'
+                    # Update progress in Supabase periodically (every 5 companies to reduce DB calls)
+                    if idx % 5 == 0 or idx == len(companies):
+                        update_progress = {
+                            'current': idx,
+                            'message': f'Processed {company.get("company_name", "")}... ({idx}/{len(companies)})',
+                            'status': 'in_progress'
+                        }
+                        supabase_client.save_progress(session_key, update_progress)
+                    
                     yield f"data: {json.dumps({'type': 'company_update', 'data': company, 'progress': {'current': idx, 'total': len(companies), 'companies_found': len(companies)}})}\n\n"
                 
-                # Final result
+                # Final result - mark as completed in Supabase
+                completed_progress = {
+                    'stage': 'completed',
+                    'message': f'Found {len(companies)} companies and saved to database.',
+                    'current': len(companies),
+                    'total': len(companies),
+                    'companies_found': len(companies),
+                    'status': 'completed'
+                }
+                supabase_client.save_progress(session_key, completed_progress)
+                
                 result = {
                     'companies': companies,
                     'total_companies': len(companies),
@@ -315,9 +339,10 @@ def level1_search():
                 except (BrokenPipeError, ConnectionResetError, GeneratorExit):
                     return
             finally:
-                # Clean up progress store even if client disconnects
-                if session_key in progress_store:
-                    del progress_store[session_key]
+                # Clean up progress from Supabase after a delay (keep for 1 hour for recovery)
+                # For immediate cleanup, uncomment the line below:
+                # supabase_client.delete_progress(session_key)
+                pass
         
         return Response(stream_with_context(generate()), mimetype='text/event-stream')
         

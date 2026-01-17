@@ -729,4 +729,77 @@ class SupabaseClient:
         except Exception as e:
             logger.error(f"❌ Error fetching contacts by IDs: {str(e)}")
             return []
+    
+    def save_progress(self, session_key: str, progress_data: Dict) -> Dict:
+        """
+        Save or update progress tracking for a session
+        Args:
+            session_key: Unique identifier for the operation (e.g., project_name)
+            progress_data: Dict with keys: stage, message, current, total, companies_found, status, error_message
+        """
+        try:
+            progress_data['session_key'] = session_key
+            progress_data['updated_at'] = datetime.now().isoformat()
+            
+            # Check if progress exists
+            existing = (
+                self.client.table('progress_tracking')
+                .select('id')
+                .eq('session_key', session_key)
+                .execute()
+            )
+            
+            if existing.data:
+                # Update existing
+                resp = (
+                    self.client.table('progress_tracking')
+                    .update(progress_data)
+                    .eq('session_key', session_key)
+                    .execute()
+                )
+            else:
+                # Insert new
+                progress_data['created_at'] = datetime.now().isoformat()
+                resp = (
+                    self.client.table('progress_tracking')
+                    .insert(progress_data)
+                    .execute()
+                )
+            
+            return {'success': True, 'data': resp.data[0] if resp.data else None}
+        except Exception as e:
+            logger.error(f"❌ Error saving progress: {str(e)}")
+            return {'success': False, 'error': str(e)}
+    
+    def get_progress(self, session_key: str) -> Optional[Dict]:
+        """
+        Get current progress for a session
+        """
+        try:
+            resp = (
+                self.client.table('progress_tracking')
+                .select('*')
+                .eq('session_key', session_key)
+                .execute()
+            )
+            return resp.data[0] if resp.data else None
+        except Exception as e:
+            logger.error(f"❌ Error getting progress: {str(e)}")
+            return None
+    
+    def delete_progress(self, session_key: str) -> Dict:
+        """
+        Delete progress tracking for a session (cleanup after completion)
+        """
+        try:
+            resp = (
+                self.client.table('progress_tracking')
+                .delete()
+                .eq('session_key', session_key)
+                .execute()
+            )
+            return {'success': True, 'deleted': len(resp.data) if resp.data else 0}
+        except Exception as e:
+            logger.error(f"❌ Error deleting progress: {str(e)}")
+            return {'success': False, 'error': str(e)}
 
