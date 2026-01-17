@@ -879,11 +879,17 @@ def level2_contacts():
         for contact in contacts:
             formatted_contact = dict(contact)
             # Ensure phone field is available (map from phone_number if needed)
-            if not formatted_contact.get('phone') and formatted_contact.get('phone_number'):
-                formatted_contact['phone'] = formatted_contact['phone_number']
+            phone_value = formatted_contact.get('phone') or formatted_contact.get('phone_number') or ''
+            formatted_contact['phone'] = phone_value
+            formatted_contact['phone_number'] = phone_value  # Keep both for compatibility
             # Also ensure contact_name maps to name
             if not formatted_contact.get('name') and formatted_contact.get('contact_name'):
                 formatted_contact['name'] = formatted_contact['contact_name']
+            # Debug: Log phone numbers
+            if phone_value:
+                print(f"📞 Contact {formatted_contact.get('name')}: Phone = {phone_value}")
+            else:
+                print(f"⚠️  Contact {formatted_contact.get('name')}: NO PHONE NUMBER")
             formatted_contacts.append(formatted_contact)
         
         return jsonify({

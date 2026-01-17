@@ -1663,7 +1663,7 @@
                                     </div>
                                     <div class="contact-details">
                                         ${c.email ? `<a href="mailto:${c.email}"><i class="fas fa-envelope"></i> ${c.email}</a>` : ''}
-                                        ${c.phone || c.phone_number ? `<a href="tel:${c.phone || c.phone_number}" style="color: var(--primary); text-decoration: none; display: flex; align-items: center; gap: 6px;"><i class="fas fa-phone"></i> ${c.phone || c.phone_number}</a>` : ''}
+                                        ${c.phone || c.phone_number ? `<a href="tel:${c.phone || c.phone_number}"><i class="fas fa-phone"></i> ${c.phone || c.phone_number}</a>` : '<span style="color: var(--gray-400);"><i class="fas fa-phone"></i> No phone</span>'}
                                         ${c.linkedin_url ? `<a href="${c.linkedin_url}" target="_blank"><i class="fab fa-linkedin"></i> LinkedIn</a>` : ''}
                                     </div>
                                 </div>
