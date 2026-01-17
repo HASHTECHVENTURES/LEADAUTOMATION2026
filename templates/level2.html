@@ -2078,6 +2078,47 @@
             window.location.href = '/level3?batch=' + encodeURIComponent(currentBatchName);
         });
         
+        // Poll for phone numbers in background - they'll update automatically via webhook
+        async function pollForPhoneNumbers() {
+            if (!contacts || contacts.length === 0) return;
+            
+            let pollCount = 0;
+            const maxPolls = 10; // Poll for up to 30 seconds (10 * 3 seconds)
+            
+            const pollInterval = setInterval(async () => {
+                pollCount++;
+                
+                try {
+                    // Refresh contacts to get updated phone numbers
+                    const res = await fetch(`/api/level2/contacts?project_name=${encodeURIComponent(currentProject)}`);
+                    const data = await res.json();
+                    const updatedContacts = data.contacts || [];
+                    
+                    // Check if any new phone numbers arrived
+                    const contactsWithPhone = updatedContacts.filter(c => c.phone || c.phone_number).length;
+                    const totalContacts = updatedContacts.length;
+                    
+                    if (contactsWithPhone > 0) {
+                        // Update contacts data and re-render
+                        contacts = updatedContacts;
+                        renderContacts();
+                        console.log(`📞 Phone numbers updated: ${contactsWithPhone}/${totalContacts} contacts now have phones`);
+                    }
+                    
+                    // Stop polling after max attempts or if all have phones
+                    if (pollCount >= maxPolls || (totalContacts > 0 && contactsWithPhone >= totalContacts)) {
+                        clearInterval(pollInterval);
+                        if (contactsWithPhone >= totalContacts) {
+                            console.log(`✅ All ${totalContacts} contacts now have phone numbers!`);
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error polling for phone numbers:', e);
+                    clearInterval(pollInterval);
+                }
+            }, 3000); // Poll every 3 seconds
+        }
+        
         // Phone numbers now come via webhook during processing - no need for separate enrichment
         
         // Init
