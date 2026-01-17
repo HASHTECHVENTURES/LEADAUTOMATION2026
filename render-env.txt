@@ -1,0 +1,13 @@
+# Environment Variables for Render Deployment
+# Copy this content and use "Add from .env" button in Render dashboard
+# Or manually add each variable
+
+GOOGLE_PLACES_API_KEY=AIzaSyCoswhxLIQDt1LwthoYInHKDnLsMyBbHbM
+APOLLO_API_KEY=lpLP_qGLdPOXeHgp6yNBKg
+SECRET_KEY=dev-secret-key-change-in-production
+SUPABASE_URL=https://wxlcehpfchasdhitkiyg.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4bGNlaHBmY2hhc2RoaXRraXlnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODUzNDAwNywiZXhwIjoyMDg0MTEwMDA3fQ.0k7avOBaGkmr1AYqXMw6yH8q26vaaeDC9l-fAZuSXSw
+LOGIN_USERNAME=admin
+LOGIN_PASSWORD=admin123
+DB_BACKEND=supabase
+

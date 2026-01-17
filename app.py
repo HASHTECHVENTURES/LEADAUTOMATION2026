@@ -10,9 +10,15 @@ import threading
 from datetime import datetime
 import os
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static', static_url_path='/static')
 app.config.from_object(Config)
 app.secret_key = Config.SECRET_KEY
+
+# Production settings for Vercel/serverless
+app.config['SESSION_COOKIE_SECURE'] = os.getenv('FLASK_ENV') == 'production'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
 
 # Initialize clients
 google_client = GooglePlacesClient()
@@ -29,7 +35,9 @@ except Exception as e:
     print("❌ Also ensure you've run the SQL schema in Supabase (see supabase_schema.sql)")
     raise  # Fail fast if Supabase is not available
 
-# Store for progress tracking
+# Store for progress tracking (in-memory, cleared on serverless cold start)
+# Note: In serverless environments, this won't persist across invocations
+# For production, consider using Supabase or Redis for progress tracking
 progress_store = {}
 
 # Indian states list
@@ -72,6 +80,7 @@ def api_login():
         
         # Check credentials
         if username == Config.LOGIN_USERNAME and password == Config.LOGIN_PASSWORD:
+            session.permanent = True
             session['logged_in'] = True
             session['username'] = username
             return jsonify({'success': True, 'message': 'Login successful'}), 200
