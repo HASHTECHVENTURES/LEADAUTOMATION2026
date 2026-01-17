@@ -668,7 +668,7 @@
                     <button class="btn btn-secondary" id="refreshBtn" title="Refresh">
                         <i class="fas fa-sync-alt"></i>
                     </button>
-                    <button class="btn btn-danger" id="deleteProjectBtn" title="Delete Project" style="display: none;">
+                    <button class="btn btn-danger" id="deleteProjectBtn" title="Delete Campaign" style="display: none;">
                         <i class="fas fa-trash"></i>
                     </button>
                     <button class="btn btn-primary" id="newProjectBtn">
@@ -719,7 +719,7 @@
                         </button>
                         <button type="button" class="btn btn-success" id="saveProjectBtn" style="display: none;">
                             <i class="fas fa-save"></i>
-                            Save Project
+                            Save Campaign
                         </button>
                     </div>
                 </form>
@@ -1008,7 +1008,7 @@
         // Delete project
         document.getElementById('deleteProjectBtn').addEventListener('click', async function() {
             if (!currentProject) return;
-            if (!confirm(`Delete project "${currentProject}" and all its companies and contacts?\n\n⚠️ This will permanently delete:\n• All companies in this project\n• All contacts from Level 2\n• All saved batches\n\nThis action cannot be undone.`)) return;
+            if (!confirm(`Delete campaign "${currentProject}" and all its companies and contacts?\n\n⚠️ This will permanently delete:\n• All companies in this campaign\n• All contacts from Level 2\n• All saved batches\n\nThis action cannot be undone.`)) return;
             
             this.disabled = true;
             this.innerHTML = '<i class="fas fa-spinner spinner"></i> Deleting...';
@@ -1095,7 +1095,7 @@
         // Save Project button
         document.getElementById('saveProjectBtn').addEventListener('click', async function() {
             if (!currentProject) {
-                alert('Please select or create a project first');
+                alert('Please select or create a campaign first');
                 return;
             }
             
@@ -1120,7 +1120,7 @@
                     this.classList.remove('btn-success');
                     this.classList.add('btn-primary');
                     setTimeout(() => {
-                        this.innerHTML = '<i class="fas fa-save"></i> Save Project';
+                        this.innerHTML = '<i class="fas fa-save"></i> Save Campaign';
                         this.classList.remove('btn-primary');
                         this.classList.add('btn-success');
                         this.disabled = false;
@@ -1133,7 +1133,7 @@
                 }
             } catch (e) {
                 const errorMsg = formatErrorMessage(e);
-                showUserFriendlyError('Failed to save project: ' + errorMsg);
+                showUserFriendlyError('Failed to save campaign: ' + errorMsg);
                 this.disabled = false;
                 this.innerHTML = '<i class="fas fa-save"></i> Save Project';
             }
