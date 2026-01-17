@@ -352,7 +352,8 @@ class ApolloClient:
         
         # Use individual enrichment (more reliable)
         print(f"    Enriching {len(person_ids)} people individually...")
-        for idx, person_id in enumerate(person_ids[:20], 1):  # Limit to 20 to avoid too many requests
+        # Increase limit to get more contacts
+        for idx, person_id in enumerate(person_ids[:50], 1):
             try:
                 enriched_person = self.enrich_single_person(person_id)
                 if enriched_person:
@@ -376,7 +377,8 @@ class ApolloClient:
             return enriched
         
         print(f"    Enriching {len(person_ids)} people with company validation (target: {target_domain})...")
-        for idx, person_id in enumerate(person_ids[:20], 1):
+        # Increase limit to get more contacts
+        for idx, person_id in enumerate(person_ids[:50], 1):
             try:
                 enriched_person = self.enrich_single_person(person_id)
                 if enriched_person:
