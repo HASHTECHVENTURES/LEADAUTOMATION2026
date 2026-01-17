@@ -658,7 +658,7 @@
         <!-- Project Selection -->
         <div class="card" id="projectCard">
             <div class="card-header">
-                <span class="card-title"><i class="fas fa-folder-plus"></i> Select or Create Project</span>
+                <span class="card-title"><i class="fas fa-folder-plus"></i> Select or Create Campaign</span>
             </div>
             <div class="card-body">
                 <div class="project-selector">
@@ -768,13 +768,13 @@
             <div class="modal-header">
                 <span class="modal-title">
                     <span class="modal-header-icon"><i class="fas fa-folder-plus"></i></span>
-                    Create New Project
+                    Create New Campaign
                 </span>
                 <button class="modal-close" id="closeModal">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="form-group" style="margin-bottom: 0;">
-                    <label class="form-label">Project Name</label>
+                    <label class="form-label">Campaign Name</label>
                     <input type="text" class="form-input" id="projectName" placeholder="e.g., IT Companies Mumbai Q1">
                     <div class="form-hint">
                         <i class="fas fa-lightbulb"></i>
@@ -785,7 +785,7 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" id="cancelProject">Cancel</button>
                 <button class="btn btn-primary" id="createProject">
-                    <i class="fas fa-check"></i> Create Project
+                    <i class="fas fa-check"></i> Create Campaign
                 </button>
             </div>
         </div>
@@ -872,7 +872,7 @@
                 
                 console.log(`📋 Loaded ${projects.length} projects:`, projects.map(p => p.project_name));
                 
-                projectSelect.innerHTML = '<option value="">Choose existing project...</option>';
+                projectSelect.innerHTML = '<option value="">Choose existing campaign...</option>';
                 projects.forEach(p => {
                     const opt = document.createElement('option');
                     opt.value = p.project_name;
@@ -1065,11 +1065,11 @@
         document.getElementById('createProject').addEventListener('click', () => {
             const name = document.getElementById('projectName').value.trim();
             if (!name) {
-                alert('Please enter a project name');
+                alert('Please enter a campaign name');
                 return;
             }
             if (name.length < 3) {
-                alert('Project name must be at least 3 characters');
+                alert('Campaign name must be at least 3 characters');
                 return;
             }
             
@@ -1156,7 +1156,7 @@
             }
             
             if (!currentProject || currentProject.trim() === '') {
-                showUserFriendlyError('Please create or select a project first');
+                showUserFriendlyError('Please create or select a campaign first');
                 document.getElementById('projectName').focus();
                 return;
             }
