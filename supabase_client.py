@@ -714,7 +714,7 @@ class SupabaseClient:
                         'created_at': contact.get('created_at', '')
                     }
                 batches_dict[batch_name]['contact_count'] += 1
-            
+
             # Auto-merge duplicate batches silently
             for proj_name, duplicate_batches in projects_to_merge.items():
                 if len(duplicate_batches) > 1:
