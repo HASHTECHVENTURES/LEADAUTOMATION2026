@@ -1,5 +1,6 @@
 import requests
 import time
+import json
 from typing import List, Dict, Optional
 from config import Config
 # Web scraper removed - using Apollo.io only
@@ -441,34 +442,52 @@ class ApolloClient:
                 data = response.json()
                 person = data.get('person', {})
                 if person:
+                    # Debug: Log full person data to see what Apollo returns
+                    print(f"    🔍 DEBUG: Person keys: {list(person.keys())}")
+                    print(f"    🔍 DEBUG: Full person data: {json.dumps(person, indent=2)[:500]}")
+                    
                     # Debug: Check if phone data exists
                     has_phone = person.get('has_direct_phone') or person.get('has_phone', False)
                     print(f"    📞 has_direct_phone: {has_phone}")
+                    print(f"    📞 phone_numbers field exists: {bool(person.get('phone_numbers'))}")
+                    print(f"    📞 phone_numbers value: {person.get('phone_numbers')}")
                     
                     phone = ''
                     # Try multiple phone number field variations
                     # Apollo.io returns phone_numbers as an array
+                    print(f"    🔍 Checking phone_numbers array: {person.get('phone_numbers')}")
+                    
                     if person.get('phone_numbers') and len(person.get('phone_numbers', [])) > 0:
+                        print(f"    ✅ phone_numbers array has {len(person.get('phone_numbers'))} entries")
                         # Try to get mobile phone first, then any phone
-                        for phone_obj in person.get('phone_numbers', []):
+                        for idx, phone_obj in enumerate(person.get('phone_numbers', [])):
+                            print(f"    🔍 Phone object {idx}: {phone_obj}")
                             phone_type = phone_obj.get('type', '').lower()
                             # Prefer mobile, then direct, then any
-                            if phone_type in ['mobile', 'direct', 'work'] or not phone:
+                            if phone_type in ['mobile', 'direct', 'work', 'office', 'landline'] or not phone:
                                 potential_phone = phone_obj.get('raw_number', '') or \
                                                  phone_obj.get('sanitized_number', '') or \
                                                  phone_obj.get('number', '') or \
-                                                 phone_obj.get('phone', '')
+                                                 phone_obj.get('phone', '') or \
+                                                 phone_obj.get('value', '')
+                                print(f"    🔍 Potential phone from {phone_type}: {potential_phone}")
                                 if potential_phone:
                                     phone = potential_phone
-                                    print(f"    📞 Found {phone_type} phone: {phone}")
+                                    print(f"    ✅ Found {phone_type} phone: {phone}")
                                     break
+                    else:
+                        print(f"    ⚠️  phone_numbers array is empty or missing")
                     
                     # Also check direct phone fields (legacy/fallback)
                     if not phone:
+                        print(f"    🔍 Trying direct phone fields...")
                         phone = person.get('phone_number', '') or \
                                person.get('phone', '') or \
                                person.get('mobile', '') or \
-                               person.get('direct_phone', '')
+                               person.get('direct_phone', '') or \
+                               person.get('phone_numbers', '')  # Sometimes it's a string
+                        if phone:
+                            print(f"    ✅ Found phone in direct field: {phone}")
                     
                     # Check if phone is in organization data
                     if not phone and person.get('organization'):
