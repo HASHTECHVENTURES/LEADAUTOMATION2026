@@ -73,19 +73,108 @@ class SupabaseClient:
                 return {'success': False, 'error': 'No companies to save', 'count': 0}
             
             logger.info(f"🔄 Inserting {len(records)} companies to Supabase for project: '{project_name}'")
-            response = self.client.table('level1_companies').insert(records).execute()
             
-            inserted_count = len(response.data) if response.data else 0
-            logger.info(f"✅ Successfully saved {inserted_count} companies to Supabase for project: '{project_name}'")
+            # Handle duplicates: Use upsert (INSERT ... ON CONFLICT DO UPDATE)
+            # This will update existing records or insert new ones
+            inserted_count = 0
+            updated_count = 0
+            error_count = 0
+            
+            # Process in batches to handle errors better
+            batch_size = 50
+            for i in range(0, len(records), batch_size):
+                batch = records[i:i + batch_size]
+                try:
+                    # Use upsert to handle duplicates - update project_name and other fields if place_id exists
+                    response = (
+                        self.client.table('level1_companies')
+                        .upsert(batch, on_conflict='place_id')
+                        .execute()
+                    )
+                    
+                    if response.data:
+                        # Count new vs updated
+                        for record in batch:
+                            place_id = record.get('place_id')
+                            if place_id:
+                                # Check if this was an update or insert
+                                existing = (
+                                    self.client.table('level1_companies')
+                                    .select('id, project_name')
+                                    .eq('place_id', place_id)
+                                    .execute()
+                                )
+                                if existing.data:
+                                    old_project = existing.data[0].get('project_name', '')
+                                    if old_project == project_name:
+                                        updated_count += 1
+                                    else:
+                                        # Updated to new project
+                                        inserted_count += 1
+                                else:
+                                    inserted_count += 1
+                except Exception as batch_error:
+                    error_msg = str(batch_error)
+                    logger.error(f"❌ Error inserting batch {i//batch_size + 1}: {error_msg}")
+                    
+                    # If it's a duplicate key error, try individual inserts with conflict handling
+                    if 'duplicate key' in error_msg.lower() or '23505' in error_msg:
+                        logger.info(f"⚠️  Handling duplicates in batch {i//batch_size + 1}, inserting individually...")
+                        for record in batch:
+                            try:
+                                # Try to insert, if duplicate, update instead
+                                place_id = record.get('place_id')
+                                if place_id:
+                                    # Check if exists
+                                    existing = (
+                                        self.client.table('level1_companies')
+                                        .select('id')
+                                        .eq('place_id', place_id)
+                                        .execute()
+                                    )
+                                    
+                                    if existing.data:
+                                        # Update existing record
+                                        (
+                                            self.client.table('level1_companies')
+                                            .update({
+                                                'project_name': project_name,
+                                                'industry': industry,
+                                                'pin_codes_searched': pin_codes,
+                                                'search_date': timestamp,
+                                                'updated_at': datetime.now().isoformat()
+                                            })
+                                            .eq('place_id', place_id)
+                                            .execute()
+                                        )
+                                        updated_count += 1
+                                    else:
+                                        # Insert new
+                                        (
+                                            self.client.table('level1_companies')
+                                            .insert(record)
+                                            .execute()
+                                        )
+                                        inserted_count += 1
+                            except Exception as single_error:
+                                logger.error(f"❌ Error inserting individual record: {str(single_error)}")
+                                error_count += 1
+                    else:
+                        error_count += len(batch)
+            
+            total_saved = inserted_count + updated_count
+            logger.info(f"✅ Saved {total_saved} companies to Supabase for project: '{project_name}' (New: {inserted_count}, Updated: {updated_count}, Errors: {error_count})")
             
             # Verify the save by checking if project exists
             verify_response = self.client.table('level1_companies').select('project_name').eq('project_name', project_name).limit(1).execute()
             if verify_response.data:
-                logger.info(f"✅ Verified: Project '{project_name}' exists in database with {inserted_count} companies")
+                count_response = self.client.table('level1_companies').select('id', count='exact').eq('project_name', project_name).execute()
+                project_count = count_response.count if hasattr(count_response, 'count') else len(verify_response.data)
+                logger.info(f"✅ Verified: Project '{project_name}' exists in database with {project_count} companies")
             else:
                 logger.warning(f"⚠️  Warning: Could not verify project '{project_name}' in database after save")
             
-            return {'success': True, 'count': inserted_count}
+            return {'success': True, 'count': total_saved, 'inserted': inserted_count, 'updated': updated_count, 'errors': error_count}
             
         except Exception as e:
             logger.error(f"❌ Error saving Level 1 results to Supabase: {str(e)}")
