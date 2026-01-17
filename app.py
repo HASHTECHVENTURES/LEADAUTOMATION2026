@@ -564,13 +564,15 @@ def level2_process():
 def get_projects_list():
     """Get list of all projects (for history/resume feature) - from Supabase"""
     try:
-        projects = get_supabase_client().get_projects_list()
+        client = get_supabase_client()
+        projects = client.get_projects_list()
+        print(f"✅ API: Returning {len(projects)} projects: {[p.get('project_name') for p in projects]}")
         return jsonify({'projects': projects}), 200
     except Exception as e:
-        print(f"Error getting projects list: {str(e)}")
+        print(f"❌ Error getting projects list: {str(e)}")
         import traceback
         traceback.print_exc()
-        return jsonify({'projects': []}), 200
+        return jsonify({'projects': [], 'error': str(e)}), 200
 
 @app.route('/api/level1/project-data', methods=['GET'])
 def get_project_data():

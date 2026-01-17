@@ -263,19 +263,23 @@ class SupabaseClient:
         Returns projects with name, date, industry, pin_codes, and company_count
         """
         try:
-            response = self.client.table('level1_companies').select('project_name, search_date, industry, pin_codes_searched').execute()
+            # Get all distinct project names with their data
+            response = self.client.table('level1_companies').select('project_name, search_date, industry, pin_codes_searched, created_at').execute()
             
             if not response.data:
+                logger.info("ℹ️  No projects found in level1_companies table")
                 return []
+            
+            logger.info(f"ℹ️  Found {len(response.data)} company records in Supabase")
             
             # Get unique projects with latest search_date, company count, and other details
             projects_map = {}
             for record in response.data:
-                project_name = record.get('project_name')
+                project_name = record.get('project_name', '').strip()
                 if not project_name:
                     continue
                     
-                search_date = record.get('search_date', '')
+                search_date = record.get('search_date', '') or record.get('created_at', '')
                 industry = record.get('industry', '')
                 pin_codes = record.get('pin_codes_searched', '')
                 
@@ -290,10 +294,12 @@ class SupabaseClient:
                     # Increment company count
                     projects_map[project_name]['company_count'] += 1
                     # Update metadata if this record is newer
-                    if search_date > projects_map[project_name].get('search_date', ''):
+                    if search_date and (not projects_map[project_name].get('search_date') or search_date > projects_map[project_name].get('search_date', '')):
                         projects_map[project_name]['search_date'] = search_date
-                        projects_map[project_name]['industry'] = industry
-                        projects_map[project_name]['pin_codes'] = pin_codes
+                        if industry:
+                            projects_map[project_name]['industry'] = industry
+                        if pin_codes:
+                            projects_map[project_name]['pin_codes'] = pin_codes
             
             # Convert to list of dicts
             projects = [{
@@ -304,13 +310,16 @@ class SupabaseClient:
                 'company_count': data.get('company_count', 0)
             } for name, data in projects_map.items()]
             
-            # Sort by search_date descending (newest first)
-            projects.sort(key=lambda x: x.get('search_date', ''), reverse=True)
+            # Sort by search_date descending (newest first), or by created_at if search_date is missing
+            projects.sort(key=lambda x: x.get('search_date', '') or '1970-01-01', reverse=True)
             
+            logger.info(f"✅ Returning {len(projects)} unique projects: {[p.get('project_name') for p in projects]}")
             return projects
             
         except Exception as e:
             logger.error(f"❌ Error getting projects list: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return []
 
     def delete_level1_companies(self, project_name: str, identifiers: List[str]) -> Dict:
