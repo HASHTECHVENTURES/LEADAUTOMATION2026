@@ -1102,6 +1102,14 @@
          * User-friendly error messages
          */
         function showUserFriendlyError(message, duration = 5000) {
+            // Fallback if escapeHtml is not yet defined
+            if (typeof escapeHtml === 'undefined') {
+                function escapeHtml(text) {
+                    const div = document.createElement('div');
+                    div.textContent = text || '';
+                    return div.innerHTML;
+                }
+            }
             // Remove existing error notifications
             const existing = document.querySelector('.error-notification');
             if (existing) {
@@ -1239,6 +1247,9 @@
         function isOnline() {
             return navigator.onLine;
         }
+        
+        // Make sure isOnline is globally accessible
+        window.isOnline = isOnline;
         
         /**
          * Network status monitor
@@ -1780,7 +1791,12 @@
             setLoadingState(this, true, 'Exporting...');
             
             try {
-                if (!isOnline()) {
+                // Check if online (with fallback)
+                if (typeof isOnline === 'function' && !isOnline()) {
+                    showUserFriendlyError('You are offline. Please check your internet connection.');
+                    setLoadingState(this, false);
+                    return;
+                } else if (typeof isOnline === 'undefined' && !navigator.onLine) {
                     showUserFriendlyError('You are offline. Please check your internet connection.');
                     setLoadingState(this, false);
                     return;
@@ -1827,7 +1843,11 @@
                 return;
             }
             
-            if (!isOnline()) {
+            // Check if online (with fallback)
+            if (typeof isOnline === 'function' && !isOnline()) {
+                showUserFriendlyError('You are offline. Please check your internet connection.');
+                return;
+            } else if (typeof isOnline === 'undefined' && !navigator.onLine) {
                 showUserFriendlyError('You are offline. Please check your internet connection.');
                 return;
             }
