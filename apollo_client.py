@@ -284,6 +284,11 @@ class ApolloClient:
                 persons = data.get('people', [])
                 print(f"    📊 Apollo api_search found {len(persons)} people (before enrichment)")
                 
+                # Check if phone numbers are in the search results directly (sometimes they are!)
+                for p in persons[:3]:  # Check first 3
+                    if p.get('phone_numbers'):
+                        print(f"    📞 Found phone_numbers in search result for {p.get('first_name')}: {p.get('phone_numbers')}")
+                
                 # Extract person IDs AND organization domains for validation
                 person_data_list = [(p.get('id'), p.get('organization', {}).get('primary_domain', '')) 
                                    for p in persons if p.get('id')]
