@@ -874,10 +874,22 @@ def level2_contacts():
         else:
             contacts = get_supabase_client().get_contacts_for_level3(project_name=project_name)
         
+        # Map phone_number to phone for frontend compatibility
+        formatted_contacts = []
+        for contact in contacts:
+            formatted_contact = dict(contact)
+            # Ensure phone field is available (map from phone_number if needed)
+            if not formatted_contact.get('phone') and formatted_contact.get('phone_number'):
+                formatted_contact['phone'] = formatted_contact['phone_number']
+            # Also ensure contact_name maps to name
+            if not formatted_contact.get('name') and formatted_contact.get('contact_name'):
+                formatted_contact['name'] = formatted_contact['contact_name']
+            formatted_contacts.append(formatted_contact)
+        
         return jsonify({
             'success': True,
-            'contacts': contacts,
-            'count': len(contacts)
+            'contacts': formatted_contacts,
+            'count': len(formatted_contacts)
         }), 200
     except Exception as e:
         print(f"Error getting Level 2 contacts: {str(e)}")
