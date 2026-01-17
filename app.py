@@ -589,6 +589,13 @@ def level2_process():
         )
         
         total_contacts = sum(len(c.get('people', [])) for c in enriched_companies)
+        
+        # Get the last processed company name for progress display
+        if enriched_companies:
+            current_company_name = enriched_companies[-1].get('company_name', '')
+        else:
+            current_company_name = ''
+        
         print(f"  ✅ Batch {batch_number} complete: {len(batch_companies)} companies, {total_contacts} contacts found")
         
         return jsonify({
