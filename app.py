@@ -548,6 +548,30 @@ def level2_process():
                         'place_id': company.get('place_id', '')
                     })
         
+        # Update metrics and add founders/hr lists for each enriched company
+        for enriched_company in enriched_companies:
+            place_id = enriched_company.get('place_id', '')
+            people = enriched_company.get('people', [])
+            
+            # Best-effort persist metrics back to Supabase (level1_companies)
+            if place_id:
+                try:
+                    get_supabase_client().update_level1_company_metrics(
+                        project_name=project_name,
+                        place_id=place_id,
+                        total_employees=enriched_company.get('total_employees', ''),
+                        active_members=enriched_company.get('active_members', 0),
+                        active_members_with_email=enriched_company.get('active_members_with_email', 0),
+                    )
+                except Exception as e:
+                    print(f"  ⚠️  Could not update metrics for {enriched_company.get('company_name')}: {str(e)}")
+            
+            # Add founders and HR lists
+            enriched_company['founders'] = [p for p in people if p.get('title') and any(keyword.lower() in p.get('title', '').lower() 
+                                                           for keyword in ['founder', 'owner', 'ceo', 'co-founder', 'founder/owner'])]
+            enriched_company['hr_contacts'] = [p for p in people if p.get('title') and any(keyword.lower() in p.get('title', '').lower() 
+                                                              for keyword in ['hr', 'human resources', 'recruiter', 'talent', 'human resource'])]
+        
         # Use a consistent batch name for this project session (reuse existing or create new)
         # This prevents duplicate batches when processing in multiple batches
         default_batch_name = f"{project_name}_Main_Batch"
