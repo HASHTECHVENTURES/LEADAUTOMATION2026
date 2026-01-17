@@ -308,10 +308,13 @@ def level1_search():
                     
                     save_result = get_supabase_client().save_level1_results(companies, search_params)
                     if save_result.get('success'):
-                        print(f"✅ Saved {save_result.get('count')} companies to Supabase")
+                        print(f"✅ Saved {save_result.get('count')} companies to Supabase for project: '{project_name}'")
+                        logger.info(f"✅ Saved {save_result.get('count')} companies to Supabase for project: '{project_name}'")
                     else:
-                        print(f"❌ Error saving to Supabase: {save_result.get('error')}")
-                        raise Exception(f"Failed to save to Supabase: {save_result.get('error')}")
+                        error_msg = save_result.get('error', 'Unknown error')
+                        print(f"❌ Error saving to Supabase: {error_msg}")
+                        logger.error(f"❌ Error saving to Supabase for project '{project_name}': {error_msg}")
+                        raise Exception(f"Failed to save to Supabase: {error_msg}")
                 except Exception as e:
                     print(f"❌ Error saving to Supabase: {str(e)}")
                     import traceback

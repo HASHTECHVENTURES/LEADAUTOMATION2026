@@ -1134,6 +1134,13 @@
                 return;
             }
             
+            if (!currentProject || currentProject.trim() === '') {
+                alert('Please create or select a project first');
+                document.getElementById('projectName').focus();
+                return;
+            }
+            
+            console.log('🔍 Starting search with project:', currentProject);
             progressModal.classList.add('open');
             document.getElementById('progressFill').style.width = '0%';
             document.getElementById('progressPercent').textContent = '0%';

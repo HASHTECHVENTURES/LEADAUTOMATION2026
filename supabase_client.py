@@ -68,10 +68,24 @@ class SupabaseClient:
                 records.append(record)
             
             # Insert into Supabase (table name: level1_companies)
+            if not records:
+                logger.warning(f"⚠️  No records to insert for project: {project_name}")
+                return {'success': False, 'error': 'No companies to save', 'count': 0}
+            
+            logger.info(f"🔄 Inserting {len(records)} companies to Supabase for project: '{project_name}'")
             response = self.client.table('level1_companies').insert(records).execute()
             
-            logger.info(f"✅ Saved {len(records)} companies to Supabase for project: {project_name}")
-            return {'success': True, 'count': len(records)}
+            inserted_count = len(response.data) if response.data else 0
+            logger.info(f"✅ Successfully saved {inserted_count} companies to Supabase for project: '{project_name}'")
+            
+            # Verify the save by checking if project exists
+            verify_response = self.client.table('level1_companies').select('project_name').eq('project_name', project_name).limit(1).execute()
+            if verify_response.data:
+                logger.info(f"✅ Verified: Project '{project_name}' exists in database with {inserted_count} companies")
+            else:
+                logger.warning(f"⚠️  Warning: Could not verify project '{project_name}' in database after save")
+            
+            return {'success': True, 'count': inserted_count}
             
         except Exception as e:
             logger.error(f"❌ Error saving Level 1 results to Supabase: {str(e)}")
