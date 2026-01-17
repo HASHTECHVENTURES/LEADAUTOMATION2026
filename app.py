@@ -547,35 +547,6 @@ def level2_process():
                         'people': [],
                         'place_id': company.get('place_id', '')
                     })
-
-            # Best-effort persist metrics back to Supabase (level1_companies)
-            if place_id:
-                get_supabase_client().update_level1_company_metrics(
-                    project_name=project_name,
-                    place_id=place_id,
-                    total_employees=total_employees,
-                    active_members=active_members,
-                    active_members_with_email=active_members_with_email,
-                )
-            
-            # Build enriched company object
-            enriched_company = {
-                'company_name': company_name,
-                'address': company.get('address', ''),
-                'website': website,
-                'phone': company.get('phone', ''),
-                'pin_code': company.get('pin_code', ''),
-                'industry': company.get('industry', ''),
-                'total_employees': total_employees,
-                'active_members': active_members,
-                'active_members_with_email': active_members_with_email,
-                'people': people,
-                'founders': [p for p in people if p.get('title') and any(keyword.lower() in p.get('title', '').lower() 
-                                                           for keyword in ['founder', 'owner', 'ceo', 'co-founder', 'founder/owner'])],
-                'hr_contacts': [p for p in people if p.get('title') and any(keyword.lower() in p.get('title', '').lower() 
-                                                              for keyword in ['hr', 'human resources', 'recruiter', 'talent', 'human resource'])]
-            }
-            enriched_companies.append(enriched_company)
         
         # Use a consistent batch name for this project session (reuse existing or create new)
         # This prevents duplicate batches when processing in multiple batches
