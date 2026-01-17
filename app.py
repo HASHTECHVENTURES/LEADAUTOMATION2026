@@ -585,6 +585,42 @@ def level2_process():
         
         total_contacts = sum(len(c.get('people', [])) for c in enriched_companies)
         
+        # IMPORTANT: Wait for webhook to receive phone numbers before returning
+        # Poll database to check if phone numbers have arrived via webhook
+        print(f"  ⏳ Waiting for webhook to deliver phone numbers...")
+        max_wait_time = 30  # Wait up to 30 seconds for webhooks
+        wait_interval = 2  # Check every 2 seconds
+        waited = 0
+        
+        # Get all contact emails that were just saved
+        contact_emails = []
+        for company in enriched_companies:
+            for person in company.get('people', []):
+                if person.get('email'):
+                    contact_emails.append(person.get('email'))
+        
+        # Poll for phone numbers
+        while waited < max_wait_time and contact_emails:
+            try:
+                # Check if phone numbers have arrived in database
+                supabase = get_supabase_client()
+                response = supabase.client.table('level2_contacts').select('email, phone_number').in_('email', contact_emails[:100]).execute()
+                contacts_with_phones = [c for c in (response.data or []) if c.get('phone_number')]
+                
+                if len(contacts_with_phones) >= len(contact_emails) * 0.5:  # At least 50% have phones
+                    print(f"  ✅ Phone numbers received via webhook: {len(contacts_with_phones)}/{len(contact_emails)}")
+                    break
+                
+                print(f"  ⏳ Waiting for phone numbers... ({waited}s/{max_wait_time}s) - {len(contacts_with_phones)}/{len(contact_emails)} received")
+                time.sleep(wait_interval)
+                waited += wait_interval
+            except Exception as e:
+                print(f"  ⚠️  Error checking phone numbers: {str(e)}")
+                break
+        
+        if waited >= max_wait_time:
+            print(f"  ⚠️  Timeout waiting for phone numbers. Some may arrive later via webhook.")
+        
         # Get the last processed company name for progress display
         if enriched_companies:
             current_company_name = enriched_companies[-1].get('company_name', '')

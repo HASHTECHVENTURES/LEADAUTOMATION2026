@@ -1913,7 +1913,13 @@
                 }
             }
             
-            // Load contacts (lazy loading - load first, then enrich phones in parallel)
+            // Load contacts AFTER webhook has delivered phone numbers
+            // Wait a bit for webhook to process, then load contacts
+            document.getElementById('progressStatus').textContent = 'Waiting for phone numbers from Apollo.io...';
+            
+            // Wait 5 seconds for webhooks to arrive, then load contacts
+            await new Promise(r => setTimeout(r, 5000));
+            
             try {
                 const res = await fetch(`/api/level2/contacts?project_name=${encodeURIComponent(currentProject)}`);
                 const data = await res.json();
@@ -1924,11 +1930,8 @@
                 contactsCard.style.display = 'block';
                 contactsCard.scrollIntoView({ behavior: 'smooth' });
                 
-                // Render contacts immediately (without waiting for phone numbers)
+                // Render contacts (phone numbers should be included from webhook)
                 renderContacts();
-                
-                // Then enrich phone numbers in parallel (lazy loading)
-                enrichPhoneNumbersParallel();
             } catch (e) {
                 processingModal.classList.remove('open');
                 alert('Error loading contacts: ' + e.message);
@@ -1952,10 +1955,8 @@
                 
                 companiesCard.style.display = 'none';
                 contactsCard.style.display = 'block';
-                // Render contacts immediately
+                // Render contacts (phone numbers should already be included from webhook)
                 renderContacts();
-                // Then enrich phone numbers in parallel (lazy loading)
-                enrichPhoneNumbersParallel();
             } catch (e) {
                 alert('Error loading batch: ' + e.message);
             }
