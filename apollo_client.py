@@ -430,6 +430,61 @@ class ApolloClient:
         
         return enriched
     
+    def enrich_people_with_validation_parallel(self, person_ids: List[str], target_domain: str) -> List[Dict]:
+        """
+        Enrich people in PARALLEL with validation (lazy loading - get contacts AND phone numbers together)
+        Processes multiple contacts at once for faster results
+        """
+        enriched = []
+        
+        if not person_ids:
+            return enriched
+        
+        print(f"    Enriching {len(person_ids)} people in PARALLEL with company validation (target: {target_domain})...")
+        
+        import concurrent.futures
+        
+        def enrich_and_validate(person_id):
+            """Enrich single person and validate - runs in parallel"""
+            try:
+                enriched_person = self.enrich_single_person(person_id)
+                if not enriched_person:
+                    return None
+                
+                person_email = enriched_person.get('email', '')
+                person_phone = enriched_person.get('phone', '')
+                
+                # Validation logic - include if email domain matches OR has phone
+                if person_email or person_phone:
+                    if person_email and '@' in person_email:
+                        email_domain = person_email.split('@')[1].lower()
+                        target_clean = target_domain.lower().replace('www.', '').replace('http://', '').replace('https://', '')
+                        
+                        if target_clean in email_domain or email_domain in target_clean:
+                            return enriched_person
+                        elif person_phone:
+                            return enriched_person
+                    elif person_phone:
+                        return enriched_person
+                
+                # Include anyway (might have LinkedIn)
+                return enriched_person
+            except Exception as e:
+                print(f"    Error enriching person {person_id}: {str(e)}")
+                return None
+        
+        # Process in parallel (5 workers to avoid rate limits)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_id = {executor.submit(enrich_and_validate, pid): pid for pid in person_ids[:50]}
+            
+            for future in concurrent.futures.as_completed(future_to_id):
+                result = future.result()
+                if result:
+                    enriched.append(result)
+        
+        print(f"    ✅ Parallel enrichment completed: {len(enriched)} contacts with emails/phones")
+        return enriched
+    
     def enrich_single_person(self, person_id: str) -> Optional[Dict]:
         """Enrich a single person by ID - tries multiple methods to get phone numbers"""
         try:
