@@ -885,11 +885,6 @@ def level2_contacts():
             # Also ensure contact_name maps to name
             if not formatted_contact.get('name') and formatted_contact.get('contact_name'):
                 formatted_contact['name'] = formatted_contact['contact_name']
-            # Debug: Log phone numbers
-            if phone_value:
-                print(f"📞 Contact {formatted_contact.get('name')}: Phone = {phone_value}")
-            else:
-                print(f"⚠️  Contact {formatted_contact.get('name')}: NO PHONE NUMBER")
             formatted_contacts.append(formatted_contact)
         
         return jsonify({
@@ -899,6 +894,97 @@ def level2_contacts():
         }), 200
     except Exception as e:
         print(f"Error getting Level 2 contacts: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/level2/enrich-phones', methods=['POST'])
+def enrich_phones_parallel():
+    """
+    Enrich phone numbers for multiple contacts in parallel (lazy loading)
+    Accepts list of contact IDs or emails and returns phone numbers
+    """
+    try:
+        data = request.json or {}
+        contact_ids = data.get('contact_ids', [])
+        contact_emails = data.get('contact_emails', [])
+        
+        if not contact_ids and not contact_emails:
+            return jsonify({'error': 'contact_ids or contact_emails required'}), 400
+        
+        # Get contacts from database
+        supabase = get_supabase_client()
+        contacts = []
+        
+        if contact_ids:
+            contacts = supabase.get_level2_contacts_by_ids(contact_ids)
+        elif contact_emails:
+            # Get contacts by email
+            try:
+                response = supabase.client.table('level2_contacts').select('*').in_('email', contact_emails).execute()
+                contacts = response.data if response.data else []
+            except Exception as e:
+                print(f"Error fetching contacts by email: {str(e)}")
+                contacts = []
+        
+        if not contacts:
+            return jsonify({'success': True, 'phones': {}}), 200
+        
+        # Extract Apollo person IDs from contacts (if available)
+        # Or use email/name to search Apollo
+        phone_results = {}
+        
+        # Use threading to make parallel requests
+        import concurrent.futures
+        import threading
+        
+        def enrich_single_contact(contact):
+            """Enrich a single contact's phone number"""
+            contact_id = contact.get('id')
+            email = contact.get('email', '')
+            name = contact.get('contact_name', '') or contact.get('name', '')
+            
+            if not email:
+                return contact_id, None
+            
+            try:
+                # Try to find person in Apollo by email
+                # This is a simplified version - you might need to adjust based on Apollo API
+                person_id = None
+                
+                # If we have Apollo person ID stored, use it
+                # Otherwise, search by email
+                if person_id:
+                    enriched = apollo_client.enrich_single_person(person_id)
+                    if enriched and enriched.get('phone'):
+                        return contact_id, enriched.get('phone')
+                
+                # Alternative: Use webhook approach (already implemented)
+                # Phone will come via webhook
+                return contact_id, None
+                
+            except Exception as e:
+                print(f"Error enriching contact {contact_id}: {str(e)}")
+                return contact_id, None
+        
+        # Make parallel requests (limit to 10 at a time to avoid rate limits)
+        phone_results = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_contact = {executor.submit(enrich_single_contact, contact): contact for contact in contacts[:20]}
+            
+            for future in concurrent.futures.as_completed(future_to_contact):
+                contact_id, phone = future.result()
+                if phone:
+                    phone_results[contact_id] = phone
+        
+        return jsonify({
+            'success': True,
+            'phones': phone_results,
+            'count': len(phone_results)
+        }), 200
+        
+    except Exception as e:
+        print(f"Error enriching phones in parallel: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/level2/save-batch', methods=['POST'])

@@ -1913,28 +1913,22 @@
                 }
             }
             
-            // Load contacts
+            // Load contacts (lazy loading - load first, then enrich phones in parallel)
             try {
                 const res = await fetch(`/api/level2/contacts?project_name=${encodeURIComponent(currentProject)}`);
                 const data = await res.json();
                 contacts = data.contacts || [];
                 
-                // Debug: Log phone numbers to console
-                console.log('Contacts loaded:', contacts.length);
-                contacts.forEach((c, idx) => {
-                    console.log(`Contact ${idx + 1}:`, {
-                        name: c.name || c.contact_name,
-                        phone: c.phone,
-                        phone_number: c.phone_number,
-                        email: c.email
-                    });
-                });
-                
                 processingModal.classList.remove('open');
                 companiesCard.style.display = 'none';
                 contactsCard.style.display = 'block';
                 contactsCard.scrollIntoView({ behavior: 'smooth' });
+                
+                // Render contacts immediately (without waiting for phone numbers)
                 renderContacts();
+                
+                // Then enrich phone numbers in parallel (lazy loading)
+                enrichPhoneNumbersParallel();
             } catch (e) {
                 processingModal.classList.remove('open');
                 alert('Error loading contacts: ' + e.message);
@@ -1958,8 +1952,10 @@
                 
                 companiesCard.style.display = 'none';
                 contactsCard.style.display = 'block';
-                // Ensure employee count is calculated when batch is loaded
+                // Render contacts immediately
                 renderContacts();
+                // Then enrich phone numbers in parallel (lazy loading)
+                enrichPhoneNumbersParallel();
             } catch (e) {
                 alert('Error loading batch: ' + e.message);
             }
