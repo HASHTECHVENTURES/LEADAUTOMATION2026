@@ -427,15 +427,23 @@ class ApolloClient:
                     
                     phone = ''
                     # Try multiple phone number field variations
+                    # Apollo.io returns phone_numbers as an array
                     if person.get('phone_numbers') and len(person.get('phone_numbers', [])) > 0:
-                        phone_obj = person.get('phone_numbers', [{}])[0]
-                        print(f"    📞 Phone object: {phone_obj}")
-                        phone = phone_obj.get('raw_number', '') or \
-                               phone_obj.get('sanitized_number', '') or \
-                               phone_obj.get('number', '') or \
-                               phone_obj.get('phone', '')
+                        # Try to get mobile phone first, then any phone
+                        for phone_obj in person.get('phone_numbers', []):
+                            phone_type = phone_obj.get('type', '').lower()
+                            # Prefer mobile, then direct, then any
+                            if phone_type in ['mobile', 'direct', 'work'] or not phone:
+                                potential_phone = phone_obj.get('raw_number', '') or \
+                                                 phone_obj.get('sanitized_number', '') or \
+                                                 phone_obj.get('number', '') or \
+                                                 phone_obj.get('phone', '')
+                                if potential_phone:
+                                    phone = potential_phone
+                                    print(f"    📞 Found {phone_type} phone: {phone}")
+                                    break
                     
-                    # Also check direct phone fields
+                    # Also check direct phone fields (legacy/fallback)
                     if not phone:
                         phone = person.get('phone_number', '') or \
                                person.get('phone', '') or \
