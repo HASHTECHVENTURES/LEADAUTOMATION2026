@@ -425,18 +425,39 @@ class ApolloClient:
         return enriched
     
     def enrich_single_person(self, person_id: str) -> Optional[Dict]:
-        """Enrich a single person by ID"""
+        """Enrich a single person by ID - tries multiple methods to get phone numbers"""
         try:
-            # Try people/match endpoint with phone number request
-            url = f"{self.base_url}/people/match"
-            payload = {
-                # API key removed from payload - now in header
-                'person_id': person_id,
-                'reveal_personal_emails': True,  # Request personal emails
-                'reveal_phone_number': True,  # Request phone numbers - Apollo.io uses singular 'reveal_phone_number'
-            }
+            phone = ''
             
-            response = requests.post(url, json=payload, headers=self.headers)
+            # METHOD 1: Try people/match endpoint with phone number request
+            url = f"{self.base_url}/people/match"
+            payloads_to_try = [
+                {
+                    'person_id': person_id,
+                    'reveal_personal_emails': True,
+                    'reveal_phone_number': True,
+                },
+                {
+                    'person_id': person_id,
+                    'reveal_personal_emails': True,
+                    'reveal_phone_numbers': True,  # Try plural version
+                },
+                {
+                    'person_id': person_id,
+                    'reveal_personal_emails': True,
+                    'reveal_phone_number': True,
+                    'reveal_phone_numbers': True,  # Try both
+                }
+            ]
+            
+            response = None
+            for payload in payloads_to_try:
+                try:
+                    response = requests.post(url, json=payload, headers=self.headers)
+                    if response.status_code == 200:
+                        break
+                except:
+                    continue
             
             if response.status_code == 200:
                 data = response.json()
@@ -517,63 +538,30 @@ class ApolloClient:
                         'source': 'apollo'
                     }
             else:
-                print(f"    ⚠️  people/match failed (status {response.status_code}), trying GET /people/{person_id}")
-                # If match fails, try to get person by ID directly with phone request
+                print(f"    ⚠️  people/match failed (status {response.status_code if response else 'None'}), trying GET /people/{person_id}")
+                # METHOD 2: If match fails, try to get person by ID directly
                 url2 = f"{self.base_url}/people/{person_id}"
-                # Try with query params to request phone numbers
-                params = {
-                    'reveal_personal_emails': 'true',
-                    'reveal_phone_number': 'true'  # Request phone numbers - Apollo.io uses singular
-                }
-                response2 = requests.get(url2, headers=self.headers, params=params)
-                if response2.status_code == 200:
+                # Try multiple parameter combinations
+                params_list = [
+                    {'reveal_personal_emails': 'true', 'reveal_phone_number': 'true'},
+                    {'reveal_personal_emails': 'true', 'reveal_phone_numbers': 'true'},
+                    {'reveal_phone_number': 'true'},
+                    {}  # Try without params too
+                ]
+                
+                response2 = None
+                for params in params_list:
+                    try:
+                        response2 = requests.get(url2, headers=self.headers, params=params)
+                        if response2.status_code == 200:
+                            break
+                    except:
+                        continue
+                
+                if response2 and response2.status_code == 200:
                     person = response2.json().get('person', {})
                     if person:
-                        # Debug: Check if phone data exists
-                        has_phone = person.get('has_direct_phone') or person.get('has_phone', False)
-                        print(f"    📞 has_direct_phone: {has_phone}")
-                        
-                        phone = ''
-                        # Try multiple phone number field variations
-                        # Apollo.io returns phone_numbers as an array
-                        if person.get('phone_numbers') and len(person.get('phone_numbers', [])) > 0:
-                            # Try to get mobile phone first, then any phone
-                            for phone_obj in person.get('phone_numbers', []):
-                                phone_type = phone_obj.get('type', '').lower()
-                                # Prefer mobile, then direct, then any
-                                if phone_type in ['mobile', 'direct', 'work'] or not phone:
-                                    potential_phone = phone_obj.get('raw_number', '') or \
-                                                     phone_obj.get('sanitized_number', '') or \
-                                                     phone_obj.get('number', '') or \
-                                                     phone_obj.get('phone', '')
-                                    if potential_phone:
-                                        phone = potential_phone
-                                        print(f"    📞 Found {phone_type} phone: {phone}")
-                                        break
-                        
-                        # Also check direct phone fields (legacy/fallback)
-                        if not phone:
-                            phone = person.get('phone_number', '') or \
-                                   person.get('phone', '') or \
-                                   person.get('mobile', '') or \
-                                   person.get('direct_phone', '')
-                        
-                        # Check if phone is in organization data
-                        if not phone and person.get('organization'):
-                            org = person.get('organization', {})
-                            if org.get('phone_numbers') and len(org.get('phone_numbers', [])) > 0:
-                                phone_obj = org.get('phone_numbers', [{}])[0]
-                                phone = phone_obj.get('raw_number', '') or \
-                                       phone_obj.get('sanitized_number', '') or \
-                                       phone_obj.get('number', '')
-                        
-                        if phone:
-                            print(f"    ✅ Found phone: {phone}")
-                        elif has_phone:
-                            print(f"    ⚠️  Apollo indicates phone exists (has_direct_phone=True) but phone_numbers field is empty")
-                            print(f"    ⚠️  Phone numbers may require additional API access or different endpoint")
-                        else:
-                            print(f"    ⚠️  No phone number available in Apollo database")
+                        phone = self._extract_phone_from_person(person)
                         
                         return {
                             'name': f"{person.get('first_name', '')} {person.get('last_name', '')}".strip(),
@@ -586,14 +574,83 @@ class ApolloClient:
                             'source': 'apollo'
                         }
                 else:
-                    print(f"    ❌ GET /people/{person_id} also failed: {response2.status_code}")
-                    print(f"    Response: {response2.text[:300]}")
+                    print(f"    ❌ GET /people/{person_id} also failed: {response2.status_code if response2 else 'No response'}")
+                    if response2:
+                        print(f"    Response: {response2.text[:300]}")
         except Exception as e:
             print(f"    ❌ Error enriching person {person_id}: {str(e)}")
             import traceback
             traceback.print_exc()
         
         return None
+    
+    def _extract_phone_from_person(self, person: Dict) -> str:
+        """Extract phone number from Apollo person object - tries ALL possible methods"""
+        phone = ''
+        
+        # METHOD 1: Check phone_numbers array (most common)
+        if person.get('phone_numbers') and isinstance(person.get('phone_numbers'), list):
+            for phone_obj in person.get('phone_numbers', []):
+                if isinstance(phone_obj, dict):
+                    # Try all possible field names
+                    potential_phone = (
+                        phone_obj.get('raw_number', '') or
+                        phone_obj.get('sanitized_number', '') or
+                        phone_obj.get('number', '') or
+                        phone_obj.get('phone', '') or
+                        phone_obj.get('value', '') or
+                        phone_obj.get('phone_number', '')
+                    )
+                    if potential_phone and len(str(potential_phone).strip()) > 0:
+                        phone = str(potential_phone).strip()
+                        print(f"    ✅ Found phone in phone_numbers array: {phone}")
+                        break
+                elif isinstance(phone_obj, str):
+                    # Sometimes it's just a string
+                    phone = phone_obj.strip()
+                    print(f"    ✅ Found phone as string in array: {phone}")
+                    break
+        
+        # METHOD 2: Check direct fields on person object
+        if not phone:
+            direct_fields = ['phone_number', 'phone', 'mobile', 'direct_phone', 'work_phone', 'home_phone']
+            for field in direct_fields:
+                if person.get(field):
+                    phone = str(person.get(field)).strip()
+                    print(f"    ✅ Found phone in {field} field: {phone}")
+                    break
+        
+        # METHOD 3: Check organization phone numbers
+        if not phone and person.get('organization'):
+            org = person.get('organization', {})
+            if org.get('phone_numbers') and isinstance(org.get('phone_numbers'), list):
+                for phone_obj in org.get('phone_numbers', []):
+                    if isinstance(phone_obj, dict):
+                        potential_phone = (
+                            phone_obj.get('raw_number', '') or
+                            phone_obj.get('sanitized_number', '') or
+                            phone_obj.get('number', '') or
+                            phone_obj.get('phone', '')
+                        )
+                        if potential_phone:
+                            phone = str(potential_phone).strip()
+                            print(f"    ✅ Found phone in organization: {phone}")
+                            break
+        
+        # METHOD 4: Check if phone_numbers is a string (sometimes Apollo returns it as string)
+        if not phone and person.get('phone_numbers'):
+            phone_str = str(person.get('phone_numbers')).strip()
+            if phone_str and phone_str != '[]' and phone_str != 'None':
+                phone = phone_str
+                print(f"    ✅ Found phone as string: {phone}")
+        
+        if not phone:
+            print(f"    ⚠️  No phone number found in person data")
+            print(f"    🔍 Available keys: {list(person.keys())}")
+            if person.get('phone_numbers'):
+                print(f"    🔍 phone_numbers value: {person.get('phone_numbers')}")
+        
+        return phone
     
     def search_people_by_domain(self, domain: str, titles: List[str] = None) -> List[Dict]:
         """
