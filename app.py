@@ -25,17 +25,33 @@ google_client = GooglePlacesClient()
 apollo_client = ApolloClient()
 
 # Initialize Supabase client (ONLY database - Google Sheets removed)
+# Initialize lazily to avoid Vercel cold start issues
+supabase_client = None
+
+def get_supabase_client():
+    """Lazy initialization of Supabase client"""
+    global supabase_client
+    if supabase_client is None:
+        try:
+            supabase_client = SupabaseClient()
+            print("✅ Using Supabase as backend database")
+        except Exception as e:
+            print(f"❌ Supabase client not initialized: {str(e)}")
+            print("❌ Please check your Supabase configuration in config.py")
+            print("❌ Make sure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set")
+            print("❌ Also ensure you've run the SQL schema in Supabase (see supabase_schema.sql)")
+            raise  # Re-raise for actual usage
+    return supabase_client
+
+# Try to initialize on startup (but don't crash the app if it fails)
 try:
     supabase_client = SupabaseClient()
     print("✅ Using Supabase as backend database")
 except Exception as e:
-    print(f"❌ Supabase client not initialized: {str(e)}")
-    print("❌ Please check your Supabase configuration in config.py")
-    print("❌ Make sure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set")
-    print("❌ Also ensure you've run the SQL schema in Supabase (see supabase_schema.sql)")
-    raise  # Fail fast if Supabase is not available
+    print(f"⚠️  Supabase client initialization deferred: {str(e)}")
+    # Will be initialized on first use via get_supabase_client()
 
-# Progress tracking is now handled by Supabase (see supabase_client.py)
+# Progress tracking is now handled by Supabase (see get_supabase_client().py)
 # This keeps progress persistent across serverless invocations
 
 # Indian states list
@@ -216,7 +232,10 @@ def level1_search():
                     'companies_found': 0,
                     'status': 'in_progress'
                 }
-                supabase_client.save_progress(session_key, initial_progress)
+                try:
+                    get_supabase_client().save_progress(session_key, initial_progress)
+                except Exception as e:
+                    print(f"⚠️  Could not save progress to Supabase: {str(e)}")
                 
                 yield f"data: {json.dumps({'type': 'progress', 'data': initial_progress})}\n\n"
                 
@@ -272,7 +291,10 @@ def level1_search():
                     'companies_found': len(companies),
                     'status': 'in_progress'
                 }
-                supabase_client.save_progress(session_key, saving_progress)
+                try:
+                    get_supabase_client().save_progress(session_key, saving_progress)
+                except Exception as e:
+                    print(f"⚠️  Could not save progress to Supabase: {str(e)}")
                 yield f"data: {json.dumps({'type': 'progress', 'data': saving_progress})}\n\n"
                 
                 # Save to Supabase database
@@ -284,7 +306,7 @@ def level1_search():
                         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     }
                     
-                    save_result = supabase_client.save_level1_results(companies, search_params)
+                    save_result = get_supabase_client().save_level1_results(companies, search_params)
                     if save_result.get('success'):
                         print(f"✅ Saved {save_result.get('count')} companies to Supabase")
                     else:
@@ -304,7 +326,7 @@ def level1_search():
                             'message': f'Processed {company.get("company_name", "")}... ({idx}/{len(companies)})',
                             'status': 'in_progress'
                         }
-                        supabase_client.save_progress(session_key, update_progress)
+                        get_supabase_client().save_progress(session_key, update_progress)
                     
                     yield f"data: {json.dumps({'type': 'company_update', 'data': company, 'progress': {'current': idx, 'total': len(companies), 'companies_found': len(companies)}})}\n\n"
                 
@@ -317,7 +339,7 @@ def level1_search():
                     'companies_found': len(companies),
                     'status': 'completed'
                 }
-                supabase_client.save_progress(session_key, completed_progress)
+                get_supabase_client().save_progress(session_key, completed_progress)
                 
                 result = {
                     'companies': companies,
@@ -341,7 +363,7 @@ def level1_search():
             finally:
                 # Clean up progress from Supabase after a delay (keep for 1 hour for recovery)
                 # For immediate cleanup, uncomment the line below:
-                # supabase_client.delete_progress(session_key)
+                # get_supabase_client().delete_progress(session_key)
                 pass
         
         return Response(stream_with_context(generate()), mimetype='text/event-stream')
@@ -446,7 +468,7 @@ def level2_process():
             return jsonify({'error': 'project_name is required'}), 400
         
         # Get ONLY selected companies from Supabase for the active project
-        companies = supabase_client.get_level1_companies(project_name=project_name, selected_only=True, limit=50)
+        companies = get_supabase_client().get_level1_companies(project_name=project_name, selected_only=True, limit=50)
         
         if not companies:
             return jsonify({'error': 'No companies selected for Level 2. Please select companies first.'}), 400
@@ -479,7 +501,7 @@ def level2_process():
 
             # Best-effort persist metrics back to Supabase (level1_companies)
             if place_id:
-                supabase_client.update_level1_company_metrics(
+                get_supabase_client().update_level1_company_metrics(
                     project_name=project_name,
                     place_id=place_id,
                     total_employees=total_employees,
@@ -511,7 +533,7 @@ def level2_process():
         default_batch_name = f"{project_name}_Main_Batch"
         
         # Save to Supabase with consistent batch name
-        save_result = supabase_client.save_level2_results(
+        save_result = get_supabase_client().save_level2_results(
             enriched_companies, 
             project_name=project_name,
             batch_name=default_batch_name
@@ -542,7 +564,7 @@ def level2_process():
 def get_projects_list():
     """Get list of all projects (for history/resume feature) - from Supabase"""
     try:
-        projects = supabase_client.get_projects_list()
+        projects = get_supabase_client().get_projects_list()
         return jsonify({'projects': projects}), 200
     except Exception as e:
         print(f"Error getting projects list: {str(e)}")
@@ -559,14 +581,14 @@ def get_project_data():
             return jsonify({'error': 'project_name is required'}), 400
         
         # Get project details from projects list
-        projects = supabase_client.get_projects_list()
+        projects = get_supabase_client().get_projects_list()
         project_info = next((p for p in projects if p.get('project_name') == project_name), None)
         
         if not project_info:
             return jsonify({'error': 'Project not found'}), 404
         
         # Get companies for this project
-        companies = supabase_client.get_level1_companies(project_name=project_name, selected_only=False, limit=100)
+        companies = get_supabase_client().get_level1_companies(project_name=project_name, selected_only=False, limit=100)
         
         # Format companies for frontend
         formatted_companies = []
@@ -613,7 +635,7 @@ def delete_level1_companies():
         if not isinstance(identifiers, list) or len(identifiers) == 0:
             return jsonify({'error': 'identifiers must be a non-empty list'}), 400
 
-        result = supabase_client.delete_level1_companies(project_name=project_name, identifiers=identifiers)
+        result = get_supabase_client().delete_level1_companies(project_name=project_name, identifiers=identifiers)
         if not result.get('success'):
             return jsonify({'error': result.get('error', 'Failed to delete companies')}), 500
 
@@ -636,7 +658,7 @@ def delete_level1_project():
         if not project_name:
             return jsonify({'error': 'project_name is required'}), 400
 
-        result = supabase_client.delete_project(project_name=project_name)
+        result = get_supabase_client().delete_project(project_name=project_name)
         if not result.get('success'):
             return jsonify({'error': result.get('error', 'Failed to delete project')}), 500
 
@@ -659,7 +681,7 @@ def check_project_exists():
             return jsonify({'exists': False}), 200
         
         # Check in Supabase
-        companies = supabase_client.get_level1_companies(project_name=project_name, limit=1)
+        companies = get_supabase_client().get_level1_companies(project_name=project_name, limit=1)
         exists = len(companies) > 0
         
         return jsonify({'exists': exists}), 200
@@ -682,7 +704,7 @@ def select_companies_for_level2():
             return jsonify({'error': 'Project name is required'}), 400
         
         # Mark companies as selected in Supabase (with project_name for filtering)
-        result = supabase_client.mark_companies_selected(companies, project_name=project_name)
+        result = get_supabase_client().mark_companies_selected(companies, project_name=project_name)
         
         if result.get('success'):
             return jsonify({
@@ -709,7 +731,7 @@ def get_level2_companies():
             return jsonify({'error': 'project_name is required'}), 400
 
         # Pull companies for that project
-        all_companies = supabase_client.get_level1_companies(project_name=project_name, selected_only=False, limit=limit)
+        all_companies = get_supabase_client().get_level1_companies(project_name=project_name, selected_only=False, limit=limit)
         if not all_companies:
             return jsonify({'companies': [], 'project_name': project_name, 'mode': 'all'}), 200
 
@@ -762,7 +784,7 @@ def set_level2_selection():
             return jsonify({'error': 'selected_place_ids must be a list'}), 400
 
         # Persist selection (sets selected_for_level2 true/false for this project)
-        result = supabase_client.set_level2_selection(project_name=project_name, selected_place_ids=selected_place_ids)
+        result = get_supabase_client().set_level2_selection(project_name=project_name, selected_place_ids=selected_place_ids)
         
         if not result.get('success'):
             return jsonify({'error': result.get('error', 'Failed to save selection')}), 500
@@ -776,7 +798,7 @@ def set_level2_selection():
 def get_search_history():
     """Get search history from Supabase (same as projects list)"""
     try:
-        projects = supabase_client.get_projects_list()
+        projects = get_supabase_client().get_projects_list()
         # Convert to history format for compatibility
         history = [{
             'project_name': p.get('project_name', ''),
@@ -798,7 +820,7 @@ def level2_status():
         if not project_name:
             return jsonify({'error': 'project_name is required'}), 400
         
-        all_companies = supabase_client.get_level1_companies(project_name=project_name, selected_only=False, limit=50)
+        all_companies = get_supabase_client().get_level1_companies(project_name=project_name, selected_only=False, limit=50)
         selected = [c for c in all_companies if c.get('selected_for_level2', False)]
         selected_count = len(selected)
         total_count = len(all_companies)
@@ -807,7 +829,7 @@ def level2_status():
         # Attach project metadata so UI can confirm we are not mixing Industry/PINs
         session_meta = {}
         try:
-            projects = supabase_client.get_projects_list()
+            projects = get_supabase_client().get_projects_list()
             for p in projects:
                 if p.get('project_name') == project_name:
                     session_meta = {
@@ -843,9 +865,9 @@ def level2_contacts():
         
         # Get contacts from Supabase
         if batch_name:
-            contacts = supabase_client.get_contacts_for_level3(batch_name=batch_name)
+            contacts = get_supabase_client().get_contacts_for_level3(batch_name=batch_name)
         else:
-            contacts = supabase_client.get_contacts_for_level3(project_name=project_name)
+            contacts = get_supabase_client().get_contacts_for_level3(project_name=project_name)
         
         return jsonify({
             'success': True,
@@ -871,7 +893,7 @@ def level2_save_batch():
         
         # Update all contacts for this project to use the batch_name
         # This is a simple implementation - in production you might want more sophisticated logic
-        result = supabase_client.update_batch_name(project_name, batch_name)
+        result = get_supabase_client().update_batch_name(project_name, batch_name)
         
         return jsonify({
             'success': True,
@@ -889,7 +911,7 @@ def level2_batches():
         project_name = request.args.get('project_name')  # Optional: filter by project
         
         # Get batches from Supabase
-        batches = supabase_client.get_batches_list(project_name=project_name)
+        batches = get_supabase_client().get_batches_list(project_name=project_name)
         
         return jsonify({
             'success': True,
@@ -910,7 +932,7 @@ def level2_delete_batch():
         if not batch_name:
             return jsonify({'error': 'batch_name is required'}), 400
         
-        result = supabase_client.delete_batch(batch_name)
+        result = get_supabase_client().delete_batch(batch_name)
         
         if not result.get('success'):
             return jsonify({'error': result.get('error', 'Failed to delete batch')}), 500
@@ -941,7 +963,7 @@ def level2_merge_batches():
         if not target_batch_name:
             target_batch_name = f"{project_name}_Main_Batch"
         
-        result = supabase_client.merge_duplicate_batches(project_name, target_batch_name)
+        result = get_supabase_client().merge_duplicate_batches(project_name, target_batch_name)
         
         if not result.get('success'):
             return jsonify({'error': result.get('error', 'Failed to merge batches')}), 500
@@ -969,7 +991,7 @@ def level2_delete_duplicate_batches():
             return jsonify({'error': 'project_name is required'}), 400
         
         # Get all batches for this project
-        batches = supabase_client.get_batches_list(project_name=project_name)
+        batches = get_supabase_client().get_batches_list(project_name=project_name)
         
         if len(batches) <= 1:
             return jsonify({
@@ -987,7 +1009,7 @@ def level2_delete_duplicate_batches():
         deleted_contacts = 0
         
         for batch in duplicate_batches:
-            result = supabase_client.delete_batch(batch.get('batch_name'))
+            result = get_supabase_client().delete_batch(batch.get('batch_name'))
             if result.get('success'):
                 deleted_count += 1
                 deleted_contacts += result.get('deleted_contacts', 0)
@@ -1018,9 +1040,9 @@ def level3_transfer():
         
         # Get contacts from Supabase (prefer batch_name)
         if batch_name:
-            contacts = supabase_client.get_contacts_for_level3(batch_name=batch_name)
+            contacts = get_supabase_client().get_contacts_for_level3(batch_name=batch_name)
         else:
-            contacts = supabase_client.get_contacts_for_level3(project_name=project_name)
+            contacts = get_supabase_client().get_contacts_for_level3(project_name=project_name)
         
         if not contacts:
             return jsonify({'error': 'No contacts found in Supabase. Please run Level 2 first.'}), 400
@@ -1046,7 +1068,7 @@ def level3_status():
         if not project_name:
             return jsonify({'error': 'project_name is required'}), 400
         
-        contacts = supabase_client.get_contacts_for_level3(project_name=project_name)
+        contacts = get_supabase_client().get_contacts_for_level3(project_name=project_name)
         return jsonify({
             'total_contacts': len(contacts),
             'ready_for_transfer': len(contacts) > 0
@@ -1078,7 +1100,7 @@ def level3_contacts():
         if not batch_name:
             return jsonify({'error': 'batch_name is required'}), 400
 
-        contacts = supabase_client.get_contacts_for_level3(batch_name=batch_name)
+        contacts = get_supabase_client().get_contacts_for_level3(batch_name=batch_name)
         # Minimal fields for preview/progress
         minimal = []
         for c in contacts:
@@ -1104,7 +1126,7 @@ def level3_transfer_one():
             return jsonify({'error': 'contact_id is required'}), 400
 
         # Fetch contact from Supabase
-        contacts = supabase_client.get_level2_contacts_by_ids([contact_id])
+        contacts = get_supabase_client().get_level2_contacts_by_ids([contact_id])
         if not contacts:
             return jsonify({'error': 'Contact not found'}), 404
         contact = contacts[0]
@@ -1175,7 +1197,7 @@ def level2_delete_companies():
             return jsonify({'error': 'No place_ids provided'}), 400
         
         # Delete companies using supabase_client
-        result = supabase_client.delete_level1_companies(project_name=project_name, identifiers=place_ids)
+        result = get_supabase_client().delete_level1_companies(project_name=project_name, identifiers=place_ids)
         
         if result.get('success'):
             deleted_count = result.get('deleted', 0)
@@ -1274,8 +1296,8 @@ def export():
         return jsonify({'error': str(e)}), 500
 
 # Vercel serverless handler (required for Vercel Python runtime)
-def handler(request):
-    return app(request.environ, request.start_response)
+# Vercel expects the app to be directly callable
+# The @vercel/python builder automatically wraps Flask apps
 
 if __name__ == '__main__':
     Config.validate()
