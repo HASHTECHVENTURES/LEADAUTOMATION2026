@@ -1919,6 +1919,17 @@
                 const data = await res.json();
                 contacts = data.contacts || [];
                 
+                // Debug: Log phone numbers to console
+                console.log('Contacts loaded:', contacts.length);
+                contacts.forEach((c, idx) => {
+                    console.log(`Contact ${idx + 1}:`, {
+                        name: c.name || c.contact_name,
+                        phone: c.phone,
+                        phone_number: c.phone_number,
+                        email: c.email
+                    });
+                });
+                
                 processingModal.classList.remove('open');
                 companiesCard.style.display = 'none';
                 contactsCard.style.display = 'block';
