@@ -55,3 +55,4 @@ If you have existing data in Google Sheets:
 - Use Row Level Security (RLS) policies in Supabase for production
 
 
+

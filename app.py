@@ -1300,6 +1300,86 @@ def export():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/export-contacts', methods=['POST'])
+def export_contacts():
+    """Export Level 3 contacts data to Excel file"""
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill
+        from flask import send_file
+        import io
+        
+        data = request.json
+        contacts = data.get('contacts', [])
+        batch_name = data.get('batch_name', 'contacts')
+        
+        if not contacts:
+            return jsonify({'error': 'No contacts to export'}), 400
+        
+        # Create Excel workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Contacts"
+        
+        # Headers
+        headers = ['Name', 'Title', 'Company Name', 'Email', 'Phone', 'LinkedIn URL', 'Company Website', 'Company Address']
+        ws.append(headers)
+        
+        # Style header row
+        header_fill = PatternFill(start_color="10b981", end_color="10b981", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        for cell in ws[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+        
+        # Add data rows
+        for contact in contacts:
+            ws.append([
+                contact.get('name') or contact.get('contact_name', ''),
+                contact.get('title') or contact.get('contact_type', ''),
+                contact.get('company_name', ''),
+                contact.get('email', ''),
+                contact.get('phone', ''),
+                contact.get('linkedin_url', ''),
+                contact.get('company_website', ''),
+                contact.get('company_address', '')
+            ])
+        
+        # Auto-adjust column widths
+        for column in ws.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)
+            ws.column_dimensions[column_letter].width = adjusted_width
+        
+        # Save to BytesIO
+        excel_file = io.BytesIO()
+        wb.save(excel_file)
+        excel_file.seek(0)
+        
+        # Generate filename
+        safe_batch_name = "".join(c for c in batch_name if c.isalnum() or c in (' ', '-', '_')).strip()[:50]
+        filename = f"{safe_batch_name}_contacts.xlsx" if safe_batch_name else "contacts.xlsx"
+        
+        return send_file(
+            excel_file,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+        
+    except Exception as e:
+        print(f"Error exporting contacts to Excel: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
 # Vercel serverless handler (required for Vercel Python runtime)
 # Vercel expects the app to be directly callable
 # The @vercel/python builder automatically wraps Flask apps

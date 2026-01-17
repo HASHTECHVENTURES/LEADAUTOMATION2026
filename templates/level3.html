@@ -536,8 +536,12 @@
                 </div>
                 
                 <!-- Action Buttons -->
-                <div style="margin-top: 24px;" id="actionButtons">
-                    <button class="btn btn-primary btn-block" id="transferBtn">
+                <div style="margin-top: 24px; display: flex; gap: 12px;" id="actionButtons">
+                    <button class="btn btn-success" id="exportBtn" style="flex: 1; display: none;">
+                        <i class="fas fa-file-excel"></i>
+                        Export to Excel
+                    </button>
+                    <button class="btn btn-primary btn-block" id="transferBtn" style="flex: 1;">
                         <i class="fas fa-paper-plane"></i>
                         Transfer to Apollo.io
                     </button>
@@ -656,6 +660,7 @@
                 logSection.style.display = 'none';
                 successBox.style.display = 'none';
                 actionButtons.style.display = 'block';
+                document.getElementById('exportBtn').style.display = contacts.length > 0 ? 'flex' : 'none';
                 retrySection.style.display = 'none';
                 failedContacts = [];
             } catch (e) {
@@ -731,6 +736,51 @@
                 alert('Error deleting batch: ' + e.message);
                 this.disabled = false;
                 this.innerHTML = '<i class="fas fa-trash"></i>';
+            }
+        });
+        
+        // Export to Excel
+        document.getElementById('exportBtn').addEventListener('click', async function() {
+            if (!contacts.length) {
+                alert('No contacts to export');
+                return;
+            }
+            
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner spinner"></i> Exporting...';
+            
+            try {
+                const res = await fetch('/api/export-contacts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contacts: contacts,
+                        batch_name: batchSelect.value || 'contacts'
+                    })
+                });
+                
+                if (!res.ok) {
+                    const errorData = await res.json().catch(() => ({}));
+                    throw new Error(errorData.error || 'Export failed');
+                }
+                
+                // Download Excel file
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const safeBatchName = (batchSelect.value || 'contacts').replace(/[^a-zA-Z0-9\s\-_]/g, '').substring(0, 50);
+                a.download = `${safeBatchName}_contacts.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+            } catch (e) {
+                alert('❌ Export failed: ' + e.message);
+            } finally {
+                this.disabled = false;
+                this.innerHTML = '<i class="fas fa-file-excel"></i> Export to Excel';
             }
         });
         

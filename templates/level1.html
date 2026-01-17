@@ -715,7 +715,7 @@
                     <div style="display: flex; gap: 12px;">
                         <button type="submit" class="btn btn-primary" style="flex: 1;" id="searchBtn">
                             <i class="fas fa-search"></i>
-                            Search Google Places
+                            Search Companies
                         </button>
                         <button type="button" class="btn btn-success" id="saveProjectBtn" style="display: none;">
                             <i class="fas fa-save"></i>
@@ -812,7 +812,7 @@
                     <div class="progress-text" id="progressText">Starting search...</div>
                     <div class="progress-status">
                         <span class="pulse"></span>
-                        <span id="progressStatus">Connecting to Google Places</span>
+                        <span id="progressStatus">Starting search...</span>
                     </div>
                 </div>
             </div>
@@ -856,9 +856,18 @@
         // Load projects
         async function loadProjects() {
             try {
-                const res = await fetch('/api/level1/projects?_t=' + Date.now());
+                // Use cache-busting timestamp and no-cache header
+                const timestamp = Date.now();
+                const res = await fetch('/api/level1/projects?_t=' + timestamp, {
+                    cache: 'no-store',
+                    headers: {
+                        'Cache-Control': 'no-cache'
+                    }
+                });
                 const data = await res.json();
                 const projects = data.projects || [];
+                
+                console.log(`📋 Loaded ${projects.length} projects:`, projects.map(p => p.project_name));
                 
                 projectSelect.innerHTML = '<option value="">Choose existing project...</option>';
                 projects.forEach(p => {
@@ -867,6 +876,11 @@
                     opt.textContent = `${p.project_name} (${p.company_count || 0} companies)`;
                     projectSelect.appendChild(opt);
                 });
+                
+                // If current project exists, select it
+                if (currentProject) {
+                    projectSelect.value = currentProject;
+                }
                 
                 // Check URL for project param
                 const urlParams = new URLSearchParams(window.location.search);
@@ -924,7 +938,7 @@
                             </svg>
                         </div>
                         <h3>No Companies Yet</h3>
-                        <p>Run a search to find companies from Google Places.</p>
+                        <p>Run a search to find companies in your selected area.</p>
                     </div>
                 `;
                 document.getElementById('companyCount').textContent = '0';
@@ -1145,7 +1159,7 @@
             document.getElementById('progressFill').style.width = '0%';
             document.getElementById('progressPercent').textContent = '0%';
             document.getElementById('progressText').textContent = 'Starting search...';
-            document.getElementById('progressStatus').textContent = 'Connecting to Google Places';
+            document.getElementById('progressStatus').textContent = 'Starting search...';
             
             try {
                 const response = await fetch('/api/level1/search', {
@@ -1190,7 +1204,10 @@
                                     renderCompanies();
                                     resultsCard.style.display = 'block';
                                     progressModal.classList.remove('open');
-                                    loadProjects();
+                                    // Refresh project list with cache-busting to ensure new project appears
+                                    setTimeout(() => {
+                                        loadProjects();
+                                    }, 500);
                                     resultsCard.scrollIntoView({ behavior: 'smooth' });
                                     
                                     // Show success message and update save button

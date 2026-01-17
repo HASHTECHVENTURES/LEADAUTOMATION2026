@@ -1627,6 +1627,7 @@
                 
                 companiesCard.style.display = 'none';
                 contactsCard.style.display = 'block';
+                // Ensure employee count is calculated when batch is loaded
                 renderContacts();
             } catch (e) {
                 alert('Error loading batch: ' + e.message);
