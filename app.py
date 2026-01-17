@@ -1248,6 +1248,10 @@ def export():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
+# Vercel serverless handler (required for Vercel Python runtime)
+def handler(request):
+    return app(request.environ, request.start_response)
+
 if __name__ == '__main__':
     Config.validate()
     port = int(os.getenv('PORT', 5002))
