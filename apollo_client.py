@@ -295,9 +295,10 @@ class ApolloClient:
                 print(f"    📋 Extracted {len(person_data_list)} person IDs for enrichment")
                 
                 if person_data_list:
-                    print(f"    🔄 Enriching {len(person_data_list)} people to get emails/phones...")
+                    print(f"    🔄 Enriching {len(person_data_list)} people to get emails/phones in parallel...")
                     # Enrich to get emails/phones (costs credits) and validate company
-                    enriched_people = self.enrich_people_with_validation([pid for pid, _ in person_data_list], domain)
+                    # Use parallel enrichment for faster processing
+                    enriched_people = self.enrich_people_with_validation_parallel([pid for pid, _ in person_data_list], domain)
                     print(f"    ✅ Enrichment returned {len(enriched_people)} contacts with emails/phones (validated for {domain})")
                     people.extend(enriched_people)
                 else:

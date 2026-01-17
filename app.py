@@ -484,23 +484,69 @@ def level2_process():
         if not batch_companies:
             return jsonify({'message': 'All companies processed', 'completed': True}), 200
         
-        # Process batch with Apollo.io
+        # Process batch with Apollo.io (lazy loading - get contacts AND phone numbers in parallel)
         enriched_companies = []
         current_company_name = ''  # Track the last company being processed
-        for idx, company in enumerate(batch_companies):
+        
+        import concurrent.futures
+        
+        def process_single_company(company):
+            """Process a single company - get contacts AND phone numbers in parallel"""
             company_name = company.get('company_name', '')
-            current_company_name = company_name  # Store for response
             website = company.get('website', '')
             place_id = company.get('place_id', '')
-            print(f"  📊 Processing company {start_idx + idx + 1}/{len(companies)}: {company_name}")
             
-            # Search for contacts using Apollo.io
+            print(f"  📊 Processing company: {company_name}")
+            
+            # Get contacts from Apollo (this already includes phone number requests via webhook)
             people = apollo_client.search_people_by_company(company_name, website)
-
+            
             # Company metrics
             total_employees = apollo_client.get_company_total_employees(company_name, website) or ''
             active_members = len(people or [])
             active_members_with_email = sum(1 for p in (people or []) if p.get('email'))
+            
+            return {
+                'company_name': company_name,
+                'address': company.get('address', ''),
+                'website': website,
+                'phone': company.get('phone', ''),
+                'pin_code': company.get('pin_code', ''),
+                'industry': company.get('industry', ''),
+                'total_employees': total_employees,
+                'active_members': active_members,
+                'active_members_with_email': active_members_with_email,
+                'people': people,
+                'place_id': place_id
+            }
+        
+        # Process companies in parallel (but limit to avoid rate limits)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            future_to_company = {executor.submit(process_single_company, company): company for company in batch_companies}
+            
+            for idx, future in enumerate(concurrent.futures.as_completed(future_to_company), start_idx + 1):
+                company = future_to_company[future]
+                try:
+                    enriched_company = future.result()
+                    enriched_companies.append(enriched_company)
+                    current_company_name = enriched_company['company_name']
+                    print(f"  ✅ Completed company {idx}/{len(companies)}: {current_company_name}")
+                except Exception as e:
+                    print(f"  ❌ Error processing company {company.get('company_name')}: {str(e)}")
+                    # Add empty result to continue
+                    enriched_companies.append({
+                        'company_name': company.get('company_name', ''),
+                        'address': company.get('address', ''),
+                        'website': company.get('website', ''),
+                        'phone': company.get('phone', ''),
+                        'pin_code': company.get('pin_code', ''),
+                        'industry': company.get('industry', ''),
+                        'total_employees': '',
+                        'active_members': 0,
+                        'active_members_with_email': 0,
+                        'people': [],
+                        'place_id': company.get('place_id', '')
+                    })
 
             # Best-effort persist metrics back to Supabase (level1_companies)
             if place_id:
