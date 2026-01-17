@@ -430,23 +430,31 @@ class ApolloClient:
             phone = ''
             
             # METHOD 1: Try people/match endpoint with phone number request
+            # IMPORTANT: Apollo.io requires webhook_url to deliver phone numbers
+            # Phone numbers come via webhook, not in immediate response
+            webhook_url = getattr(Config, 'APOLLO_WEBHOOK_URL', None) or \
+                        f"{getattr(Config, 'BASE_URL', 'https://leadautomation-2026.vercel.app')}/api/apollo/webhook"
+            
             url = f"{self.base_url}/people/match"
             payloads_to_try = [
                 {
                     'person_id': person_id,
                     'reveal_personal_emails': True,
                     'reveal_phone_number': True,
+                    'webhook_url': webhook_url,  # REQUIRED for phone numbers!
                 },
                 {
                     'person_id': person_id,
                     'reveal_personal_emails': True,
                     'reveal_phone_numbers': True,  # Try plural version
+                    'webhook_url': webhook_url,
                 },
                 {
                     'person_id': person_id,
                     'reveal_personal_emails': True,
                     'reveal_phone_number': True,
                     'reveal_phone_numbers': True,  # Try both
+                    'webhook_url': webhook_url,
                 }
             ]
             
@@ -479,12 +487,16 @@ class ApolloClient:
             else:
                 print(f"    ⚠️  people/match failed (status {response.status_code if response else 'None'}), trying GET /people/{person_id}")
                 # METHOD 2: If match fails, try to get person by ID directly
+                # Note: GET endpoint might not support webhook, but try anyway
+                webhook_url = getattr(Config, 'APOLLO_WEBHOOK_URL', None) or \
+                            f"{getattr(Config, 'BASE_URL', 'https://leadautomation-2026.vercel.app')}/api/apollo/webhook"
+                
                 url2 = f"{self.base_url}/people/{person_id}"
                 # Try multiple parameter combinations
                 params_list = [
-                    {'reveal_personal_emails': 'true', 'reveal_phone_number': 'true'},
-                    {'reveal_personal_emails': 'true', 'reveal_phone_numbers': 'true'},
-                    {'reveal_phone_number': 'true'},
+                    {'reveal_personal_emails': 'true', 'reveal_phone_number': 'true', 'webhook_url': webhook_url},
+                    {'reveal_personal_emails': 'true', 'reveal_phone_numbers': 'true', 'webhook_url': webhook_url},
+                    {'reveal_phone_number': 'true', 'webhook_url': webhook_url},
                     {}  # Try without params too
                 ]
                 
