@@ -1063,7 +1063,7 @@
             pins.forEach(p => {
                 if (/^\d{6}$/.test(p)) {
                     validPins.push(p);
-                } else if (/^\d+$/.test(p) && p.length < 6) {
+                } else if (/^\d+$/.test(p) && p.length < 6 && p.length > 0) {
                     incompletePins.push(p);
                 } else {
                     invalidPins.push(p);
@@ -1075,13 +1075,18 @@
                 return { valid: false, error: `Invalid PIN codes: ${invalidPins.join(', ')}. PIN codes must be numeric.` };
             }
             
-            // If there are incomplete PIN codes but no valid 6-digit PIN, warn but allow (backend will handle)
+            // If there are incomplete PIN codes but no valid 6-digit PIN, warn
             if (incompletePins.length > 0 && validPins.length === 0) {
-                return { valid: false, error: `Incomplete PIN codes: ${incompletePins.join(', ')}. Please provide at least one complete 6-digit PIN code for auto-completion.` };
+                return { valid: false, error: `Incomplete PIN codes: ${incompletePins.join(', ')}. Please provide at least one complete 6-digit PIN code (e.g., 400012) for auto-completion.` };
             }
             
             // Allow if we have at least one valid PIN, or incomplete PINs with a valid one (backend will auto-complete)
-            return { valid: true };
+            // This is the smart PIN code feature - incomplete PINs will be auto-completed by the backend
+            if (validPins.length > 0 || incompletePins.length > 0) {
+                return { valid: true };
+            }
+            
+            return { valid: false, error: 'Please enter at least one PIN code' };
         }
         
         /**
