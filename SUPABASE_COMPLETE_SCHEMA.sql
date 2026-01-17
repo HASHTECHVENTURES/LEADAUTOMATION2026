@@ -437,8 +437,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE OR REPLACE VIEW index_usage_stats AS
 SELECT 
     schemaname,
-    tablename,
-    indexname,
+    relname as tablename,
+    indexrelname as indexname,
     idx_scan as index_scans,
     idx_tup_read as tuples_read,
     idx_tup_fetch as tuples_fetched,
@@ -451,14 +451,14 @@ ORDER BY idx_scan DESC;
 CREATE OR REPLACE VIEW table_sizes AS
 SELECT 
     schemaname,
-    tablename,
-    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as total_size,
-    pg_size_pretty(pg_relation_size(schemaname||'.'||tablename)) as table_size,
-    pg_size_pretty(pg_indexes_size(schemaname||'.'||tablename)) as indexes_size,
+    relname as tablename,
+    pg_size_pretty(pg_total_relation_size(schemaname||'.'||relname)) as total_size,
+    pg_size_pretty(pg_relation_size(schemaname||'.'||relname)) as table_size,
+    pg_size_pretty(pg_indexes_size(schemaname||'.'||relname)) as indexes_size,
     n_live_tup as row_count
 FROM pg_stat_user_tables
 WHERE schemaname = 'public'
-ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
+ORDER BY pg_total_relation_size(schemaname||'.'||relname) DESC;
 
 -- ============================================
 -- 8. INITIAL SETUP
