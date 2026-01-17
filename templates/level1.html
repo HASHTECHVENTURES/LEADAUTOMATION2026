@@ -1042,7 +1042,7 @@
         }
         
         /**
-         * Validate PIN code
+         * Validate PIN code (allows incomplete PIN codes for auto-completion)
          */
         function validatePinCode(pin) {
             if (!pin || pin.trim().length === 0) {
@@ -1055,12 +1055,32 @@
                 return { valid: false, error: 'At least one PIN code is required' };
             }
             
-            const invalidPins = pins.filter(p => !/^\d{6}$/.test(p));
+            // Separate into valid (6 digits), incomplete (numeric but < 6 digits), and invalid
+            const validPins = [];
+            const incompletePins = [];
+            const invalidPins = [];
             
+            pins.forEach(p => {
+                if (/^\d{6}$/.test(p)) {
+                    validPins.push(p);
+                } else if (/^\d+$/.test(p) && p.length < 6) {
+                    incompletePins.push(p);
+                } else {
+                    invalidPins.push(p);
+                }
+            });
+            
+            // If there are invalid (non-numeric) PIN codes, reject them
             if (invalidPins.length > 0) {
-                return { valid: false, error: `Invalid PIN codes: ${invalidPins.join(', ')}. PIN codes must be 6 digits.` };
+                return { valid: false, error: `Invalid PIN codes: ${invalidPins.join(', ')}. PIN codes must be numeric.` };
             }
             
+            // If there are incomplete PIN codes but no valid 6-digit PIN, warn but allow (backend will handle)
+            if (incompletePins.length > 0 && validPins.length === 0) {
+                return { valid: false, error: `Incomplete PIN codes: ${incompletePins.join(', ')}. Please provide at least one complete 6-digit PIN code for auto-completion.` };
+            }
+            
+            // Allow if we have at least one valid PIN, or incomplete PINs with a valid one (backend will auto-complete)
             return { valid: true };
         }
         
