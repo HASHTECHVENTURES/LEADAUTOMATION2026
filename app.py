@@ -586,10 +586,10 @@ def level2_process():
         total_contacts = sum(len(c.get('people', [])) for c in enriched_companies)
         
         # IMPORTANT: Wait for webhook to receive phone numbers before returning
-        # Poll database to check if phone numbers have arrived via webhook
-        print(f"  ⏳ Waiting for webhook to deliver phone numbers...")
-        max_wait_time = 30  # Wait up to 30 seconds for webhooks
-        wait_interval = 2  # Check every 2 seconds
+        # Don't show contacts until ALL phone numbers arrive
+        print(f"  ⏳ Waiting for webhook to deliver ALL phone numbers...")
+        max_wait_time = 60  # Wait up to 60 seconds for webhooks
+        wait_interval = 3  # Check every 3 seconds
         waited = 0
         
         # Get all contact emails that were just saved
@@ -599,19 +599,28 @@ def level2_process():
                 if person.get('email'):
                     contact_emails.append(person.get('email'))
         
-        # Poll for phone numbers
+        # Poll for phone numbers - wait for ALL contacts to have phone numbers
+        phones_received = 0
+        total_contacts_to_check = len(contact_emails)
+        
         while waited < max_wait_time and contact_emails:
             try:
                 # Check if phone numbers have arrived in database
                 supabase = get_supabase_client()
-                response = supabase.client.table('level2_contacts').select('email, phone_number').in_('email', contact_emails[:100]).execute()
-                contacts_with_phones = [c for c in (response.data or []) if c.get('phone_number')]
+                # Check in batches of 100
+                for i in range(0, len(contact_emails), 100):
+                    batch_emails = contact_emails[i:i+100]
+                    response = supabase.client.table('level2_contacts').select('email, phone_number').in_('email', batch_emails).execute()
+                    contacts_with_phones = [c for c in (response.data or []) if c.get('phone_number')]
+                    phones_received += len(contacts_with_phones)
                 
-                if len(contacts_with_phones) >= len(contact_emails) * 0.5:  # At least 50% have phones
-                    print(f"  ✅ Phone numbers received via webhook: {len(contacts_with_phones)}/{len(contact_emails)}")
+                # Wait until ALL contacts have phone numbers (or timeout)
+                if phones_received >= total_contacts_to_check:
+                    print(f"  ✅ ALL phone numbers received via webhook: {phones_received}/{total_contacts_to_check}")
                     break
                 
-                print(f"  ⏳ Waiting for phone numbers... ({waited}s/{max_wait_time}s) - {len(contacts_with_phones)}/{len(contact_emails)} received")
+                print(f"  ⏳ Waiting for phone numbers... ({waited}s/{max_wait_time}s) - {phones_received}/{total_contacts_to_check} received")
+                phones_received = 0  # Reset for next check
                 time.sleep(wait_interval)
                 waited += wait_interval
             except Exception as e:
@@ -620,6 +629,7 @@ def level2_process():
         
         if waited >= max_wait_time:
             print(f"  ⚠️  Timeout waiting for phone numbers. Some may arrive later via webhook.")
+            print(f"  📞 Received {phones_received}/{total_contacts_to_check} phone numbers")
         
         # Get the last processed company name for progress display
         if enriched_companies:

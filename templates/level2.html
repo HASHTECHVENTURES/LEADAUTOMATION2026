@@ -1913,13 +1913,53 @@
                 }
             }
             
-            // Load contacts AFTER webhook has delivered phone numbers
-            // Wait a bit for webhook to process, then load contacts
-            document.getElementById('progressStatus').textContent = 'Waiting for phone numbers from Apollo.io...';
+            // Load contacts AFTER webhook has delivered ALL phone numbers
+            // Show lazy loading indicator while waiting
+            document.getElementById('progressStatus').textContent = 'Waiting for phone numbers from Apollo.io webhook...';
+            document.getElementById('progressText').textContent = 'Receiving phone numbers...';
             
-            // Wait 5 seconds for webhooks to arrive, then load contacts
-            await new Promise(r => setTimeout(r, 5000));
+            // Poll backend to check if phone numbers have arrived
+            let phonesReady = false;
+            let pollCount = 0;
+            const maxPolls = 20; // Poll for up to 60 seconds (20 * 3 seconds)
             
+            while (!phonesReady && pollCount < maxPolls) {
+                await new Promise(r => setTimeout(r, 3000)); // Wait 3 seconds between polls
+                pollCount++;
+                
+                try {
+                    // Check if contacts have phone numbers
+                    const checkRes = await fetch(`/api/level2/contacts?project_name=${encodeURIComponent(currentProject)}`);
+                    const checkData = await checkRes.json();
+                    const checkContacts = checkData.contacts || [];
+                    
+                    // Count contacts with phone numbers
+                    const contactsWithPhone = checkContacts.filter(c => c.phone || c.phone_number).length;
+                    const totalContacts = checkContacts.length;
+                    
+                    // Update progress
+                    const phonePercent = totalContacts > 0 ? Math.round((contactsWithPhone / totalContacts) * 100) : 0;
+                    document.getElementById('progressFill').style.width = phonePercent + '%';
+                    document.getElementById('progressPercent').textContent = phonePercent + '%';
+                    document.getElementById('progressText').textContent = `Phone numbers: ${contactsWithPhone}/${totalContacts}`;
+                    document.getElementById('progressStatus').textContent = `Waiting for webhook... (${pollCount * 3}s)`;
+                    
+                    // If ALL contacts have phone numbers, we're ready
+                    if (totalContacts > 0 && contactsWithPhone >= totalContacts) {
+                        phonesReady = true;
+                        console.log(`✅ All ${totalContacts} contacts have phone numbers!`);
+                        break;
+                    }
+                } catch (e) {
+                    console.error('Error checking phone numbers:', e);
+                }
+            }
+            
+            if (!phonesReady) {
+                console.log('⚠️ Timeout waiting for phone numbers. Loading contacts anyway...');
+            }
+            
+            // Now load contacts (phone numbers should be included)
             try {
                 const res = await fetch(`/api/level2/contacts?project_name=${encodeURIComponent(currentProject)}`);
                 const data = await res.json();
