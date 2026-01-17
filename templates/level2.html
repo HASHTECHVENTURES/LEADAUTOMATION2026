@@ -2121,50 +2121,7 @@
             window.location.href = '/level3?batch=' + encodeURIComponent(currentBatchName);
         });
         
-        // Lazy loading: Enrich phone numbers in parallel after contacts are loaded
-        async function enrichPhoneNumbersParallel() {
-            if (!contacts || contacts.length === 0) return;
-            
-            // Get contacts without phone numbers
-            const contactsWithoutPhone = contacts.filter(c => !c.phone && !c.phone_number && c.email);
-            
-            if (contactsWithoutPhone.length === 0) {
-                console.log('✅ All contacts already have phone numbers');
-                return;
-            }
-            
-            console.log(`🔄 Enriching phone numbers for ${contactsWithoutPhone.length} contacts in parallel...`);
-            
-            // Extract contact IDs and emails
-            const contactIds = contactsWithoutPhone.map(c => c.id).filter(id => id);
-            const contactEmails = contactsWithoutPhone.map(c => c.email).filter(email => email);
-            
-            if (contactIds.length === 0 && contactEmails.length === 0) {
-                return;
-            }
-            
-            try {
-                // Make parallel request to enrich phones
-                const res = await fetch('/api/level2/enrich-phones', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contact_ids: contactIds,
-                        contact_emails: contactEmails
-                    })
-                });
-                
-                const data = await res.json();
-                
-                if (data.success) {
-                    console.log(`✅ Phone enrichment requests sent. Numbers will arrive via webhook.`);
-                    // Note: Phone numbers will be updated via webhook
-                    // User can refresh page to see updated numbers
-                }
-            } catch (e) {
-                console.error('Error enriching phone numbers:', e);
-            }
-        }
+        // Phone numbers now come via webhook during processing - no need for separate enrichment
         
         // Init
         loadProjects();
