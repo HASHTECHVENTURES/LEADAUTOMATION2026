@@ -524,10 +524,11 @@ class ApolloClient:
             response = None
             for payload in payloads_to_try:
                 try:
-                    response = requests.post(url, json=payload, headers=self.headers)
+                    response = requests.post(url, json=payload, headers=self.headers, timeout=10)
                     if response.status_code == 200:
                         break
-                except:
+                except Exception as e:
+                    print(f"    ⚠️  people/match request exception: {str(e)}")
                     continue
             
             if response and response.status_code == 200:
@@ -548,7 +549,11 @@ class ApolloClient:
                         'source': 'apollo'
                     }
             else:
-                print(f"    ⚠️  people/match failed (status {response.status_code if response else 'None'}), trying GET /people/{person_id}")
+                status_msg = response.status_code if response else 'No response (request failed)'
+                if response:
+                    print(f"    ⚠️  people/match failed (status {response.status_code}): {response.text[:200]}")
+                else:
+                    print(f"    ⚠️  people/match failed: No response received, trying GET /people/{person_id}")
                 # METHOD 2: If match fails, try to get person by ID directly
                 # Note: GET endpoint might not support webhook, but try anyway
                 import os
@@ -567,10 +572,11 @@ class ApolloClient:
                 response2 = None
                 for params in params_list:
                     try:
-                        response2 = requests.get(url2, headers=self.headers, params=params)
+                        response2 = requests.get(url2, headers=self.headers, params=params, timeout=10)
                         if response2.status_code == 200:
                             break
-                    except:
+                    except Exception as e:
+                        print(f"    ⚠️  GET /people/{person_id} request exception: {str(e)}")
                         continue
                 
                 if response2 and response2.status_code == 200:
