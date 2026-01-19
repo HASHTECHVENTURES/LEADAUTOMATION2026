@@ -409,9 +409,19 @@ def level1_search():
                 return
             except Exception as e:
                 error_msg = str(e)
-                print(f"Error in search stream: {error_msg}")
+                logger.error(f"❌ Error in Level 1 search stream: {error_msg}")
+                import traceback
+                traceback.print_exc()
+                
+                # Clean error message - remove Python internals
+                clean_error = error_msg
+                if 'logger' in clean_error.lower() or 'NameError' in clean_error:
+                    clean_error = "An internal error occurred. Please try again or contact support."
+                if 'Traceback' in clean_error or 'File "' in clean_error:
+                    clean_error = "An error occurred during processing. Please try again."
+                
                 try:
-                    yield f"data: {json.dumps({'type': 'error', 'data': {'error': error_msg}})}\n\n"
+                    yield f"data: {json.dumps({'type': 'error', 'data': {'error': clean_error}})}\n\n"
                 except (BrokenPipeError, ConnectionResetError, GeneratorExit):
                     return
             finally:
