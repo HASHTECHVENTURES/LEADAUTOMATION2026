@@ -308,8 +308,16 @@ def level1_search():
                     
                     save_result = get_supabase_client().save_level1_results(companies, search_params)
                     if save_result.get('success'):
-                        print(f"✅ Saved {save_result.get('count')} companies to Supabase for project: '{project_name}'")
-                        logger.info(f"✅ Saved {save_result.get('count')} companies to Supabase for project: '{project_name}'")
+                        saved_count = save_result.get('count', 0)
+                        print(f"✅ Saved {saved_count} companies to Supabase for project: '{project_name}'")
+                        logger.info(f"✅ Saved {saved_count} companies to Supabase for project: '{project_name}'")
+                        
+                        # Double-check: if count is 0, that's a problem
+                        if saved_count == 0:
+                            error_msg = f"No companies were saved to database for project '{project_name}'"
+                            print(f"❌ {error_msg}")
+                            logger.error(f"❌ {error_msg}")
+                            raise Exception(error_msg)
                     else:
                         error_msg = save_result.get('error', 'Unknown error')
                         print(f"❌ Error saving to Supabase: {error_msg}")
