@@ -719,6 +719,41 @@
                         </div>
                     </div>
                     
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="fas fa-user-tie" style="margin-right: 6px; color: var(--primary);"></i>
+                                Designation / Job Title
+                            </label>
+                            <input type="text" class="form-input" id="designationInput" placeholder="e.g., CEO, HR Manager, Director">
+                            <div class="form-hint">
+                                <i class="fas fa-info-circle"></i>
+                                Enter job titles to search for (comma-separated)
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="fas fa-users" style="margin-right: 6px; color: var(--primary);"></i>
+                                Employee Range
+                            </label>
+                            <select class="form-input" id="employeeRangeSelect">
+                                <option value="">All Company Sizes</option>
+                                <option value="1-10">1 to 10 employees</option>
+                                <option value="10-50">10 to 50 employees</option>
+                                <option value="50-100">50 to 100 employees</option>
+                                <option value="100-250">100 to 250 employees</option>
+                                <option value="250-500">250 to 500 employees</option>
+                                <option value="500-1000">500 to 1000 employees</option>
+                                <option value="1000-5000">1000 to 5000 employees</option>
+                                <option value="5000+">5000 and above</option>
+                            </select>
+                            <div class="form-hint">
+                                <i class="fas fa-info-circle"></i>
+                                Filter companies by employee count
+                            </div>
+                        </div>
+                    </div>
+                    
                     <div style="display: flex; gap: 12px;">
                         <button type="submit" class="btn btn-primary" style="flex: 1;" id="searchBtn">
                             <i class="fas fa-search"></i>
@@ -1350,6 +1385,12 @@
                 
                 if (data.pin_codes) document.getElementById('pinCode').value = data.pin_codes;
                 if (data.industry) document.getElementById('industry').value = data.industry;
+                if (data.designation && document.getElementById('designationInput')) {
+                    document.getElementById('designationInput').value = data.designation;
+                }
+                if (data.employee_range && document.getElementById('employeeRangeSelect')) {
+                    document.getElementById('employeeRangeSelect').value = data.employee_range;
+                }
                 
                 if (data.companies && data.companies.length > 0) {
                     companies = data.companies;
@@ -1599,6 +1640,8 @@
             const pinCode = document.getElementById('pinCode').value.trim();
             const industry = document.getElementById('industry').value.trim();
             const maxCompanies = document.getElementById('maxCompanies').value;
+            const designation = document.getElementById('designationInput')?.value.trim() || '';
+            const employeeRange = document.getElementById('employeeRangeSelect')?.value.trim() || '';
             
             // Validate inputs
             const pinValidation = validatePinCode(pinCode);
@@ -1636,7 +1679,9 @@
                         project_name: currentProject,
                         pin_code: pinCode,
                         industry: industry,
-                        max_companies: parseInt(maxCompanies)
+                        max_companies: parseInt(maxCompanies),
+                        designation: designation,
+                        employee_range: employeeRange
                     })
                 }, 3, 1000);
                 
