@@ -2079,13 +2079,26 @@
         });
         
         // Poll for phone numbers in background - they'll update automatically via webhook
+        let phonePollInterval = null; // Track polling interval to prevent duplicates
+        
         async function pollForPhoneNumbers() {
             if (!contacts || contacts.length === 0) return;
+            if (!currentProject) {
+                console.warn('⚠️ Cannot poll for phone numbers: no project selected');
+                return;
+            }
+            
+            // Clear any existing polling interval
+            if (phonePollInterval) {
+                clearInterval(phonePollInterval);
+                phonePollInterval = null;
+            }
             
             let pollCount = 0;
             const maxPolls = 10; // Poll for up to 30 seconds (10 * 3 seconds)
+            let previousPhoneCount = contacts.filter(c => c.phone || c.phone_number).length;
             
-            const pollInterval = setInterval(async () => {
+            phonePollInterval = setInterval(async () => {
                 pollCount++;
                 
                 try {
@@ -2098,23 +2111,29 @@
                     const contactsWithPhone = updatedContacts.filter(c => c.phone || c.phone_number).length;
                     const totalContacts = updatedContacts.length;
                     
-                    if (contactsWithPhone > 0) {
+                    // Only update if phone count increased (new numbers arrived)
+                    if (contactsWithPhone > previousPhoneCount) {
                         // Update contacts data and re-render
                         contacts = updatedContacts;
                         renderContacts();
-                        console.log(`📞 Phone numbers updated: ${contactsWithPhone}/${totalContacts} contacts now have phones`);
+                        console.log(`📞 Phone numbers updated: ${contactsWithPhone}/${totalContacts} contacts now have phones (+${contactsWithPhone - previousPhoneCount} new)`);
+                        previousPhoneCount = contactsWithPhone;
                     }
                     
                     // Stop polling after max attempts or if all have phones
                     if (pollCount >= maxPolls || (totalContacts > 0 && contactsWithPhone >= totalContacts)) {
-                        clearInterval(pollInterval);
+                        clearInterval(phonePollInterval);
+                        phonePollInterval = null;
                         if (contactsWithPhone >= totalContacts) {
                             console.log(`✅ All ${totalContacts} contacts now have phone numbers!`);
+                        } else {
+                            console.log(`⏱️ Stopped polling after ${pollCount * 3} seconds. ${contactsWithPhone}/${totalContacts} contacts have phones.`);
                         }
                     }
                 } catch (e) {
                     console.error('Error polling for phone numbers:', e);
-                    clearInterval(pollInterval);
+                    clearInterval(phonePollInterval);
+                    phonePollInterval = null;
                 }
             }, 3000); // Poll every 3 seconds
         }

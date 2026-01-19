@@ -151,16 +151,31 @@ class SupabaseClient:
             
             logger.info(f"✅ Saved {total_saved} companies to Supabase for project: '{project_name}' (Errors: {error_count})")
             
-            # Verify the save by checking if project exists
-            verify_response = self.client.table('level1_companies').select('project_name').eq('project_name', project_name).limit(1).execute()
-            if verify_response.data:
-                count_response = self.client.table('level1_companies').select('id', count='exact').eq('project_name', project_name).execute()
-                project_count = count_response.count if hasattr(count_response, 'count') else len(verify_response.data)
-                logger.info(f"✅ Verified: Project '{project_name}' exists in database with {project_count} companies")
-            else:
-                logger.warning(f"⚠️  Warning: Could not verify project '{project_name}' in database after save")
+            # Verify the save by checking if project exists and count matches
+            try:
+                verify_response = self.client.table('level1_companies').select('id', count='exact').eq('project_name', project_name).execute()
+                actual_count = verify_response.count if hasattr(verify_response, 'count') else len(verify_response.data) if verify_response.data else 0
+                
+                if actual_count > 0:
+                    logger.info(f"✅ Verified: Project '{project_name}' exists in database with {actual_count} companies")
+                else:
+                    logger.error(f"❌ CRITICAL: Project '{project_name}' NOT found in database after save attempt!")
+                    return {'success': False, 'error': f'Companies were not saved to database. Saved count: {total_saved}, Actual count: {actual_count}', 'count': 0}
+                
+                # If we saved companies but database shows 0, that's a failure
+                if total_saved > 0 and actual_count == 0:
+                    logger.error(f"❌ CRITICAL: Save reported success but database is empty for project '{project_name}'")
+                    return {'success': False, 'error': 'Companies were not saved to database', 'count': 0}
+                    
+            except Exception as verify_error:
+                logger.error(f"❌ Error verifying save: {str(verify_error)}")
+                # Don't fail if verification fails, but log it
             
-            return {'success': True, 'count': total_saved, 'inserted': inserted_count, 'updated': updated_count, 'errors': error_count}
+            # Only return success if we actually saved something
+            if total_saved == 0 and error_count > 0:
+                return {'success': False, 'error': f'Failed to save any companies. {error_count} errors occurred.', 'count': 0}
+            
+            return {'success': True, 'count': total_saved, 'errors': error_count}
             
         except Exception as e:
             logger.error(f"❌ Error saving Level 1 results to Supabase: {str(e)}")
