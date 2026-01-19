@@ -41,74 +41,198 @@ class SupabaseClient:
         Save Level 1 company search results to Supabase
         """
         try:
-            project_name = search_params.get('project_name', '')
+            project_name = search_params.get('project_name', '').strip()
             pin_codes = search_params.get('pin_codes', '')
             industry = search_params.get('industry', '')
             timestamp = search_params.get('timestamp', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
             
+            # Validate project_name before processing (required field)
+            if not project_name:
+                logger.error(f"❌ Invalid project_name: '{project_name}' - cannot be empty")
+                return {'success': False, 'error': 'Project name is required and cannot be empty', 'count': 0}
+            
             # Prepare data for insertion
             records = []
+            skipped_invalid = 0
             for company in companies:
+                company_name = company.get('company_name', '').strip()
+                
+                # Validate company_name (required field)
+                if not company_name:
+                    logger.warning(f"⚠️  Skipping company with empty company_name")
+                    skipped_invalid += 1
+                    continue
+                    
+                if not company_name:
+                    logger.warning(f"⚠️  Skipping company with empty company_name")
+                    skipped_invalid += 1
+                    continue
+                
+                # Handle place_id: use None instead of empty string for UNIQUE constraint
+                place_id = company.get('place_id', '') or None
+                if place_id:
+                    place_id = place_id.strip()
+                    if not place_id:
+                        place_id = None
+                
                 record = {
-                    'project_name': project_name,
-                    'company_name': company.get('company_name', ''),
-                    'website': company.get('website', ''),
-                    'phone': company.get('phone', ''),
-                    'address': company.get('address', ''),
-                    'industry': industry,  # User's search industry
-                    'place_type': company.get('place_type', ''),  # Google's detected category
-                    'pin_code': company.get('pin_code', ''),
-                    'pin_codes_searched': pin_codes,
+                    'project_name': project_name.strip(),
+                    'company_name': company_name,
+                    'website': company.get('website', '') or '',
+                    'phone': company.get('phone', '') or '',
+                    'address': company.get('address', '') or '',
+                    'industry': industry or '',  # User's search industry
+                    'place_type': company.get('place_type', '') or '',  # Google's detected category
+                    'pin_code': company.get('pin_code', '') or '',
+                    'pin_codes_searched': pin_codes or '',
                     'search_date': timestamp,
-                    'place_id': company.get('place_id', ''),
-                    'business_status': company.get('business_status', ''),
+                    'place_id': place_id,  # None if missing (allows multiple NULLs in UNIQUE constraint)
+                    'business_status': company.get('business_status', '') or '',
                     'selected_for_level2': False,
                     'created_at': datetime.now().isoformat()
                 }
                 records.append(record)
             
+            if skipped_invalid > 0:
+                logger.warning(f"⚠️  Skipped {skipped_invalid} invalid companies (missing required fields)")
+            
             # Insert into Supabase (table name: level1_companies)
             if not records:
-                logger.warning(f"⚠️  No records to insert for project: {project_name}")
-                return {'success': False, 'error': 'No companies to save', 'count': 0}
+                logger.warning(f"⚠️  No valid records to insert for project: {project_name}")
+                return {'success': False, 'error': 'No valid companies to save', 'count': 0}
             
             logger.info(f"🔄 Inserting {len(records)} companies to Supabase for project: '{project_name}'")
             
             # Handle duplicates: Use upsert to update existing records or insert new ones
             # Process in batches to avoid timeout
+            # Separate records with place_id from those without (None or empty)
+            records_with_place_id = [r for r in records if r.get('place_id')]
+            records_without_place_id = [r for r in records if not r.get('place_id')]
+            
+            logger.info(f"📊 Records breakdown: {len(records_with_place_id)} with place_id, {len(records_without_place_id)} without place_id")
+            
             batch_size = 50
             total_saved = 0
             error_count = 0
             
-            for i in range(0, len(records), batch_size):
-                batch = records[i:i + batch_size]
+            # Process records with place_id using upsert
+            all_batches = []
+            for i in range(0, len(records_with_place_id), batch_size):
+                all_batches.append(records_with_place_id[i:i + batch_size])
+            
+            # Process records without place_id individually (they can't use place_id for conflict resolution)
+            for record in records_without_place_id:
+                all_batches.append([record])
+            
+            for batch_idx, batch in enumerate(all_batches, 1):
                 try:
-                    # Use upsert with on_conflict to handle duplicates
-                    # This will update existing records or insert new ones
-                    response = (
-                        self.client.table('level1_companies')
-                        .upsert(batch, on_conflict='place_id', ignore_duplicates=False)
-                        .execute()
-                    )
+                    # Check if this batch has place_ids
+                    has_place_ids = any(r.get('place_id') for r in batch)
                     
-                    if response.data:
-                        total_saved += len(response.data)
-                        logger.info(f"✅ Processed batch {i//batch_size + 1}: {len(response.data)} companies")
+                    if has_place_ids:
+                        # Use upsert with on_conflict for records with place_id
+                        response = (
+                            self.client.table('level1_companies')
+                            .upsert(batch, on_conflict='place_id', ignore_duplicates=False)
+                            .execute()
+                        )
+                        
+                        if response.data:
+                            total_saved += len(response.data)
+                            logger.info(f"✅ Processed batch {batch_idx}: {len(response.data)} companies (with place_id)")
+                        else:
+                            # If no data returned but no error, assume success
+                            total_saved += len(batch)
                     else:
-                        # If no data returned but no error, assume success
-                        total_saved += len(batch)
+                        # For records without place_id, insert directly
+                        # If duplicate, it will fail and we'll handle it individually
+                        for record in batch:
+                            try:
+                                response = (
+                                    self.client.table('level1_companies')
+                                    .insert(record)
+                                    .execute()
+                                )
+                                if response.data:
+                                    total_saved += 1
+                                    logger.info(f"✅ Inserted company without place_id: {record.get('company_name', 'Unknown')}")
+                            except Exception as insert_error:
+                                error_msg = str(insert_error)
+                                # If it's a duplicate or constraint violation, try to update by company_name + project_name
+                                if 'duplicate' in error_msg.lower() or '23505' in error_msg or 'unique' in error_msg.lower():
+                                    logger.info(f"⚠️  Company already exists, updating: {record.get('company_name', 'Unknown')}")
+                                    try:
+                                        # Try to update existing record by company_name and project_name
+                                        update_response = (
+                                            self.client.table('level1_companies')
+                                            .update({
+                                                'industry': industry,
+                                                'pin_codes_searched': pin_codes,
+                                                'search_date': timestamp,
+                                                'website': record.get('website', ''),
+                                                'phone': record.get('phone', ''),
+                                                'address': record.get('address', ''),
+                                                'updated_at': datetime.now().isoformat()
+                                            })
+                                            .eq('company_name', record.get('company_name', ''))
+                                            .eq('project_name', project_name)
+                                            .execute()
+                                        )
+                                        if update_response.data:
+                                            total_saved += 1
+                                    except Exception as update_error:
+                                        logger.warning(f"⚠️  Could not update company {record.get('company_name', 'Unknown')}: {str(update_error)}")
+                                        error_count += 1
+                                else:
+                                    logger.error(f"❌ Error inserting company without place_id: {error_msg}")
+                                    error_count += 1
+                            except Exception as e:
+                                logger.error(f"❌ Unexpected error with record: {str(e)}")
+                                error_count += 1
                         
                 except Exception as batch_error:
                     error_msg = str(batch_error)
-                    logger.error(f"❌ Error in batch {i//batch_size + 1}: {error_msg}")
+                    logger.error(f"❌ Error in batch {batch_idx}: {error_msg}")
                     
                     # If upsert fails, try individual inserts/updates
                     if 'duplicate key' in error_msg.lower() or '23505' in error_msg:
-                        logger.info(f"⚠️  Handling duplicates individually in batch {i//batch_size + 1}...")
+                        logger.info(f"⚠️  Handling duplicates individually in batch {batch_idx}...")
                         for record in batch:
                             try:
                                 place_id = record.get('place_id')
                                 if not place_id:
+                                    # Handle records without place_id
+                                    try:
+                                        # Try to update by company_name + project_name
+                                        update_response = (
+                                            self.client.table('level1_companies')
+                                            .update({
+                                                'industry': industry,
+                                                'pin_codes_searched': pin_codes,
+                                                'search_date': timestamp,
+                                                'website': record.get('website', ''),
+                                                'phone': record.get('phone', ''),
+                                                'address': record.get('address', ''),
+                                                'updated_at': datetime.now().isoformat()
+                                            })
+                                            .eq('company_name', record.get('company_name', ''))
+                                            .eq('project_name', project_name)
+                                            .execute()
+                                        )
+                                        if update_response.data:
+                                            total_saved += 1
+                                        else:
+                                            # If no existing record, insert new one
+                                            insert_response = (
+                                                self.client.table('level1_companies')
+                                                .insert(record)
+                                                .execute()
+                                            )
+                                            if insert_response.data:
+                                                total_saved += 1
+                                    except Exception as no_place_id_error:
+                                        logger.error(f"❌ Error with record without place_id: {str(no_place_id_error)}")
+                                        error_count += 1
                                     continue
                                     
                                 # Check if exists
