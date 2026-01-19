@@ -875,53 +875,55 @@
                 <span class="card-title"><i class="fas fa-building"></i> Companies</span>
                 <span class="badge badge-primary" id="companiesCount">0 selected</span>
             </div>
+            <!-- Preview Companies Button -->
             <div class="card-body" style="border-bottom: 1px solid var(--gray-100); padding: 16px;">
-                <div class="action-bar" style="display: flex; gap: 12px;">
-                    <button class="btn btn-danger" id="deleteUnselectedBtn" style="display: none; flex: 1;">
-                        <i class="fas fa-trash"></i>
-                        Delete Unselected
-                    </button>
-                    <button class="btn btn-success" id="exportBtn" style="flex: 1;">
-                        <i class="fas fa-file-excel"></i>
-                        Export to Excel
-                    </button>
+                <button class="btn btn-secondary" id="toggleCompaniesBtn" style="width: 100%;">
+                    <i class="fas fa-eye"></i>
+                    <span id="toggleCompaniesText">Preview Level 1 Companies</span>
+                    <i class="fas fa-chevron-down" id="toggleCompaniesIcon" style="margin-left: 8px;"></i>
+                </button>
+            </div>
+            <!-- Companies Table Container (Hidden by default) -->
+            <div id="companiesTableContainer" style="display: none;">
+                <div class="card-body" style="border-bottom: 1px solid var(--gray-100); padding: 16px;">
+                    <div class="action-bar" style="display: flex; gap: 12px;">
+                        <button class="btn btn-danger" id="deleteUnselectedBtn" style="display: none; flex: 1;">
+                            <i class="fas fa-trash"></i>
+                            Delete Unselected
+                        </button>
+                        <button class="btn btn-success" id="exportBtn" style="flex: 1;">
+                            <i class="fas fa-file-excel"></i>
+                            Export to Excel
+                        </button>
+                    </div>
                 </div>
-            </div>
-            <div class="card-body" style="padding: 0; width: 100%;">
-                <div class="table-container" style="width: 100%;">
-                    <table class="company-table" style="width: 100%;">
-                    <thead>
-                        <tr>
-                                <th style="width: 50px;"><input type="checkbox" class="company-checkbox" id="selectAllCompanies"></th>
-                                <th data-sort="company_name">Company <i class="fas fa-sort sort-icon"></i></th>
-                                <th data-sort="website">Website <i class="fas fa-sort sort-icon"></i></th>
-                                <th data-sort="address">Address <i class="fas fa-sort sort-icon"></i></th>
-                                <th data-sort="phone">Phone <i class="fas fa-sort sort-icon"></i></th>
-                                <th data-sort="industry">Industry <i class="fas fa-sort sort-icon"></i></th>
-                                <th data-sort="pin_code">Location <i class="fas fa-sort sort-icon"></i></th>
-                        </tr>
-                    </thead>
-                        <tbody id="companiesTable">
-                            <!-- Skeleton loading -->
-                            <tr class="skeleton-row"><td colspan="7"><div class="skeleton skeleton-text"></div></td></tr>
-                            <tr class="skeleton-row"><td colspan="7"><div class="skeleton skeleton-text"></div></td></tr>
-                            <tr class="skeleton-row"><td colspan="7"><div class="skeleton skeleton-text"></div></td></tr>
-                        </tbody>
-                </table>
-            </div>
+                <div class="card-body" style="padding: 0; width: 100%;">
+                    <div class="table-container" style="width: 100%;">
+                        <table class="company-table" style="width: 100%;">
+                        <thead>
+                            <tr>
+                                    <th style="width: 50px;"><input type="checkbox" class="company-checkbox" id="selectAllCompanies"></th>
+                                    <th data-sort="company_name">Company <i class="fas fa-sort sort-icon"></i></th>
+                                    <th data-sort="website">Website <i class="fas fa-sort sort-icon"></i></th>
+                                    <th data-sort="address">Address <i class="fas fa-sort sort-icon"></i></th>
+                                    <th data-sort="phone">Phone <i class="fas fa-sort sort-icon"></i></th>
+                                    <th data-sort="industry">Industry <i class="fas fa-sort sort-icon"></i></th>
+                                    <th data-sort="pin_code">Location <i class="fas fa-sort sort-icon"></i></th>
+                            </tr>
+                        </thead>
+                            <tbody id="companiesTable">
+                                <!-- Skeleton loading -->
+                                <tr class="skeleton-row"><td colspan="7"><div class="skeleton skeleton-text"></div></td></tr>
+                                <tr class="skeleton-row"><td colspan="7"><div class="skeleton skeleton-text"></div></td></tr>
+                                <tr class="skeleton-row"><td colspan="7"><div class="skeleton skeleton-text"></div></td></tr>
+                            </tbody>
+                    </table>
+                </div>
+                </div>
             </div>
             <div class="card-body" style="border-top: 1px solid var(--gray-100);">
-                <!-- Preview Search Settings Button -->
-                <div style="margin-bottom: 16px;">
-                    <button class="btn btn-secondary" id="toggleSearchSettingsBtn" style="width: 100%;">
-                        <i class="fas fa-eye"></i>
-                        <span id="toggleSearchSettingsText">Preview Search Options</span>
-                        <i class="fas fa-chevron-down" id="toggleSearchSettingsIcon" style="margin-left: 8px;"></i>
-                    </button>
-                </div>
-                
-                <!-- Search Settings (Hidden by default) -->
-                <div id="searchSettingsSection" style="display: none; margin-bottom: 20px; padding: 16px; background: var(--gray-50); border-radius: 12px;">
+                <!-- Search Settings (Always Visible) -->
+                <div style="margin-bottom: 20px; padding: 16px; background: var(--gray-50); border-radius: 12px;">
                     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
                         <i class="fas fa-cog" style="color: var(--primary);"></i>
                         <strong style="color: var(--gray-700);">Search Settings</strong>
@@ -1483,6 +1485,11 @@
         async function loadCompanies(projectName) {
             currentProject = projectName;
             companiesCard.style.display = 'block';
+            // Keep companies table hidden by default - user can preview if needed
+            const companiesTableContainer = document.getElementById('companiesTableContainer');
+            if (companiesTableContainer) {
+                companiesTableContainer.style.display = 'none';
+            }
             showTableSkeleton();
             
             try {
@@ -1889,20 +1896,20 @@
             }
         });
         
-        // Toggle Search Settings
-        document.getElementById('toggleSearchSettingsBtn').addEventListener('click', function() {
-            const searchSettingsSection = document.getElementById('searchSettingsSection');
-            const toggleText = document.getElementById('toggleSearchSettingsText');
-            const toggleIcon = document.getElementById('toggleSearchSettingsIcon');
+        // Toggle Companies Table
+        document.getElementById('toggleCompaniesBtn').addEventListener('click', function() {
+            const companiesTableContainer = document.getElementById('companiesTableContainer');
+            const toggleText = document.getElementById('toggleCompaniesText');
+            const toggleIcon = document.getElementById('toggleCompaniesIcon');
             
-            if (searchSettingsSection.style.display === 'none') {
-                searchSettingsSection.style.display = 'block';
-                toggleText.textContent = 'Hide Search Options';
+            if (companiesTableContainer.style.display === 'none') {
+                companiesTableContainer.style.display = 'block';
+                toggleText.textContent = 'Hide Level 1 Companies';
                 toggleIcon.classList.remove('fa-chevron-down');
                 toggleIcon.classList.add('fa-chevron-up');
             } else {
-                searchSettingsSection.style.display = 'none';
-                toggleText.textContent = 'Preview Search Options';
+                companiesTableContainer.style.display = 'none';
+                toggleText.textContent = 'Preview Level 1 Companies';
                 toggleIcon.classList.remove('fa-chevron-up');
                 toggleIcon.classList.add('fa-chevron-down');
             }
