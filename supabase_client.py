@@ -62,11 +62,6 @@ class SupabaseClient:
                     logger.warning(f"⚠️  Skipping company with empty company_name")
                     skipped_invalid += 1
                     continue
-                    
-                if not company_name:
-                    logger.warning(f"⚠️  Skipping company with empty company_name")
-                    skipped_invalid += 1
-                    continue
                 
                 # Handle place_id: use None instead of empty string for UNIQUE constraint
                 place_id = company.get('place_id', '') or None
@@ -102,6 +97,7 @@ class SupabaseClient:
                 return {'success': False, 'error': 'No valid companies to save', 'count': 0}
             
             logger.info(f"🔄 Inserting {len(records)} companies to Supabase for project: '{project_name}'")
+            logger.info(f"📋 First record sample: project_name='{records[0].get('project_name')}', company_name='{records[0].get('company_name')}', place_id={records[0].get('place_id')}")
             
             # Handle duplicates: Use upsert to update existing records or insert new ones
             # Process in batches to avoid timeout
@@ -131,18 +127,40 @@ class SupabaseClient:
                     
                     if has_place_ids:
                         # Use upsert with on_conflict for records with place_id
-                        response = (
-                            self.client.table('level1_companies')
-                            .upsert(batch, on_conflict='place_id', ignore_duplicates=False)
-                            .execute()
-                        )
-                        
-                        if response.data:
-                            total_saved += len(response.data)
-                            logger.info(f"✅ Processed batch {batch_idx}: {len(response.data)} companies (with place_id)")
-                        else:
-                            # If no data returned but no error, assume success
-                            total_saved += len(batch)
+                        try:
+                            response = (
+                                self.client.table('level1_companies')
+                                .upsert(batch, on_conflict='place_id', ignore_duplicates=False)
+                                .execute()
+                            )
+                            
+                            if response.data:
+                                total_saved += len(response.data)
+                                logger.info(f"✅ Processed batch {batch_idx}: {len(response.data)} companies (with place_id)")
+                            else:
+                                # Verify the save actually worked by checking the database
+                                logger.warning(f"⚠️  Upsert returned no data for batch {batch_idx}, verifying...")
+                                # Count how many were actually saved
+                                place_ids_in_batch = [r.get('place_id') for r in batch if r.get('place_id')]
+                                if place_ids_in_batch:
+                                    verify_query = self.client.table('level1_companies').select('id', count='exact')
+                                    for pid in place_ids_in_batch[:5]:  # Check first 5
+                                        verify_query = verify_query.or_(f'place_id.eq.{pid}')
+                                    verify_resp = verify_query.eq('project_name', project_name).execute()
+                                    verified_count = verify_resp.count if hasattr(verify_resp, 'count') else len(verify_resp.data) if verify_resp.data else 0
+                                    if verified_count > 0:
+                                        total_saved += len(batch)
+                                        logger.info(f"✅ Verified: {verified_count} companies saved in batch {batch_idx}")
+                                    else:
+                                        logger.error(f"❌ Batch {batch_idx} upsert failed - no companies found in database")
+                                        error_count += len(batch)
+                                else:
+                                    total_saved += len(batch)
+                                    logger.info(f"✅ Batch {batch_idx} processed (no place_ids to verify)")
+                        except Exception as upsert_error:
+                            error_msg = str(upsert_error)
+                            logger.error(f"❌ Upsert error in batch {batch_idx}: {error_msg}")
+                            raise  # Re-raise to trigger the error handling below
                     else:
                         # For records without place_id, insert directly
                         # If duplicate, it will fail and we'll handle it individually
@@ -156,6 +174,24 @@ class SupabaseClient:
                                 if response.data:
                                     total_saved += 1
                                     logger.info(f"✅ Inserted company without place_id: {record.get('company_name', 'Unknown')}")
+                                else:
+                                    # Verify the insert worked
+                                    logger.warning(f"⚠️  Insert returned no data for {record.get('company_name', 'Unknown')}, verifying...")
+                                    verify_resp = (
+                                        self.client.table('level1_companies')
+                                        .select('id', count='exact')
+                                        .eq('company_name', record.get('company_name', ''))
+                                        .eq('project_name', project_name)
+                                        .limit(1)
+                                        .execute()
+                                    )
+                                    verified = verify_resp.count if hasattr(verify_resp, 'count') else (len(verify_resp.data) if verify_resp.data else 0)
+                                    if verified > 0:
+                                        total_saved += 1
+                                        logger.info(f"✅ Verified: Company {record.get('company_name', 'Unknown')} was saved")
+                                    else:
+                                        logger.error(f"❌ Insert failed - company {record.get('company_name', 'Unknown')} not found in database")
+                                        error_count += 1
                             except Exception as insert_error:
                                 error_msg = str(insert_error)
                                 # If it's a duplicate or constraint violation, try to update by company_name + project_name
@@ -275,35 +311,74 @@ class SupabaseClient:
             
             logger.info(f"✅ Saved {total_saved} companies to Supabase for project: '{project_name}' (Errors: {error_count})")
             
-            # Verify the save by checking if project exists and count matches
+            # CRITICAL: Verify the save by checking if project exists and count matches
             try:
                 verify_response = self.client.table('level1_companies').select('id', count='exact').eq('project_name', project_name).execute()
-                actual_count = verify_response.count if hasattr(verify_response, 'count') else len(verify_response.data) if verify_response.data else 0
+                actual_count = verify_response.count if hasattr(verify_response, 'count') else (len(verify_response.data) if verify_response.data else 0)
                 
-                if actual_count > 0:
-                    logger.info(f"✅ Verified: Project '{project_name}' exists in database with {actual_count} companies")
-                else:
-                    logger.error(f"❌ CRITICAL: Project '{project_name}' NOT found in database after save attempt!")
-                    return {'success': False, 'error': f'Companies were not saved to database. Saved count: {total_saved}, Actual count: {actual_count}', 'count': 0}
+                logger.info(f"🔍 Verification: Found {actual_count} companies in database for project '{project_name}'")
                 
-                # If we saved companies but database shows 0, that's a failure
-                if total_saved > 0 and actual_count == 0:
-                    logger.error(f"❌ CRITICAL: Save reported success but database is empty for project '{project_name}'")
-                    return {'success': False, 'error': 'Companies were not saved to database', 'count': 0}
+                if actual_count == 0:
+                    # CRITICAL ERROR: Nothing was saved
+                    error_details = f"CRITICAL: Project '{project_name}' NOT found in database after save attempt! "
+                    error_details += f"Reported saved: {total_saved}, Actual count: {actual_count}, Errors: {error_count}"
+                    logger.error(f"❌ {error_details}")
+                    
+                    # Try to get more details about what went wrong
+                    try:
+                        # Check if any companies exist at all
+                        all_companies = self.client.table('level1_companies').select('project_name', count='exact').limit(1).execute()
+                        all_count = all_companies.count if hasattr(all_companies, 'count') else (len(all_companies.data) if all_companies.data else 0)
+                        logger.error(f"❌ Database has {all_count} total companies. Project '{project_name}' has 0.")
+                    except Exception as debug_error:
+                        logger.error(f"❌ Could not debug: {str(debug_error)}")
+                    
+                    return {'success': False, 'error': error_details, 'count': 0}
+                
+                # If we reported saving companies but database shows fewer, that's suspicious
+                if total_saved > 0 and actual_count < total_saved:
+                    logger.warning(f"⚠️  Discrepancy: Reported {total_saved} saved, but database shows {actual_count}")
+                    # Still return success but with warning
+                    return {'success': True, 'count': actual_count, 'errors': error_count, 'warning': f'Expected {total_saved} but found {actual_count} in database'}
+                
+                logger.info(f"✅ Verified: Project '{project_name}' exists in database with {actual_count} companies")
                     
             except Exception as verify_error:
-                logger.error(f"❌ Error verifying save: {str(verify_error)}")
-                # Don't fail if verification fails, but log it
+                error_msg = f"Error verifying save: {str(verify_error)}"
+                logger.error(f"❌ {error_msg}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                # If verification fails, we can't confirm the save worked
+                if total_saved > 0:
+                    logger.warning(f"⚠️  Cannot verify save, but {total_saved} companies were reported as saved")
+                    return {'success': True, 'count': total_saved, 'errors': error_count, 'warning': 'Could not verify save in database'}
+                else:
+                    return {'success': False, 'error': f'Could not verify save and no companies were reported as saved. Verification error: {error_msg}', 'count': 0}
             
             # Only return success if we actually saved something
-            if total_saved == 0 and error_count > 0:
-                return {'success': False, 'error': f'Failed to save any companies. {error_count} errors occurred.', 'count': 0}
+            if total_saved == 0:
+                if error_count > 0:
+                    return {'success': False, 'error': f'Failed to save any companies. {error_count} errors occurred.', 'count': 0}
+                else:
+                    return {'success': False, 'error': 'No companies were saved (no errors reported, but count is 0)', 'count': 0}
             
             return {'success': True, 'count': total_saved, 'errors': error_count}
             
         except Exception as e:
-            logger.error(f"❌ Error saving Level 1 results to Supabase: {str(e)}")
-            return {'success': False, 'error': str(e)}
+            error_msg = str(e)
+            logger.error(f"❌ Error saving Level 1 results to Supabase: {error_msg}")
+            import traceback
+            logger.error(f"❌ Full traceback:\n{traceback.format_exc()}")
+            
+            # Try to provide more helpful error messages
+            if 'permission' in error_msg.lower() or 'policy' in error_msg.lower() or 'rls' in error_msg.lower():
+                return {'success': False, 'error': f'Permission error: {error_msg}. Check Row Level Security (RLS) policies in Supabase.', 'count': 0}
+            elif 'constraint' in error_msg.lower() or 'violates' in error_msg.lower():
+                return {'success': False, 'error': f'Database constraint violation: {error_msg}. Check data validation rules.', 'count': 0}
+            elif 'connection' in error_msg.lower() or 'timeout' in error_msg.lower():
+                return {'success': False, 'error': f'Connection error: {error_msg}. Check Supabase connection settings.', 'count': 0}
+            else:
+                return {'success': False, 'error': f'Unexpected error: {error_msg}', 'count': 0}
     
     def get_level1_companies(
         self,

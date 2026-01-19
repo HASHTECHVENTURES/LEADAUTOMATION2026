@@ -273,14 +273,22 @@ def level1_search():
                         continue
                 
                 companies = all_companies[:max_companies]  # Limit to max_companies total
-                print(f"✅ Google Places returned {len(companies) if companies else 0} companies total from {total_pin_codes} PIN code(s)")
+                companies_count = len(companies) if companies else 0
+                print(f"✅ Google Places returned {companies_count} companies total from {total_pin_codes} PIN code(s)")
+                logger.info(f"✅ Google Places search completed: {companies_count} companies found for project '{project_name}'")
                 
-                if not companies:
+                if not companies or companies_count == 0:
                     pin_codes_str = ', '.join(pin_codes)
                     error_msg = f'No companies found for PIN code(s): {pin_codes_str}. Please try different PIN codes or check if they are correct.'
                     print(f"⚠️  {error_msg}")
+                    logger.warning(f"⚠️  No companies found for project '{project_name}' with PIN codes: {pin_codes_str}")
                     yield f"data: {json.dumps({'type': 'complete', 'data': {'companies': [], 'message': error_msg, 'total_companies': 0}})}\n\n"
                     return
+                
+                # Log company details for debugging
+                logger.info(f"📋 Companies to save: {companies_count}")
+                if companies:
+                    logger.info(f"📋 First company sample: {companies[0].get('company_name', 'Unknown')} (place_id: {companies[0].get('place_id', 'None')})")
                 
                 # Update progress in Supabase
                 saving_progress = {
@@ -306,7 +314,11 @@ def level1_search():
                         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     }
                     
+                    logger.info(f"💾 Starting save operation for project '{project_name}' with {len(companies)} companies")
                     save_result = get_supabase_client().save_level1_results(companies, search_params)
+                    
+                    logger.info(f"💾 Save result: {save_result}")
+                    
                     if save_result.get('success'):
                         saved_count = save_result.get('count', 0)
                         print(f"✅ Saved {saved_count} companies to Supabase for project: '{project_name}'")
@@ -314,14 +326,24 @@ def level1_search():
                         
                         # Double-check: if count is 0, that's a problem
                         if saved_count == 0:
-                            error_msg = f"No companies were saved to database for project '{project_name}'"
+                            error_msg = f"No companies were saved to database for project '{project_name}'. Save result: {save_result}"
                             print(f"❌ {error_msg}")
                             logger.error(f"❌ {error_msg}")
+                            
+                            # Try to verify what's in the database
+                            try:
+                                verify = get_supabase_client().client.table('level1_companies').select('id', count='exact').eq('project_name', project_name).execute()
+                                db_count = verify.count if hasattr(verify, 'count') else (len(verify.data) if verify.data else 0)
+                                logger.error(f"❌ Database verification: Found {db_count} companies for project '{project_name}'")
+                            except Exception as verify_err:
+                                logger.error(f"❌ Could not verify database: {verify_err}")
+                            
                             raise Exception(error_msg)
                     else:
                         error_msg = save_result.get('error', 'Unknown error')
                         print(f"❌ Error saving to Supabase: {error_msg}")
                         logger.error(f"❌ Error saving to Supabase for project '{project_name}': {error_msg}")
+                        logger.error(f"❌ Full save_result: {save_result}")
                         raise Exception(f"Failed to save to Supabase: {error_msg}")
                 except Exception as e:
                     print(f"❌ Error saving to Supabase: {str(e)}")
