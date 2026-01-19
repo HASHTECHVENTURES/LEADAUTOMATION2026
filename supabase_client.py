@@ -54,6 +54,8 @@ class SupabaseClient:
             # Prepare data for insertion
             records = []
             skipped_invalid = 0
+            seen_place_ids = set()  # Track place_ids to prevent duplicates in batch
+            
             for company in companies:
                 company_name = company.get('company_name', '').strip()
                 
@@ -69,6 +71,16 @@ class SupabaseClient:
                     place_id = place_id.strip()
                     if not place_id:
                         place_id = None
+                
+                # CRITICAL: Skip duplicates within the same batch
+                # PostgreSQL upsert fails if same place_id appears twice in one batch
+                if place_id and place_id in seen_place_ids:
+                    logger.warning(f"⚠️  Skipping duplicate place_id in batch: {place_id} ({company_name})")
+                    skipped_invalid += 1
+                    continue
+                
+                if place_id:
+                    seen_place_ids.add(place_id)
                 
                 record = {
                     'project_name': project_name.strip(),
@@ -128,6 +140,28 @@ class SupabaseClient:
                     if has_place_ids:
                         # Use upsert with on_conflict for records with place_id
                         try:
+                            # Double-check for duplicates in batch (safety check)
+                            batch_place_ids = [r.get('place_id') for r in batch if r.get('place_id')]
+                            if len(batch_place_ids) != len(set(batch_place_ids)):
+                                logger.warning(f"⚠️  Duplicate place_ids detected in batch {batch_idx}, processing individually")
+                                # Process individually to avoid PostgreSQL error
+                                for record in batch:
+                                    try:
+                                        place_id = record.get('place_id')
+                                        if not place_id:
+                                            continue
+                                        response = (
+                                            self.client.table('level1_companies')
+                                            .upsert([record], on_conflict='place_id', ignore_duplicates=False)
+                                            .execute()
+                                        )
+                                        if response.data:
+                                            total_saved += 1
+                                    except Exception as individual_err:
+                                        logger.error(f"❌ Error with individual record: {str(individual_err)}")
+                                        error_count += 1
+                                continue
+                            
                             response = (
                                 self.client.table('level1_companies')
                                 .upsert(batch, on_conflict='place_id', ignore_duplicates=False)
@@ -229,6 +263,63 @@ class SupabaseClient:
                 except Exception as batch_error:
                     error_msg = str(batch_error)
                     logger.error(f"❌ Error in batch {batch_idx}: {error_msg}")
+                    
+                    # Handle PostgreSQL error: duplicate place_ids in same batch
+                    if '21000' in error_msg or 'cannot affect row a second time' in error_msg.lower() or 'ON CONFLICT' in error_msg:
+                        logger.warning(f"⚠️  Duplicate place_ids in batch {batch_idx}, processing individually...")
+                        for record in batch:
+                            try:
+                                place_id = record.get('place_id')
+                                if not place_id:
+                                    # Handle records without place_id
+                                    try:
+                                        response = (
+                                            self.client.table('level1_companies')
+                                            .insert(record)
+                                            .execute()
+                                        )
+                                        if response.data:
+                                            total_saved += 1
+                                    except Exception as insert_err:
+                                        # If duplicate, try update
+                                        try:
+                                            update_response = (
+                                                self.client.table('level1_companies')
+                                                .update({
+                                                    'industry': industry,
+                                                    'pin_codes_searched': pin_codes,
+                                                    'search_date': timestamp,
+                                                    'website': record.get('website', ''),
+                                                    'phone': record.get('phone', ''),
+                                                    'address': record.get('address', ''),
+                                                    'updated_at': datetime.now().isoformat()
+                                                })
+                                                .eq('company_name', record.get('company_name', ''))
+                                                .eq('project_name', project_name)
+                                                .execute()
+                                            )
+                                            if update_response.data:
+                                                total_saved += 1
+                                        except:
+                                            error_count += 1
+                                    continue
+                                
+                                # Process records with place_id individually
+                                try:
+                                    response = (
+                                        self.client.table('level1_companies')
+                                        .upsert([record], on_conflict='place_id', ignore_duplicates=False)
+                                        .execute()
+                                    )
+                                    if response.data:
+                                        total_saved += 1
+                                except Exception as individual_err:
+                                    logger.error(f"❌ Error with individual record {place_id}: {str(individual_err)}")
+                                    error_count += 1
+                            except Exception as single_error:
+                                logger.error(f"❌ Error processing record: {str(single_error)}")
+                                error_count += 1
+                        continue
                     
                     # If upsert fails, try individual inserts/updates
                     if 'duplicate key' in error_msg.lower() or '23505' in error_msg:
