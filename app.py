@@ -48,6 +48,69 @@ def get_supabase_client():
             raise  # Re-raise for actual usage
     return supabase_client
 
+def filter_companies_by_employee_range(companies, employee_range):
+    """
+    Filter companies by employee range.
+    employee_range format: "1-10", "10-50", "50-100", "100-250", "250-500", "500-1000", "1000-5000", "5000+"
+    """
+    if not employee_range:
+        return companies
+    
+    filtered = []
+    
+    for company in companies:
+        total_employees_str = company.get('total_employees', '') or ''
+        if not total_employees_str:
+            # If company doesn't have employee count, skip it when filtering
+            continue
+        
+        # Try to extract numeric value from employee string (e.g., "50-100" -> 75, "500+" -> 500)
+        employee_count = None
+        try:
+            # Handle ranges like "50-100" -> take midpoint
+            if '-' in total_employees_str:
+                parts = total_employees_str.split('-')
+                if len(parts) == 2:
+                    low = int(parts[0].strip().replace(',', ''))
+                    high = int(parts[1].strip().replace(',', ''))
+                    employee_count = (low + high) // 2
+            # Handle "500+" or "5000+"
+            elif '+' in total_employees_str:
+                employee_count = int(total_employees_str.replace('+', '').strip().replace(',', ''))
+            # Handle single number
+            else:
+                employee_count = int(total_employees_str.strip().replace(',', ''))
+        except (ValueError, AttributeError):
+            # If we can't parse, skip this company when filtering
+            continue
+        
+        if employee_count is None:
+            continue
+        
+        # Check if company matches the selected range
+        matches = False
+        if employee_range == "1-10":
+            matches = 1 <= employee_count <= 10
+        elif employee_range == "10-50":
+            matches = 10 <= employee_count <= 50
+        elif employee_range == "50-100":
+            matches = 50 <= employee_count <= 100
+        elif employee_range == "100-250":
+            matches = 100 <= employee_count <= 250
+        elif employee_range == "250-500":
+            matches = 250 <= employee_count <= 500
+        elif employee_range == "500-1000":
+            matches = 500 <= employee_count <= 1000
+        elif employee_range == "1000-5000":
+            matches = 1000 <= employee_count <= 5000
+        elif employee_range == "5000+":
+            matches = employee_count >= 5000
+        
+        if matches:
+            filtered.append(company)
+    
+    return filtered
+
 # Try to initialize on startup (but don't crash the app if it fails)
 try:
     supabase_client = SupabaseClient()
@@ -574,6 +637,8 @@ def level2_process():
         batch_size = int(data.get('batch_size', 10))  # Process 10 companies per batch
         batch_number = int(data.get('batch_number', 1))
         project_name = data.get('project_name')
+        designation = data.get('designation', '').strip()  # Custom designation/titles
+        employee_range = data.get('employee_range', '').strip()  # Employee range filter
         
         if not project_name:
             return jsonify({'error': 'project_name is required'}), 400
@@ -583,6 +648,42 @@ def level2_process():
         
         if not companies:
             return jsonify({'error': 'No companies selected for Level 2. Please select companies first.'}), 400
+        
+        # Filter companies by employee range if specified
+        if employee_range:
+            # First, fetch employee counts for companies that don't have them yet
+            companies_without_employee_data = [c for c in companies if not c.get('total_employees')]
+            if companies_without_employee_data:
+                print(f"  📊 Fetching employee counts for {len(companies_without_employee_data)} companies...")
+                for company in companies_without_employee_data:
+                    company_name = company.get('company_name', '')
+                    website = company.get('website', '')
+                    if company_name:
+                        try:
+                            total_employees = apollo_client.get_company_total_employees(company_name, website) or ''
+                            company['total_employees'] = total_employees
+                            # Update in database for future use
+                            if company.get('place_id'):
+                                try:
+                                    get_supabase_client().update_level1_company_metrics(
+                                        project_name=project_name,
+                                        place_id=company['place_id'],
+                                        total_employees=total_employees
+                                    )
+                                except:
+                                    pass  # Best effort - don't fail if update fails
+                        except Exception as e:
+                            print(f"  ⚠️  Could not fetch employee count for {company_name}: {str(e)}")
+            
+            # Now filter by employee range
+            companies = filter_companies_by_employee_range(companies, employee_range)
+            if not companies:
+                return jsonify({
+                    'message': f'No companies found matching employee range: {employee_range}',
+                    'completed': True,
+                    'processed': 0,
+                    'total_companies': 0
+                }), 200
         
         # Calculate batch range
         start_idx = (batch_number - 1) * batch_size
@@ -606,8 +707,14 @@ def level2_process():
             
             print(f"  📊 Processing company: {company_name}")
             
+            # Parse designation into titles list if provided
+            titles = None
+            if designation:
+                titles = [t.strip() for t in designation.split(',') if t.strip()]
+                print(f"  🔍 Using custom designations: {titles}")
+            
             # Get contacts from Enrichment Service (this already includes phone number requests via webhook)
-            people = apollo_client.search_people_by_company(company_name, website)
+            people = apollo_client.search_people_by_company(company_name, website, titles=titles)
             
             # Company metrics
             total_employees = apollo_client.get_company_total_employees(company_name, website) or ''

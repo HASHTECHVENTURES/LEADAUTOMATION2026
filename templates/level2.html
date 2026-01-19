@@ -911,6 +911,47 @@
             </div>
             </div>
             <div class="card-body" style="border-top: 1px solid var(--gray-100);">
+                <!-- Search Settings -->
+                <div style="margin-bottom: 20px; padding: 16px; background: var(--gray-50); border-radius: 12px;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+                        <i class="fas fa-cog" style="color: var(--primary);"></i>
+                        <strong style="color: var(--gray-700);">Search Settings</strong>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <div>
+                            <label class="form-label" style="display: block; margin-bottom: 8px; font-weight: 500; color: var(--gray-700);">
+                                <i class="fas fa-user-tie" style="margin-right: 6px; color: var(--primary);"></i>
+                                Designation / Job Title
+                            </label>
+                            <input type="text" class="form-input" id="designationInput" placeholder="e.g., CEO, HR Manager, Director" style="width: 100%;">
+                            <div class="form-hint" style="margin-top: 4px; font-size: 0.85em; color: var(--gray-500);">
+                                <i class="fas fa-info-circle"></i>
+                                Enter job titles to search for (comma-separated)
+                            </div>
+                        </div>
+                        <div>
+                            <label class="form-label" style="display: block; margin-bottom: 8px; font-weight: 500; color: var(--gray-700);">
+                                <i class="fas fa-users" style="margin-right: 6px; color: var(--primary);"></i>
+                                Employee Range
+                            </label>
+                            <select class="form-input" id="employeeRangeSelect" style="width: 100%;">
+                                <option value="">All Company Sizes</option>
+                                <option value="1-10">1 to 10 employees</option>
+                                <option value="10-50">10 to 50 employees</option>
+                                <option value="50-100">50 to 100 employees</option>
+                                <option value="100-250">100 to 250 employees</option>
+                                <option value="250-500">250 to 500 employees</option>
+                                <option value="500-1000">500 to 1000 employees</option>
+                                <option value="1000-5000">1000 to 5000 employees</option>
+                                <option value="5000+">5000 and above</option>
+                            </select>
+                            <div class="form-hint" style="margin-top: 4px; font-size: 0.85em; color: var(--gray-500);">
+                                <i class="fas fa-info-circle"></i>
+                                Filter companies by employee count
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <button class="btn btn-primary btn-block" id="processBtn">
                     <i class="fas fa-magic"></i>
                     Find Contacts from Database
@@ -1855,6 +1896,12 @@
                 return;
             }
             
+            // Get search settings
+            const designationInput = document.getElementById('designationInput');
+            const employeeRangeSelect = document.getElementById('employeeRangeSelect');
+            const designation = (designationInput?.value || '').trim();
+            const employeeRange = (employeeRangeSelect?.value || '').trim();
+            
             // Save selection first
             await fetch('/api/level2/selection', {
                 method: 'POST',
@@ -1883,7 +1930,9 @@
                         body: JSON.stringify({
                             project_name: currentProject,
                             batch_size: 1,
-                            batch_number: batchNumber
+                            batch_number: batchNumber,
+                            designation: designation,
+                            employee_range: employeeRange
                         })
                     });
                     
