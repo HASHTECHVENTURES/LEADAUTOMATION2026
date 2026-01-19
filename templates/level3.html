@@ -528,10 +528,10 @@
                 <div class="success-box" id="successBox" style="display: none;">
                     <div class="success-icon"><i class="fas fa-check"></i></div>
                     <h3>Transfer Complete!</h3>
-                    <p id="successMessage">Contacts have been sent to Apollo.io</p>
-                    <a href="https://app.apollo.io" target="_blank" class="btn btn-success">
+                    <p id="successMessage">Contacts have been sent to outreach platform</p>
+                    <a href="#" target="_blank" class="btn btn-success">
                         <i class="fas fa-external-link-alt"></i>
-                        Open Apollo.io Dashboard
+                        Open Outreach Dashboard
                     </a>
                 </div>
                 
@@ -543,7 +543,7 @@
                     </button>
                     <button class="btn btn-primary btn-block" id="transferBtn" style="flex: 1;">
                         <i class="fas fa-paper-plane"></i>
-                        Transfer to Apollo.io
+                        Transfer to Outreach Platform
                     </button>
                 </div>
                 
@@ -874,7 +874,7 @@
             
             if (transferred > 0) {
                 successBox.style.display = 'block';
-                document.getElementById('successMessage').textContent = `${transferred} contacts successfully sent to Apollo.io`;
+                document.getElementById('successMessage').textContent = `${transferred} contacts successfully sent to outreach platform`;
             }
             
             if (failedContacts.length > 0) {
@@ -882,7 +882,7 @@
             }
             
             this.disabled = false;
-            this.innerHTML = '<i class="fas fa-paper-plane"></i> Transfer to Apollo.io';
+            this.innerHTML = '<i class="fas fa-paper-plane"></i> Transfer to Outreach Platform';
         });
         
         // Retry failed
@@ -922,7 +922,7 @@
                 retrySection.style.display = 'none';
                 if (!successBox.style.display || successBox.style.display === 'none') {
                     successBox.style.display = 'block';
-                    document.getElementById('successMessage').textContent = `${transferred} contacts sent to Apollo.io`;
+                    document.getElementById('successMessage').textContent = `${transferred} contacts sent to outreach platform`;
                 }
             }
             

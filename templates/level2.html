@@ -913,7 +913,7 @@
             <div class="card-body" style="border-top: 1px solid var(--gray-100);">
                 <button class="btn btn-primary btn-block" id="processBtn">
                     <i class="fas fa-magic"></i>
-                    Find Contacts from Apollo.io
+                    Find Contacts from Database
                 </button>
             </div>
         </div>
@@ -998,7 +998,7 @@
                     <div class="progress-text" id="progressText">Initializing...</div>
                     <div class="progress-status">
                         <span class="pulse"></span>
-                        <span id="progressStatus">Connecting to Apollo.io</span>
+                        <span id="progressStatus">Connecting to contact database</span>
                     </div>
                 </div>
             </div>
@@ -1869,7 +1869,7 @@
             document.getElementById('progressFill').style.width = '0%';
             document.getElementById('progressPercent').textContent = '0%';
             document.getElementById('progressText').textContent = 'Starting...';
-            document.getElementById('progressStatus').textContent = 'Connecting to Apollo.io';
+            document.getElementById('progressStatus').textContent = 'Connecting to contact database';
             
             let batchNumber = 1;
             let totalProcessed = 0;

@@ -9,7 +9,7 @@
 -- ============================================
 
 -- Table: level1_companies
--- Stores company data from Google Places API (Level 1 search results)
+-- Stores company data from location search API (Level 1 search results)
 CREATE TABLE IF NOT EXISTS level1_companies (
     id BIGSERIAL PRIMARY KEY,
     project_name TEXT NOT NULL,
@@ -22,10 +22,10 @@ CREATE TABLE IF NOT EXISTS level1_companies (
     pin_code TEXT,
     pin_codes_searched TEXT,  -- Comma-separated list of PIN codes searched
     search_date TIMESTAMP,
-    place_id TEXT UNIQUE,  -- Google Places ID (unique identifier)
+    place_id TEXT UNIQUE,  -- Location search ID (unique identifier)
     business_status TEXT,
     selected_for_level2 BOOLEAN DEFAULT FALSE,
-    total_employees TEXT,  -- Company total employees from Apollo.io
+    total_employees TEXT,  -- Company total employees from contact database
     active_members INTEGER,  -- Active contacts found
     active_members_with_email INTEGER,  -- Active contacts with email
     created_at TIMESTAMP DEFAULT NOW(),
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS level1_companies (
 );
 
 -- Table: level2_contacts
--- Stores enriched contact data from Apollo.io (Level 2 enrichment results)
+-- Stores enriched contact data from contact database (Level 2 enrichment results)
 CREATE TABLE IF NOT EXISTS level2_contacts (
     id BIGSERIAL PRIMARY KEY,
     project_name TEXT NOT NULL,
@@ -44,9 +44,9 @@ CREATE TABLE IF NOT EXISTS level2_contacts (
     company_phone TEXT,
     company_total_employees TEXT,  -- Total employees in the company (from Apollo org data)
     contact_name TEXT,
-    title TEXT,  -- Original job title from Apollo.io (e.g., "CEO", "HR Manager")
+    title TEXT,  -- Original job title from contact database (e.g., "CEO", "HR Manager")
     contact_type TEXT,  -- Categorized type: "Founder/Owner", "HR", "Employee"
-    phone_number TEXT,  -- Contact's phone number from Apollo.io
+    phone_number TEXT,  -- Contact's phone number from contact database
     linkedin_url TEXT,
     email TEXT,
     pin_code TEXT,

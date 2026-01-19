@@ -125,7 +125,7 @@ def index():
 @app.route('/level1')
 @login_required
 def level1():
-    """Level 1: Company Search (Google Places only)"""
+    """Level 1: Company Search (Location Search)"""
     # Cache-bust static assets so browser always loads latest JS/CSS after updates
     try:
         js_path = os.path.join(app.root_path, 'static', 'js', 'main.js')
@@ -139,18 +139,18 @@ def level1():
 @app.route('/level2')
 @login_required
 def level2():
-    """Level 2: Contact Enrichment (Apollo.io)"""
+    """Level 2: Contact Enrichment (Contact Database)"""
     return render_template('level2.html')
 
 @app.route('/level3')
 @login_required
 def level3():
-    """Level 3: Transfer to Apollo.io Dashboard"""
+    """Level 3: Transfer to Outreach Platform"""
     return render_template('level3.html')
 
 @app.route('/api/level1/search', methods=['POST'])
 def level1_search():
-    """Level 1: Search companies using Google Places only, save to database"""
+    """Level 1: Search companies using location search, save to database"""
     try:
         data = request.json
         project_name = data.get('project_name', '').strip()
@@ -231,7 +231,7 @@ def level1_search():
                 # Initialize progress in Supabase
                 initial_progress = {
                     'stage': 'searching_places',
-                    'message': 'Searching Google Places...',
+                    'message': 'Searching locations...',
                     'current': 0,
                     'total': 0,
                     'companies_found': 0,
@@ -244,7 +244,7 @@ def level1_search():
                 
                 yield f"data: {json.dumps({'type': 'progress', 'data': initial_progress})}\n\n"
                 
-                # Step 1: Search Google Places for all PIN codes
+                # Step 1: Search locations for all PIN codes
                 all_companies = []
                 total_pin_codes = len(pin_codes)
                 companies_per_pin = max(1, max_companies // total_pin_codes)  # Distribute companies across PIN codes
@@ -253,9 +253,9 @@ def level1_search():
                     # Progress for PIN-level search (so the UI doesn't look "stuck")
                     yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Searching PIN {idx}/{total_pin_codes}: {pin_code}...', 'current': idx, 'total': total_pin_codes, 'companies_found': len(all_companies)}})}\n\n"
                     
-                    print(f"🔍 Calling Google Places API: PIN={pin_code} ({idx}/{total_pin_codes}), Industry={industry}, MaxResults={companies_per_pin}")
+                    print(f"🔍 Calling location search API: PIN={pin_code} ({idx}/{total_pin_codes}), Industry={industry}, MaxResults={companies_per_pin}")
                     
-                    # Search Google Places for this PIN code
+                    # Search locations for this PIN code
                     try:
                         companies = google_client.search_by_pin_and_industry(
                             pin_code=pin_code,
@@ -279,8 +279,8 @@ def level1_search():
                 
                 companies = all_companies[:max_companies]  # Limit to max_companies total
                 companies_count = len(companies) if companies else 0
-                print(f"✅ Google Places returned {companies_count} companies total from {total_pin_codes} PIN code(s)")
-                logger.info(f"✅ Google Places search completed: {companies_count} companies found for project '{project_name}'")
+                print(f"✅ Location search returned {companies_count} companies total from {total_pin_codes} PIN code(s)")
+                logger.info(f"✅ Location search completed: {companies_count} companies found for project '{project_name}'")
                 
                 if not companies or companies_count == 0:
                     pin_codes_str = ', '.join(pin_codes)
@@ -568,7 +568,7 @@ def search_sync():
 
 @app.route('/api/level2/process', methods=['POST'])
 def level2_process():
-    """Level 2: Process companies from Supabase with Apollo.io to get contacts"""
+    """Level 2: Process companies from Supabase with contact database to get contacts"""
     try:
         data = request.json
         batch_size = int(data.get('batch_size', 10))  # Process 10 companies per batch

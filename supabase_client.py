@@ -868,7 +868,7 @@ class SupabaseClient:
                         'company_phone': company_phone,
                         'company_total_employees': company.get('total_employees', '') or company.get('num_employees', ''),
                         'contact_name': person.get('name', ''),
-                        'title': person.get('title', ''),  # Original job title from Apollo.io
+                        'title': person.get('title', ''),  # Original job title from contact database
                         'contact_type': contact_type,
                         'phone_number': person.get('phone', '') or person.get('phone_number', ''),
                         'linkedin_url': person.get('linkedin_url', '') or person.get('linkedin', ''),
@@ -1074,7 +1074,7 @@ class SupabaseClient:
     
     def get_contacts_for_level3(self, project_name: Optional[str] = None, batch_name: Optional[str] = None) -> List[Dict]:
         """
-        Get contacts from Level 2 for Level 3 transfer to Apollo.io
+        Get contacts from Level 2 for Level 3 transfer to outreach platform
         Args:
             project_name: Filter by project name (optional)
             batch_name: Filter by batch name (recommended for Level 3)
