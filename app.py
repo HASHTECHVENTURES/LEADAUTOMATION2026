@@ -651,6 +651,8 @@ def level2_process():
         
         # Filter companies by employee range if specified
         if employee_range:
+            print(f"  🔍 Filtering companies by employee range: {employee_range}")
+            print(f"  📊 Starting with {len(companies)} companies")
             # First, fetch employee counts for companies that don't have them yet
             companies_without_employee_data = [c for c in companies if not c.get('total_employees')]
             if companies_without_employee_data:
@@ -662,6 +664,7 @@ def level2_process():
                         try:
                             total_employees = apollo_client.get_company_total_employees(company_name, website) or ''
                             company['total_employees'] = total_employees
+                            print(f"    ✅ {company_name}: {total_employees} employees")
                             # Update in database for future use
                             if company.get('place_id'):
                                 try:
@@ -676,13 +679,18 @@ def level2_process():
                             print(f"  ⚠️  Could not fetch employee count for {company_name}: {str(e)}")
             
             # Now filter by employee range
+            companies_before_filter = len(companies)
             companies = filter_companies_by_employee_range(companies, employee_range)
+            companies_after_filter = len(companies)
+            print(f"  📊 After filtering: {companies_after_filter} companies (filtered out {companies_before_filter - companies_after_filter})")
+            
             if not companies:
                 return jsonify({
-                    'message': f'No companies found matching employee range: {employee_range}',
+                    'message': f'No companies found matching employee range: {employee_range}. Try selecting "All Company Sizes" or check if companies have employee data.',
                     'completed': True,
                     'processed': 0,
-                    'total_companies': 0
+                    'total_companies': 0,
+                    'error': f'Employee range filter removed all companies'
                 }), 200
         
         # Calculate batch range
@@ -709,12 +717,21 @@ def level2_process():
             
             # Parse designation into titles list if provided
             titles = None
-            if designation:
+            if designation and designation.strip():
                 titles = [t.strip() for t in designation.split(',') if t.strip()]
                 print(f"  🔍 Using custom designations: {titles}")
+            else:
+                print(f"  🔍 No designation specified, using default titles")
             
             # Get contacts from Enrichment Service (this already includes phone number requests via webhook)
-            people = apollo_client.search_people_by_company(company_name, website, titles=titles)
+            try:
+                people = apollo_client.search_people_by_company(company_name, website, titles=titles)
+                print(f"  ✅ Found {len(people) if people else 0} contacts for {company_name}")
+            except Exception as e:
+                print(f"  ❌ Error searching contacts for {company_name}: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                people = []
             
             # Company metrics
             total_employees = apollo_client.get_company_total_employees(company_name, website) or ''
@@ -811,6 +828,19 @@ def level2_process():
             current_company_name = ''
         
         print(f"  ✅ Batch {batch_number} complete: {len(batch_companies)} companies, {total_contacts} contacts found")
+        if designation:
+            print(f"  🔍 Designation filter used: {designation}")
+        if employee_range:
+            print(f"  👥 Employee range filter used: {employee_range}")
+        
+        # If no contacts found, provide helpful message
+        if total_contacts == 0:
+            print(f"  ⚠️  No contacts found. This could be because:")
+            if designation:
+                print(f"     - Designation filter '{designation}' is too specific")
+            if employee_range:
+                print(f"     - Employee range filter '{employee_range}' filtered out companies")
+            print(f"     - Companies don't have contacts matching the criteria")
         
         return jsonify({
             'success': True,
@@ -821,7 +851,9 @@ def level2_process():
             'remaining': len(companies) - (start_idx + len(batch_companies)),
             'completed': end_idx >= len(companies),
             'contacts_found': total_contacts,
-            'current_company': current_company_name  # For progress display
+            'current_company': current_company_name,  # For progress display
+            'designation_used': designation if designation else None,
+            'employee_range_used': employee_range if employee_range else None
         }), 200
         
     except Exception as e:
