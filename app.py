@@ -592,7 +592,7 @@ def level2_process():
         if not batch_companies:
             return jsonify({'message': 'All companies processed', 'completed': True}), 200
         
-        # Process batch with Apollo.io (lazy loading - get contacts AND phone numbers in parallel)
+        # Process batch with Enrichment Service (lazy loading - get contacts AND phone numbers in parallel)
         enriched_companies = []
         current_company_name = ''  # Track the last company being processed
         
@@ -606,7 +606,7 @@ def level2_process():
             
             print(f"  📊 Processing company: {company_name}")
             
-            # Get contacts from Apollo (this already includes phone number requests via webhook)
+            # Get contacts from Enrichment Service (this already includes phone number requests via webhook)
             people = apollo_client.search_people_by_company(company_name, website)
             
             # Company metrics
@@ -1138,8 +1138,8 @@ def enrich_phones_parallel():
         if not contacts:
             return jsonify({'success': True, 'phones': {}}), 200
         
-        # Extract Apollo person IDs from contacts (if available)
-        # Or use email/name to search Apollo
+        # Extract person IDs from contacts (if available)
+        # Or use email/name to search enrichment service
         phone_results = {}
         
         # Use threading to make parallel requests
@@ -1156,11 +1156,11 @@ def enrich_phones_parallel():
                 return contact_id, None
             
             try:
-                # Try to find person in Apollo by email
-                # This is a simplified version - you might need to adjust based on Apollo API
+                # Try to find person in enrichment service by email
+                # This is a simplified version - you might need to adjust based on API
                 person_id = None
                 
-                # If we have Apollo person ID stored, use it
+                # If we have person ID stored, use it
                 # Otherwise, search by email
                 if person_id:
                     enriched = apollo_client.enrich_single_person(person_id)
@@ -1348,7 +1348,7 @@ def level2_delete_duplicate_batches():
 
 @app.route('/api/level3/transfer', methods=['POST'])
 def level3_transfer():
-    """Level 3: Transfer contacts from Supabase to Apollo.io dashboard"""
+    """Level 3: Transfer contacts from Supabase to Outreach Platform"""
     try:
         data = request.json or {}
         batch_name = data.get('batch_name')
@@ -1397,7 +1397,7 @@ def level3_status():
 
 @app.route('/api/level3/create-list', methods=['POST'])
 def level3_create_list():
-    """Create a list in Apollo.io and return list_id"""
+    """Create a list in Outreach Platform and return list_id"""
     try:
         data = request.json or {}
         list_name = data.get('list_name', '').strip()
@@ -1436,7 +1436,7 @@ def level3_contacts():
 
 @app.route('/api/level3/transfer-one', methods=['POST'])
 def level3_transfer_one():
-    """Transfer a single contact to Apollo with dedupe + list add"""
+    """Transfer a single contact to Outreach Platform with dedupe + list add"""
     try:
         data = request.json or {}
         contact_id = data.get('contact_id')
@@ -1468,17 +1468,17 @@ def level3_transfer_one():
             return jsonify({
                 'success': True,
                 'status': 'skipped',
-                'reason': 'Duplicate email in Apollo',
+                'reason': 'Duplicate email in Outreach Platform',
                 'contact': contact_name
             }), 200
 
-        # Create contact in Apollo
+        # Create contact in Outreach Platform
         result = apollo_client.create_contact(contact_data)
         if not result.get('success'):
             return jsonify({
                 'success': False,
                 'status': 'failed',
-                'reason': result.get('error', 'Apollo error'),
+                'reason': result.get('error', 'Outreach Platform error'),
                 'contact': contact_name
             }), 200
 
@@ -1536,7 +1536,7 @@ def level2_delete_companies():
 
 @app.route('/api/export', methods=['POST'])
 def export():
-    """Export Level 1 company data to Excel file (Google Places only - no contacts)"""
+    """Export Level 1 company data to Excel file (Places API only - no contacts)"""
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill
@@ -1697,23 +1697,23 @@ def export_contacts():
 @app.route('/api/apollo/webhook', methods=['POST'])
 def apollo_webhook():
     """
-    Webhook endpoint to receive phone numbers from Apollo.io
-    Apollo sends phone numbers via webhook after enrichment request
+    Webhook endpoint to receive phone numbers from Enrichment Service
+    Service sends phone numbers via webhook after enrichment request
     """
     try:
         data = request.json or {}
         
-        # Apollo webhook payload structure
+        # Enrichment service webhook payload structure
         person = data.get('person', {}) or data.get('data', {}).get('person', {})
         if not person:
-            print("⚠️  Apollo webhook: No person data in payload")
+            print("⚠️  Enrichment webhook: No person data in payload")
             return jsonify({'success': False, 'error': 'No person data'}), 400
         
         person_id = person.get('id') or data.get('person_id')
         email = person.get('email', '')
         phone_numbers = person.get('phone_numbers', [])
         
-        print(f"📞 Apollo webhook received for person_id: {person_id}, email: {email}")
+        print(f"📞 Enrichment webhook received for person_id: {person_id}, email: {email}")
         print(f"📞 Phone numbers: {phone_numbers}")
         
         # Extract phone number
@@ -1752,7 +1752,7 @@ def apollo_webhook():
         return jsonify({'success': True, 'phone': phone}), 200
         
     except Exception as e:
-        print(f"❌ Error processing Apollo webhook: {str(e)}")
+        print(f"❌ Error processing enrichment webhook: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500

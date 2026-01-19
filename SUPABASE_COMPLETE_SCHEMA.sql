@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS level1_companies (
     phone TEXT,
     address TEXT,
     industry TEXT,  -- User's search industry (e.g., "IT")
-    place_type TEXT,  -- Google's detected category (e.g., "General Business")
+    place_type TEXT,  -- Detected category from Places API (e.g., "General Business")
     pin_code TEXT,
     pin_codes_searched TEXT,  -- Comma-separated list of PIN codes searched
     search_date TIMESTAMP,
@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS level2_contacts (
     company_address TEXT,
     company_website TEXT,
     company_phone TEXT,
-    company_total_employees TEXT,  -- Total employees in the company (from Apollo org data)
+    company_total_employees TEXT,  -- Total employees in the company (from enrichment service)
     contact_name TEXT,
     title TEXT,  -- Original job title from contact database (e.g., "CEO", "HR Manager")
     contact_type TEXT,  -- Categorized type: "Founder/Owner", "HR", "Employee"
@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS level2_contacts (
     pin_code TEXT,
     industry TEXT,
     search_date TIMESTAMP,
-    source TEXT,  -- "apollo" or "web_scraping"
+    source TEXT,  -- "enrichment" or "web_scraping"
     created_at TIMESTAMP DEFAULT NOW()
 );
 

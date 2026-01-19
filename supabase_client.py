@@ -1,6 +1,6 @@
 """
 Supabase client for database operations
-Replaces Google Sheets as the backend database
+Database client for backend operations
 """
 from supabase import create_client, Client
 from typing import List, Dict, Optional
@@ -89,7 +89,7 @@ class SupabaseClient:
                     'phone': company.get('phone', '') or '',
                     'address': company.get('address', '') or '',
                     'industry': industry or '',  # User's search industry
-                    'place_type': company.get('place_type', '') or '',  # Google's detected category
+                    'place_type': company.get('place_type', '') or '',  # Detected category from Places API
                     'pin_code': company.get('pin_code', '') or '',
                     'pin_codes_searched': pin_codes or '',
                     'search_date': timestamp,
@@ -719,7 +719,7 @@ class SupabaseClient:
     def delete_level1_companies(self, project_name: str, identifiers: List[str]) -> Dict:
         """
         Delete Level 1 companies from Supabase by identifiers.
-        Identifiers may be Google place_id (preferred) or company_name (fallback).
+        Identifiers may be place_id (preferred) or company_name (fallback).
         """
         try:
             if not project_name:
@@ -734,7 +734,7 @@ class SupabaseClient:
                 if not ident:
                     continue
                 s = str(ident).strip()
-                # Heuristic: Google place_id often starts with "ChIJ" and has no spaces
+                # Heuristic: place_id often starts with "ChIJ" and has no spaces
                 if s.startswith('ChIJ') and (' ' not in s):
                     place_ids.append(s)
                 else:

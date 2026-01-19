@@ -1,6 +1,6 @@
 # Business Outreach Automation
 
-A web application that helps you find companies and their key contacts (Founders, HR, etc.) using PIN code and location data from Google Places API, enriched with contact information from Apollo.io.
+A web application that helps you find companies and their key contacts (Founders, HR, etc.) using PIN code and location data from location search API, enriched with contact information from contact database.
 
 ## Features
 
@@ -8,8 +8,8 @@ A web application that helps you find companies and their key contacts (Founders
 - 🏢 Get company details: name, website, phone, address, industry
 - 👥 Find key contacts: Founders, HR, Owners with emails and phone numbers
   - **Multi-strategy contact discovery:**
-    - Strategy 1: Apollo.io database search (by domain)
-    - Strategy 2: Apollo.io search by company name
+    - Strategy 1: Contact database search (by domain)
+    - Strategy 2: Contact database search by company name
     - Strategy 3: Web scraping fallback (extracts contacts from company websites)
 - 📊 Export results to CSV
 - 🎨 Modern, responsive UI
