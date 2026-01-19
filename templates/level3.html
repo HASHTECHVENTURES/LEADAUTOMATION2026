@@ -541,6 +541,18 @@
                         <i class="fas fa-file-excel"></i>
                         Export to Excel
                     </button>
+                    <!-- Category/List Name Input -->
+                    <div style="margin-bottom: 16px; padding: 16px; background: var(--gray-50); border-radius: 12px;">
+                        <label class="form-label" style="display: block; margin-bottom: 8px; font-weight: 500; color: var(--gray-700);">
+                            <i class="fas fa-folder" style="margin-right: 6px; color: var(--primary);"></i>
+                            Category / List Name (Optional)
+                        </label>
+                        <input type="text" class="form-input" id="categoryListName" placeholder="e.g., IT Companies Mumbai, Healthcare Leads, etc." style="width: 100%;">
+                        <div class="form-hint" style="margin-top: 4px; font-size: 0.85em; color: var(--gray-500);">
+                            <i class="fas fa-info-circle"></i>
+                            Contacts will be organized into this category/list in Apollo.io dashboard. Leave empty to transfer without category.
+                        </div>
+                    </div>
                     <button class="btn btn-primary btn-block" id="transferBtn" style="flex: 1;">
                         <i class="fas fa-paper-plane"></i>
                         Transfer to Outreach Platform
@@ -799,6 +811,31 @@
             this.disabled = true;
             this.innerHTML = '<i class="fas fa-spinner spinner"></i> Transferring...';
             
+            // Get category/list name
+            const categoryListName = document.getElementById('categoryListName')?.value.trim() || '';
+            let listId = null;
+            
+            // Create list if category name provided
+            if (categoryListName) {
+                try {
+                    const createListRes = await fetch('/api/level3/create-list', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ list_name: categoryListName })
+                    });
+                    const createListData = await createListRes.json();
+                    if (createListData.success && createListData.list_id) {
+                        listId = createListData.list_id;
+                        console.log(`✅ Created/Found list: ${categoryListName} (ID: ${listId})`);
+                    } else {
+                        console.warn(`⚠️  Could not create list: ${createListData.error || 'Unknown error'}`);
+                    }
+                } catch (e) {
+                    console.error(`❌ Error creating list: ${e.message}`);
+                    // Continue without list - contacts will still be transferred
+                }
+            }
+            
             previewSection.style.display = 'none';
             progressSection.style.display = 'block';
             logSection.style.display = 'block';
@@ -815,7 +852,10 @@
                     const res = await fetch('/api/level3/transfer-one', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ contact_id: contact.id })
+                        body: JSON.stringify({ 
+                            contact_id: contact.id,
+                            list_id: listId  // Include list_id if category was specified
+                        })
                     });
                     
                     const data = await res.json();
@@ -874,7 +914,11 @@
             
             if (transferred > 0) {
                 successBox.style.display = 'block';
-                document.getElementById('successMessage').textContent = `${transferred} contacts successfully sent to outreach platform`;
+                let successMsg = `${transferred} contacts successfully sent to outreach platform`;
+                if (categoryListName && listId) {
+                    successMsg += ` and organized into category: "${categoryListName}"`;
+                }
+                document.getElementById('successMessage').textContent = successMsg;
             }
             
             if (failedContacts.length > 0) {
@@ -892,6 +936,27 @@
             this.disabled = true;
             this.innerHTML = '<i class="fas fa-spinner spinner"></i> Retrying...';
             
+            // Get category/list name (same as original transfer)
+            const categoryListName = document.getElementById('categoryListName')?.value.trim() || '';
+            let listId = null;
+            
+            // Create/get list if category name provided
+            if (categoryListName) {
+                try {
+                    const createListRes = await fetch('/api/level3/create-list', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ list_name: categoryListName })
+                    });
+                    const createListData = await createListRes.json();
+                    if (createListData.success && createListData.list_id) {
+                        listId = createListData.list_id;
+                    }
+                } catch (e) {
+                    console.error(`❌ Error creating list for retry: ${e.message}`);
+                }
+            }
+            
             const toRetry = [...failedContacts];
             failedContacts = [];
             let transferred = parseInt(document.getElementById('transferredCount').textContent);
@@ -901,7 +966,10 @@
                     const res = await fetch('/api/level3/transfer-one', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ contact_id: contact.id })
+                        body: JSON.stringify({ 
+                            contact_id: contact.id,
+                            list_id: listId  // Include list_id if category was specified
+                        })
                     });
                     
                     const data = await res.json();
