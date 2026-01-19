@@ -360,17 +360,29 @@ def level1_search():
                     return
                 
                 # Send incremental company updates
-                for idx, company in enumerate(companies, 1):
-                    # Update progress in Supabase periodically (every 5 companies to reduce DB calls)
-                    if idx % 5 == 0 or idx == len(companies):
-                        update_progress = {
-                            'current': idx,
-                            'message': f'Processed {company.get("company_name", "")}... ({idx}/{len(companies)})',
-                            'status': 'in_progress'
-                        }
-                        get_supabase_client().save_progress(session_key, update_progress)
-                    
-                    yield f"data: {json.dumps({'type': 'company_update', 'data': company, 'progress': {'current': idx, 'total': len(companies), 'companies_found': len(companies)}})}\n\n"
+                try:
+                    for idx, company in enumerate(companies, 1):
+                        # Update progress in Supabase periodically (every 5 companies to reduce DB calls)
+                        if idx % 5 == 0 or idx == len(companies):
+                            try:
+                                update_progress = {
+                                    'current': idx,
+                                    'message': f'Processed {company.get("company_name", "")}... ({idx}/{len(companies)})',
+                                    'status': 'in_progress'
+                                }
+                                get_supabase_client().save_progress(session_key, update_progress)
+                            except Exception as progress_err:
+                                # Don't fail if progress update fails
+                                logger.warning(f"⚠️  Could not update progress: {progress_err}")
+                        
+                        try:
+                            yield f"data: {json.dumps({'type': 'company_update', 'data': company, 'progress': {'current': idx, 'total': len(companies), 'companies_found': len(companies)}})}\n\n"
+                        except (BrokenPipeError, ConnectionResetError, GeneratorExit):
+                            # Client disconnected
+                            return
+                except (BrokenPipeError, ConnectionResetError, GeneratorExit):
+                    # Client disconnected during company updates
+                    return
                 
                 # Final result - mark as completed in Supabase
                 completed_progress = {
@@ -422,15 +434,45 @@ def level1_search():
                 
                 try:
                     yield f"data: {json.dumps({'type': 'error', 'data': {'error': clean_error}})}\n\n"
+                    # Send a final complete message to close the stream
+                    yield f"data: {json.dumps({'type': 'complete', 'data': {'companies': [], 'message': clean_error, 'total_companies': 0, 'save_failed': True}})}\n\n"
                 except (BrokenPipeError, ConnectionResetError, GeneratorExit):
                     return
+                except Exception as send_err:
+                    logger.error(f"❌ Could not send error to client: {send_err}")
+                    return
             finally:
+                # Always ensure stream is properly closed
+                try:
+                    # Send a final message to ensure stream completes
+                    # This prevents ERR_INCOMPLETE_CHUNKED_ENCODING
+                    pass
+                except:
+                    pass
                 # Clean up progress from Supabase after a delay (keep for 1 hour for recovery)
                 # For immediate cleanup, uncomment the line below:
                 # get_supabase_client().delete_progress(session_key)
-                pass
         
-        return Response(stream_with_context(generate()), mimetype='text/event-stream')
+        # Wrap generator to ensure it always completes
+        def safe_generate():
+            try:
+                for chunk in generate():
+                    yield chunk
+            except (BrokenPipeError, ConnectionResetError, GeneratorExit):
+                # Client disconnected - this is normal
+                pass
+            except Exception as e:
+                logger.error(f"❌ Generator error: {e}")
+                # Send final error message
+                try:
+                    yield f"data: {json.dumps({'type': 'error', 'data': {'error': 'An error occurred during streaming'}})}\n\n"
+                except:
+                    pass
+        
+        return Response(stream_with_context(safe_generate()), mimetype='text/event-stream', headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no'  # Disable buffering for nginx
+        })
         
     except Exception as e:
         print(f"Error in search: {str(e)}")
