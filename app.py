@@ -9,6 +9,11 @@ import time
 import threading
 from datetime import datetime
 import os
+import logging
+
+# Setup logger
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
 app.config.from_object(Config)
