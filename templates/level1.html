@@ -1646,7 +1646,17 @@
                 
                 while (true) {
                     const { done, value } = await reader.read();
-                    if (done) break;
+                    if (done) {
+                        console.log('✅ Stream completed');
+                        // Make sure modal is closed when stream ends
+                        setTimeout(() => {
+                            if (progressModal.classList.contains('open')) {
+                                console.warn('⚠️ Modal still open after stream ended, forcing close');
+                                progressModal.classList.remove('open');
+                            }
+                        }, 1000);
+                        break;
+                    }
                     
                     buffer += decoder.decode(value, { stream: true });
                     const lines = buffer.split('\n');
@@ -1655,7 +1665,10 @@
                     for (const line of lines) {
                         if (line.startsWith('data: ')) {
                             try {
-                                const evt = JSON.parse(line.slice(6));
+                                const jsonStr = line.slice(6).trim();
+                                if (!jsonStr) continue;
+                                
+                                const evt = JSON.parse(jsonStr);
                                 
                                 if (evt.type === 'progress') {
                                     const p = evt.data || {};
@@ -1667,53 +1680,83 @@
                                 }
                                 
                                 if (evt.type === 'complete') {
-                                    companies = evt.data?.companies || [];
-                                    const saveFailed = evt.data?.save_failed || false;
-                                    const message = evt.data?.message || '';
-                                    
-                                    renderCompanies();
-                                    resultsCard.style.display = 'block';
-                                    progressModal.classList.remove('open');
-                                    
-                                    // Refresh project list with cache-busting to ensure new project appears
-                                    setTimeout(() => {
-                                        loadProjects();
-                                    }, 500);
-                                    resultsCard.scrollIntoView({ behavior: 'smooth' });
-                                    
-                                    // Update save button based on save status
-                                    const saveBtn = document.getElementById('saveProjectBtn');
-                                    if (saveBtn) {
-                                        if (saveFailed) {
-                                            // Save failed - show error and enable save button
-                                            saveBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Save Failed - Click to Retry';
-                                            saveBtn.classList.remove('btn-success', 'btn-primary');
-                                            saveBtn.classList.add('btn-danger');
-                                            saveBtn.disabled = false;
-                                            showUserFriendlyError(message || 'Save failed. Please click Save button to retry.');
-                                        } else {
-                                            // Save succeeded
-                                            saveBtn.innerHTML = '<i class="fas fa-check"></i> Saved!';
-                                            saveBtn.classList.remove('btn-success', 'btn-danger');
-                                            saveBtn.classList.add('btn-primary');
-                                            setTimeout(() => {
-                                                saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Campaign';
-                                                saveBtn.classList.remove('btn-primary');
-                                                saveBtn.classList.add('btn-success');
-                                            }, 3000);
+                                    try {
+                                        companies = evt.data?.companies || [];
+                                        const saveFailed = evt.data?.save_failed || false;
+                                        const message = evt.data?.message || '';
+                                        
+                                        console.log('✅ Search complete:', {
+                                            companiesFound: companies.length,
+                                            saveFailed: saveFailed,
+                                            message: message
+                                        });
+                                        
+                                        // Always close the modal first
+                                        progressModal.classList.remove('open');
+                                        
+                                        if (companies.length > 0) {
+                                            renderCompanies();
+                                            resultsCard.style.display = 'block';
+                                            resultsCard.scrollIntoView({ behavior: 'smooth' });
                                         }
-                                    }
-                                    
-                                    if (message && !saveFailed) {
-                                        showUserFriendlySuccess(message);
+                                        
+                                        // Refresh project list with cache-busting to ensure new project appears
+                                        setTimeout(() => {
+                                            loadProjects();
+                                        }, 500);
+                                        
+                                        // Update save button based on save status
+                                        const saveBtn = document.getElementById('saveProjectBtn');
+                                        if (saveBtn) {
+                                            if (saveFailed) {
+                                                // Save failed - show error and enable save button
+                                                saveBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Save Failed - Click to Retry';
+                                                saveBtn.classList.remove('btn-success', 'btn-primary');
+                                                saveBtn.classList.add('btn-danger');
+                                                saveBtn.disabled = false;
+                                                if (message) {
+                                                    showUserFriendlyError(message);
+                                                } else {
+                                                    showUserFriendlyError('Save failed. Please click Save button to retry.');
+                                                }
+                                            } else {
+                                                // Save succeeded
+                                                saveBtn.innerHTML = '<i class="fas fa-check"></i> Saved!';
+                                                saveBtn.classList.remove('btn-success', 'btn-danger');
+                                                saveBtn.classList.add('btn-primary');
+                                                setTimeout(() => {
+                                                    saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Campaign';
+                                                    saveBtn.classList.remove('btn-primary');
+                                                    saveBtn.classList.add('btn-success');
+                                                }, 3000);
+                                            }
+                                        }
+                                        
+                                        if (message && !saveFailed) {
+                                            showUserFriendlySuccess(message);
+                                        }
+                                    } catch (completeErr) {
+                                        console.error('Error handling complete event:', completeErr);
+                                        // Force close modal even if there's an error
+                                        progressModal.classList.remove('open');
+                                        showUserFriendlyError('Error processing results. Please refresh and try again.');
                                     }
                                 }
                                 
                                 if (evt.type === 'error') {
-                                    throw new Error(evt.data?.error || 'Search failed');
+                                    const errorMsg = evt.data?.error || 'Search failed';
+                                    console.error('❌ Search error received:', errorMsg);
+                                    progressModal.classList.remove('open');
+                                    showUserFriendlyError(errorMsg);
+                                    throw new Error(errorMsg);
                                 }
                             } catch (parseErr) {
                                 console.error('Parse error:', parseErr);
+                                // Make sure modal closes even on parse error
+                                progressModal.classList.remove('open');
+                                if (parseErr.message && !parseErr.message.includes('logger')) {
+                                    showUserFriendlyError('Error parsing response: ' + parseErr.message);
+                                }
                             }
                         }
                     }
