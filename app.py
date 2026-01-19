@@ -346,9 +346,18 @@ def level1_search():
                         logger.error(f"❌ Full save_result: {save_result}")
                         raise Exception(f"Failed to save to Supabase: {error_msg}")
                 except Exception as e:
-                    print(f"❌ Error saving to Supabase: {str(e)}")
+                    error_msg = str(e)
+                    print(f"❌ Error saving to Supabase: {error_msg}")
+                    logger.error(f"❌ CRITICAL: Save failed during search: {error_msg}")
                     import traceback
                     traceback.print_exc()
+                    
+                    # Send error to frontend so user knows save failed
+                    yield f"data: {json.dumps({'type': 'error', 'data': {'error': f'Failed to save companies to database: {error_msg}. Companies were found but could not be saved.'}})}\n\n"
+                    
+                    # Still send companies so user can see them, but mark as not saved
+                    yield f"data: {json.dumps({'type': 'complete', 'data': {'companies': companies, 'message': f'Found {len(companies)} companies but SAVE FAILED: {error_msg}. Please try saving again.', 'total_companies': len(companies), 'save_failed': True}})}\n\n"
+                    return
                 
                 # Send incremental company updates
                 for idx, company in enumerate(companies, 1):
@@ -372,6 +381,18 @@ def level1_search():
                     'companies_found': len(companies),
                     'status': 'completed'
                 }
+                
+                # Verify save was successful before marking as completed
+                try:
+                    verify = get_supabase_client().client.table('level1_companies').select('id', count='exact').eq('project_name', project_name).execute()
+                    actual_count = verify.count if hasattr(verify, 'count') else (len(verify.data) if verify.data else 0)
+                    if actual_count == 0:
+                        logger.error(f"❌ CRITICAL: Save reported success but database is empty for '{project_name}'")
+                        yield f"data: {json.dumps({'type': 'error', 'data': {'error': 'Companies were not saved to database. Please try saving again.'}})}\n\n"
+                        yield f"data: {json.dumps({'type': 'complete', 'data': {'companies': companies, 'message': f'Found {len(companies)} companies but SAVE FAILED. Please click Save button to retry.', 'total_companies': len(companies), 'save_failed': True}})}\n\n"
+                        return
+                except Exception as verify_err:
+                    logger.warning(f"⚠️  Could not verify save: {verify_err}")
                 get_supabase_client().save_progress(session_key, completed_progress)
                 
                 result = {
@@ -644,6 +665,56 @@ def level2_process():
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/level1/save', methods=['POST'])
+def level1_save_manual():
+    """Manual save endpoint - saves companies that were found but not saved"""
+    try:
+        data = request.json
+        project_name = data.get('project_name', '').strip()
+        companies = data.get('companies', [])
+        pin_codes = data.get('pin_codes', '')
+        industry = data.get('industry', '')
+        
+        if not project_name:
+            return jsonify({'success': False, 'error': 'Project name is required'}), 400
+        
+        if not companies:
+            return jsonify({'success': False, 'error': 'No companies to save'}), 400
+        
+        logger.info(f"💾 Manual save requested for project '{project_name}' with {len(companies)} companies")
+        
+        search_params = {
+            'project_name': project_name,
+            'pin_codes': pin_codes or '',
+            'industry': industry or '',
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        
+        save_result = get_supabase_client().save_level1_results(companies, search_params)
+        
+        if save_result.get('success'):
+            saved_count = save_result.get('count', 0)
+            logger.info(f"✅ Manual save successful: {saved_count} companies saved for project '{project_name}'")
+            return jsonify({
+                'success': True,
+                'count': saved_count,
+                'message': f'Successfully saved {saved_count} companies to database'
+            }), 200
+        else:
+            error_msg = save_result.get('error', 'Unknown error')
+            logger.error(f"❌ Manual save failed for project '{project_name}': {error_msg}")
+            return jsonify({
+                'success': False,
+                'error': error_msg
+            }), 500
+            
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"❌ Error in manual save: {error_msg}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': error_msg}), 500
 
 @app.route('/api/level1/projects', methods=['GET'])
 def get_projects_list():

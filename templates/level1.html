@@ -1500,20 +1500,41 @@
             this.innerHTML = '<i class="fas fa-spinner spinner"></i> Saving...';
             
             try {
-                // If we have companies, they're already saved. Just refresh the project list.
-                // If we don't have companies yet, we need to save the project settings.
+                // If we have companies, try to save them (in case save failed during search)
                 if (companies.length > 0) {
-                    // Companies already saved, just refresh
-                    await loadProjects();
-                    this.innerHTML = '<i class="fas fa-check"></i> Saved!';
-                    this.classList.remove('btn-success');
-                    this.classList.add('btn-primary');
-                    setTimeout(() => {
-                        this.innerHTML = '<i class="fas fa-save"></i> Save Campaign';
-                        this.classList.remove('btn-primary');
-                        this.classList.add('btn-success');
-                        this.disabled = false;
-                    }, 2000);
+                    console.log(`💾 Attempting to save ${companies.length} companies for project: ${currentProject}`);
+                    
+                    // Call manual save API
+                    const response = await fetch('/api/level1/save', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            project_name: currentProject,
+                            companies: companies,
+                            pin_codes: pinCode,
+                            industry: industry
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        console.log(`✅ Save successful: ${result.count} companies saved`);
+                        // Refresh project list
+                        await loadProjects();
+                        this.innerHTML = '<i class="fas fa-check"></i> Saved!';
+                        this.classList.remove('btn-success');
+                        this.classList.add('btn-primary');
+                        setTimeout(() => {
+                            this.innerHTML = '<i class="fas fa-save"></i> Save Campaign';
+                            this.classList.remove('btn-primary');
+                            this.classList.add('btn-success');
+                            this.disabled = false;
+                        }, 2000);
+                        showUserFriendlySuccess(`Successfully saved ${result.count} companies to database!`);
+                    } else {
+                        throw new Error(result.error || 'Save failed');
+                    }
                 } else {
                     // No companies yet, but project name exists - it will be saved when search is done
                     alert('Project will be saved automatically when you search for companies.');
@@ -1522,6 +1543,7 @@
                 }
             } catch (e) {
                 const errorMsg = formatErrorMessage(e);
+                console.error('❌ Save error:', errorMsg);
                 showUserFriendlyError('Failed to save campaign: ' + errorMsg);
                 this.disabled = false;
                 this.innerHTML = '<i class="fas fa-save"></i> Save Project';
@@ -1604,26 +1626,44 @@
                                 
                                 if (evt.type === 'complete') {
                                     companies = evt.data?.companies || [];
+                                    const saveFailed = evt.data?.save_failed || false;
+                                    const message = evt.data?.message || '';
+                                    
                                     renderCompanies();
                                     resultsCard.style.display = 'block';
                                     progressModal.classList.remove('open');
+                                    
                                     // Refresh project list with cache-busting to ensure new project appears
                                     setTimeout(() => {
                                         loadProjects();
                                     }, 500);
                                     resultsCard.scrollIntoView({ behavior: 'smooth' });
                                     
-                                    // Show success message and update save button
+                                    // Update save button based on save status
                                     const saveBtn = document.getElementById('saveProjectBtn');
                                     if (saveBtn) {
-                                        saveBtn.innerHTML = '<i class="fas fa-check"></i> Saved!';
-                                        saveBtn.classList.remove('btn-success');
-                                        saveBtn.classList.add('btn-primary');
-                                        setTimeout(() => {
-                                            saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Project';
-                                            saveBtn.classList.remove('btn-primary');
-                                            saveBtn.classList.add('btn-success');
-                                        }, 3000);
+                                        if (saveFailed) {
+                                            // Save failed - show error and enable save button
+                                            saveBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Save Failed - Click to Retry';
+                                            saveBtn.classList.remove('btn-success', 'btn-primary');
+                                            saveBtn.classList.add('btn-danger');
+                                            saveBtn.disabled = false;
+                                            showUserFriendlyError(message || 'Save failed. Please click Save button to retry.');
+                                        } else {
+                                            // Save succeeded
+                                            saveBtn.innerHTML = '<i class="fas fa-check"></i> Saved!';
+                                            saveBtn.classList.remove('btn-success', 'btn-danger');
+                                            saveBtn.classList.add('btn-primary');
+                                            setTimeout(() => {
+                                                saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Campaign';
+                                                saveBtn.classList.remove('btn-primary');
+                                                saveBtn.classList.add('btn-success');
+                                            }, 3000);
+                                        }
+                                    }
+                                    
+                                    if (message && !saveFailed) {
+                                        showUserFriendlySuccess(message);
                                     }
                                 }
                                 
