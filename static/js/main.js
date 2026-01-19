@@ -819,8 +819,8 @@ document.addEventListener('DOMContentLoaded', function() {
     function formatStageLabel(stage) {
         if (!stage) return '';
         const map = {
-            searching_places: 'Searching Google Places',
-            saving: 'Saving to Google Sheets',
+            searching_places: 'Searching locations',
+            saving: 'Saving to database',
             processing_companies: 'Building Results',
             complete: 'Complete',
             Complete: 'Complete',
@@ -1124,7 +1124,7 @@ document.addEventListener('DOMContentLoaded', function() {
         card.className = 'company-card';
         card.setAttribute('data-company-id', company.place_id || company.company_name);
         
-        // Level 1: Only show Google Places data - NO contacts
+        // Level 1: Only show location search data - NO contacts
         card.innerHTML = `
             <div class="company-header">
                 <div class="company-title-section">
