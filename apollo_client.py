@@ -252,7 +252,8 @@ class ApolloClient:
     def search_people_api_search(self, domain: str, titles: List[str] = None, seniorities: List[str] = None) -> List[Dict]:
         """
         NEW: Use api_search endpoint (FREE - no credits)
-        Returns people without emails/phones - need enrichment
+        Returns people without emails - need enrichment for emails only
+        Phone numbers should be revealed in Apollo.io dashboard to save credits
         """
         people = []
         titles = titles or ['Founder', 'HR Director', 'HR Manager', 'CHRO', 'Director', 'HR', 'Manager', 'VP', 'Vice President', 'Head', 'Chief', 'Owner', 'CEO', 'CTO', 'CFO', 'COO']
@@ -295,11 +296,12 @@ class ApolloClient:
                 print(f"    📋 Extracted {len(person_data_list)} person IDs for enrichment")
                 
                 if person_data_list:
-                    print(f"    🔄 Enriching {len(person_data_list)} people to get emails/phones in parallel...")
-                    # Enrich to get emails/phones (costs credits) and validate company
+                    print(f"    🔄 Enriching {len(person_data_list)} people to get emails in parallel...")
+                    # Enrich to get emails only (costs credits) and validate company
+                    # Phone numbers not requested - reveal in Apollo.io dashboard to save credits
                     # Use parallel enrichment for faster processing
                     enriched_people = self.enrich_people_with_validation_parallel([pid for pid, _ in person_data_list], domain)
-                    print(f"    ✅ Enrichment returned {len(enriched_people)} contacts with emails/phones (validated for {domain})")
+                    print(f"    ✅ Enrichment returned {len(enriched_people)} contacts with emails (validated for {domain})")
                     people.extend(enriched_people)
                 else:
                     print(f"    ⚠️  No person IDs found - Apollo returned people without IDs")
@@ -310,7 +312,7 @@ class ApolloClient:
                             'first_name': person.get('first_name', ''),
                             'last_name': person.get('last_name_obfuscated', '') or person.get('last_name', ''),
                             'email': '',  # Will be filled by enrichment
-                            'phone': '',  # Will be filled by enrichment
+                            'phone': '',  # Phone numbers not requested - reveal in Apollo.io dashboard
                             'title': person.get('title', ''),
                             'linkedin_url': person.get('linkedin_url', ''),
                             'apollo_id': person.get('id', ''),
@@ -341,7 +343,7 @@ class ApolloClient:
             if any(blocked in title for blocked in blocked_titles):
                 print(f"    ⚠️ Filtered out: {person.get('name')} - Title: {person.get('title')} (blocked)")
                 continue
-            # Keep everyone else (we'll filter by email/phone later if needed)
+            # Keep everyone else (we'll filter by email later if needed)
             filtered_people.append(person)
         
         print(f"    ✅ After filtering: {len(filtered_people)} contacts (from {len(people)})")
@@ -349,7 +351,8 @@ class ApolloClient:
     
     def enrich_people(self, person_ids: List[str]) -> List[Dict]:
         """
-        Enrich people data to get emails and phone numbers (COSTS credits)
+        Enrich people data to get emails only (COSTS credits)
+        Phone numbers are NOT requested - reveal in Apollo.io dashboard to save credits
         Uses individual enrichment (bulk_match endpoint has issues)
         """
         enriched = []
@@ -389,40 +392,26 @@ class ApolloClient:
             try:
                 enriched_person = self.enrich_single_person(person_id)
                 if enriched_person:
-                    # Less strict validation - include if email domain matches OR if no email (might have phone)
+                    # Validation - include if email domain matches
                     person_email = enriched_person.get('email', '')
-                    person_phone = enriched_person.get('phone', '')
                     
-                    # Include if has email OR phone (we want more contacts!)
-                    if person_email or person_phone:
-                        if person_email and '@' in person_email:
-                            email_domain = person_email.split('@')[1].lower()
-                            target_clean = target_domain.lower().replace('www.', '').replace('http://', '').replace('https://', '')
-                            
-                            # Check if email domain matches target domain
-                            if target_clean in email_domain or email_domain in target_clean:
-                                enriched.append(enriched_person)
-                                print(f"    ✅ [{idx}/{min(len(person_ids), 20)}] {enriched_person.get('name')} - {person_email} (VERIFIED)")
-                            else:
-                                # Still include if has phone number (domain might be different but person works there)
-                                if person_phone:
-                                    enriched.append(enriched_person)
-                                    print(f"    ✅ [{idx}/{min(len(person_ids), 20)}] {enriched_person.get('name')} - {person_email} (domain mismatch but has phone)")
-                                else:
-                                    print(f"    ⚠️  [{idx}/{min(len(person_ids), 20)}] REJECTED: {enriched_person.get('name')} - {person_email} (domain mismatch)")
+                    # Include if has email
+                    if person_email and '@' in person_email:
+                        email_domain = person_email.split('@')[1].lower()
+                        target_clean = target_domain.lower().replace('www.', '').replace('http://', '').replace('https://', '')
+                        
+                        # Check if email domain matches target domain
+                        if target_clean in email_domain or email_domain in target_clean:
+                            enriched.append(enriched_person)
+                            print(f"    ✅ [{idx}/{min(len(person_ids), 20)}] {enriched_person.get('name')} - {person_email} (VERIFIED)")
                         else:
-                            # No email but has phone - include
-                            if person_phone:
-                                enriched.append(enriched_person)
-                                print(f"    ✅ [{idx}/{min(len(person_ids), 20)}] {enriched_person.get('name')} - No email but has phone")
-                            else:
-                                # No email, no phone - still include (might have LinkedIn)
-                                enriched.append(enriched_person)
-                                print(f"    ⚠️  [{idx}/{min(len(person_ids), 20)}] {enriched_person.get('name')} - No email/phone but including")
+                            # Still include if email exists (domain might be different but person works there)
+                            enriched.append(enriched_person)
+                            print(f"    ✅ [{idx}/{min(len(person_ids), 20)}] {enriched_person.get('name')} - {person_email} (domain mismatch but including)")
                     else:
-                        # No email or phone - still include (might have LinkedIn)
+                        # No email - still include (might have LinkedIn)
                         enriched.append(enriched_person)
-                        print(f"    ⚠️  [{idx}/{min(len(person_ids), 20)}] {enriched_person.get('name')} - No email/phone but including")
+                        print(f"    ⚠️  [{idx}/{min(len(person_ids), 20)}] {enriched_person.get('name')} - No email but including")
                 time.sleep(0.3)
             except Exception as e2:
                 print(f"    Failed to enrich person {person_id}: {str(e2)}")
@@ -432,7 +421,8 @@ class ApolloClient:
     
     def enrich_people_with_validation_parallel(self, person_ids: List[str], target_domain: str) -> List[Dict]:
         """
-        Enrich people in PARALLEL with validation (lazy loading - get contacts AND phone numbers together)
+        Enrich people in PARALLEL with validation (get emails only)
+        Phone numbers are NOT requested - reveal in Apollo.io dashboard to save credits
         Processes multiple contacts at once for faster results
         """
         enriched = []
@@ -452,20 +442,18 @@ class ApolloClient:
                     return None
                 
                 person_email = enriched_person.get('email', '')
-                person_phone = enriched_person.get('phone', '')
                 
-                # Validation logic - include if email domain matches OR has phone
-                if person_email or person_phone:
-                    if person_email and '@' in person_email:
-                        email_domain = person_email.split('@')[1].lower()
-                        target_clean = target_domain.lower().replace('www.', '').replace('http://', '').replace('https://', '')
-                        
-                        if target_clean in email_domain or email_domain in target_clean:
-                            return enriched_person
-                        elif person_phone:
-                            return enriched_person
-                    elif person_phone:
+                # Validation logic - include if email domain matches
+                if person_email and '@' in person_email:
+                    email_domain = person_email.split('@')[1].lower()
+                    target_clean = target_domain.lower().replace('www.', '').replace('http://', '').replace('https://', '')
+                    
+                    if target_clean in email_domain or email_domain in target_clean:
                         return enriched_person
+                
+                # Include if has email (even if domain doesn't match - might be valid)
+                if person_email:
+                    return enriched_person
                 
                 # Include anyway (might have LinkedIn)
                 return enriched_person
@@ -482,114 +470,68 @@ class ApolloClient:
                 if result:
                     enriched.append(result)
         
-        print(f"    ✅ Parallel enrichment completed: {len(enriched)} contacts with emails/phones")
+        print(f"    ✅ Parallel enrichment completed: {len(enriched)} contacts with emails")
         return enriched
     
     def enrich_single_person(self, person_id: str) -> Optional[Dict]:
-        """Enrich a single person by ID - tries multiple methods to get phone numbers"""
+        """
+        Enrich a single person by ID to get email address.
+        Phone numbers are NOT requested - they should be revealed in Apollo.io dashboard to save credits.
+        """
         try:
-            phone = ''
-            
-            # METHOD 1: Try people/match endpoint with phone number request
-            # IMPORTANT: Apollo.io requires webhook_url to deliver phone numbers
-            # Phone numbers come via webhook, not in immediate response
-            # Get webhook URL from environment or use default Vercel URL
-            import os
-            webhook_url = os.getenv('APOLLO_WEBHOOK_URL') or \
-                        os.getenv('BASE_URL', 'https://leadautomation-2026.vercel.app') + '/api/apollo/webhook'
-            
+            # METHOD 1: Try people/match endpoint (email only - no phone numbers)
             url = f"{self.base_url}/people/match"
-            payloads_to_try = [
-                {
-                    'person_id': person_id,
-                    'reveal_personal_emails': True,
-                    'reveal_phone_number': True,
-                    'webhook_url': webhook_url,  # REQUIRED for phone numbers!
-                },
-                {
-                    'person_id': person_id,
-                    'reveal_personal_emails': True,
-                    'reveal_phone_numbers': True,  # Try plural version
-                    'webhook_url': webhook_url,
-                },
-                {
-                    'person_id': person_id,
-                    'reveal_personal_emails': True,
-                    'reveal_phone_number': True,
-                    'reveal_phone_numbers': True,  # Try both
-                    'webhook_url': webhook_url,
-                }
-            ]
+            payload = {
+                'person_id': person_id,
+                'reveal_personal_emails': True,
+                # Phone numbers removed - reveal in Apollo.io dashboard to save credits
+            }
             
             response = None
-            for payload in payloads_to_try:
-                try:
-                    response = requests.post(url, json=payload, headers=self.headers, timeout=10)
-                    if response.status_code == 200:
-                        break
-                except Exception as e:
-                    print(f"    ⚠️  people/match request exception: {str(e)}")
-                    continue
+            try:
+                response = requests.post(url, json=payload, headers=self.headers, timeout=10)
+            except Exception as e:
+                print(f"    ⚠️  people/match request exception: {str(e)}")
             
             if response and response.status_code == 200:
                 data = response.json()
                 person = data.get('person', {})
                 if person:
-                    # Use comprehensive phone extraction helper
-                    phone = self._extract_phone_from_person(person)
-                    
                     return {
                         'name': f"{person.get('first_name', '')} {person.get('last_name', '')}".strip(),
                         'first_name': person.get('first_name', ''),
                         'last_name': person.get('last_name', ''),
                         'email': person.get('email', ''),
-                        'phone': phone,
+                        'phone': '',  # Phone numbers not requested - reveal in Apollo.io dashboard
                         'title': person.get('title', ''),
                         'linkedin_url': person.get('linkedin_url', ''),
                         'source': 'apollo'
                     }
             else:
-                status_msg = response.status_code if response else 'No response (request failed)'
                 if response:
                     print(f"    ⚠️  people/match failed (status {response.status_code}): {response.text[:200]}")
                 else:
                     print(f"    ⚠️  people/match failed: No response received, trying GET /people/{person_id}")
-                # METHOD 2: If match fails, try to get person by ID directly
-                # Note: GET endpoint might not support webhook, but try anyway
-                import os
-                webhook_url = os.getenv('APOLLO_WEBHOOK_URL') or \
-                            os.getenv('BASE_URL', 'https://leadautomation-2026.vercel.app') + '/api/apollo/webhook'
                 
+                # METHOD 2: If match fails, try to get person by ID directly
                 url2 = f"{self.base_url}/people/{person_id}"
-                # Try multiple parameter combinations
-                params_list = [
-                    {'reveal_personal_emails': 'true', 'reveal_phone_number': 'true', 'webhook_url': webhook_url},
-                    {'reveal_personal_emails': 'true', 'reveal_phone_numbers': 'true', 'webhook_url': webhook_url},
-                    {'reveal_phone_number': 'true', 'webhook_url': webhook_url},
-                    {}  # Try without params too
-                ]
+                params = {'reveal_personal_emails': 'true'}  # Email only - no phone
                 
                 response2 = None
-                for params in params_list:
-                    try:
-                        response2 = requests.get(url2, headers=self.headers, params=params, timeout=10)
-                        if response2.status_code == 200:
-                            break
-                    except Exception as e:
-                        print(f"    ⚠️  GET /people/{person_id} request exception: {str(e)}")
-                        continue
+                try:
+                    response2 = requests.get(url2, headers=self.headers, params=params, timeout=10)
+                except Exception as e:
+                    print(f"    ⚠️  GET /people/{person_id} request exception: {str(e)}")
                 
                 if response2 and response2.status_code == 200:
                     person = response2.json().get('person', {})
                     if person:
-                        phone = self._extract_phone_from_person(person)
-                        
                         return {
                             'name': f"{person.get('first_name', '')} {person.get('last_name', '')}".strip(),
                             'first_name': person.get('first_name', ''),
                             'last_name': person.get('last_name', ''),
                             'email': person.get('email', ''),
-                            'phone': phone,
+                            'phone': '',  # Phone numbers not requested - reveal in Apollo.io dashboard
                             'title': person.get('title', ''),
                             'linkedin_url': person.get('linkedin_url', ''),
                             'source': 'apollo'
@@ -606,72 +548,13 @@ class ApolloClient:
         return None
     
     def _extract_phone_from_person(self, person: Dict) -> str:
-        """Extract phone number from Apollo person object - tries ALL possible methods"""
-        phone = ''
-        
-        # METHOD 1: Check phone_numbers array (most common)
-        if person.get('phone_numbers') and isinstance(person.get('phone_numbers'), list):
-            for phone_obj in person.get('phone_numbers', []):
-                if isinstance(phone_obj, dict):
-                    # Try all possible field names
-                    potential_phone = (
-                        phone_obj.get('raw_number', '') or
-                        phone_obj.get('sanitized_number', '') or
-                        phone_obj.get('number', '') or
-                        phone_obj.get('phone', '') or
-                        phone_obj.get('value', '') or
-                        phone_obj.get('phone_number', '')
-                    )
-                    if potential_phone and len(str(potential_phone).strip()) > 0:
-                        phone = str(potential_phone).strip()
-                        print(f"    ✅ Found phone in phone_numbers array: {phone}")
-                        break
-                elif isinstance(phone_obj, str):
-                    # Sometimes it's just a string
-                    phone = phone_obj.strip()
-                    print(f"    ✅ Found phone as string in array: {phone}")
-                    break
-        
-        # METHOD 2: Check direct fields on person object
-        if not phone:
-            direct_fields = ['phone_number', 'phone', 'mobile', 'direct_phone', 'work_phone', 'home_phone']
-            for field in direct_fields:
-                if person.get(field):
-                    phone = str(person.get(field)).strip()
-                    print(f"    ✅ Found phone in {field} field: {phone}")
-                    break
-        
-        # METHOD 3: Check organization phone numbers
-        if not phone and person.get('organization'):
-            org = person.get('organization', {})
-            if org.get('phone_numbers') and isinstance(org.get('phone_numbers'), list):
-                for phone_obj in org.get('phone_numbers', []):
-                    if isinstance(phone_obj, dict):
-                        potential_phone = (
-                            phone_obj.get('raw_number', '') or
-                            phone_obj.get('sanitized_number', '') or
-                            phone_obj.get('number', '') or
-                            phone_obj.get('phone', '')
-                        )
-                        if potential_phone:
-                            phone = str(potential_phone).strip()
-                            print(f"    ✅ Found phone in organization: {phone}")
-                            break
-        
-        # METHOD 4: Check if phone_numbers is a string (sometimes Apollo returns it as string)
-        if not phone and person.get('phone_numbers'):
-            phone_str = str(person.get('phone_numbers')).strip()
-            if phone_str and phone_str != '[]' and phone_str != 'None':
-                phone = phone_str
-                print(f"    ✅ Found phone as string: {phone}")
-        
-        if not phone:
-            print(f"    ⚠️  No phone number found in person data")
-            print(f"    🔍 Available keys: {list(person.keys())}")
-            if person.get('phone_numbers'):
-                print(f"    🔍 phone_numbers value: {person.get('phone_numbers')}")
-        
-        return phone
+        """
+        Extract phone number from Apollo person object (DEPRECATED - not used anymore).
+        Phone numbers are not requested to save credits - reveal in Apollo.io dashboard instead.
+        """
+        # Phone numbers are no longer requested - return empty string
+        # Users should reveal phone numbers in Apollo.io dashboard when needed
+        return ''
     
     def search_people_by_domain(self, domain: str, titles: List[str] = None) -> List[Dict]:
         """
@@ -702,28 +585,12 @@ class ApolloClient:
                     persons = data.get('people', [])
                     
                     for person in persons:
-                        phone = ''
-                        # Try multiple phone number field variations
-                        if person.get('phone_numbers') and len(person.get('phone_numbers', [])) > 0:
-                            phone_obj = person.get('phone_numbers', [{}])[0]
-                            phone = phone_obj.get('raw_number', '') or \
-                                   phone_obj.get('sanitized_number', '') or \
-                                   phone_obj.get('number', '') or \
-                                   phone_obj.get('phone', '')
-                        
-                        # Also check direct phone fields
-                        if not phone:
-                            phone = person.get('phone_number', '') or \
-                                   person.get('phone', '') or \
-                                   person.get('mobile', '') or \
-                                   person.get('direct_phone', '')
-                        
                         person_data = {
                             'name': f"{person.get('first_name', '')} {person.get('last_name', '')}".strip(),
                             'first_name': person.get('first_name', ''),
                             'last_name': person.get('last_name', ''),
                             'email': person.get('email', ''),
-                            'phone': phone,
+                            'phone': '',  # Phone numbers not requested - reveal in Apollo.io dashboard
                             'title': person.get('title', ''),
                             'linkedin_url': person.get('linkedin_url', ''),
                             'source': 'apollo'

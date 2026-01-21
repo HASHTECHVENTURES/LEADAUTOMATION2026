@@ -5,7 +5,8 @@ load_dotenv()
 
 class Config:
     # Google Places API
-    GOOGLE_PLACES_API_KEY = os.getenv('GOOGLE_PLACES_API_KEY', 'AIzaSyCoswhxLIQDt1LwthoYInHKDnLsMyBbHbM')
+    # Default set to client-provided key; override via env in deployments.
+    GOOGLE_PLACES_API_KEY = os.getenv('GOOGLE_PLACES_API_KEY', 'AIzaSyAEO0aq-QKAFNo6Jw-bP0BAIBxmB7DPVPs')
     
     # Apollo API (Master Key)
     APOLLO_API_KEY = os.getenv('APOLLO_API_KEY', 'lpLP_qGLdPOXeHgp6yNBKg')

@@ -240,3 +240,4 @@ REFRESH MATERIALIZED VIEW batch_stats;
 --    by the leftmost columns in the index
 -- ============================================
 
+

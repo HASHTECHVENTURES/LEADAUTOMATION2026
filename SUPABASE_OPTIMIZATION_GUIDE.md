@@ -125,3 +125,4 @@ Consider these if you scale beyond:
 - Ensure the GIN indexes were created successfully
 - Check PostgreSQL version (requires 9.6+)
 
+

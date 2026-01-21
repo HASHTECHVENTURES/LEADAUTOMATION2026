@@ -461,3 +461,4 @@ GRANT SELECT ON table_sizes TO authenticated;
 -- ✅ Security permissions
 -- ============================================
 
+

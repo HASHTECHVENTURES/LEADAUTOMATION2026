@@ -906,16 +906,15 @@
                                     <th data-sort="company_name">Company <i class="fas fa-sort sort-icon"></i></th>
                                     <th data-sort="website">Website <i class="fas fa-sort sort-icon"></i></th>
                                     <th data-sort="address">Address <i class="fas fa-sort sort-icon"></i></th>
-                                    <th data-sort="phone">Phone <i class="fas fa-sort sort-icon"></i></th>
                                     <th data-sort="industry">Industry <i class="fas fa-sort sort-icon"></i></th>
                                     <th data-sort="pin_code">Location <i class="fas fa-sort sort-icon"></i></th>
                             </tr>
                         </thead>
                             <tbody id="companiesTable">
                                 <!-- Skeleton loading -->
-                                <tr class="skeleton-row"><td colspan="7"><div class="skeleton skeleton-text"></div></td></tr>
-                                <tr class="skeleton-row"><td colspan="7"><div class="skeleton skeleton-text"></div></td></tr>
-                                <tr class="skeleton-row"><td colspan="7"><div class="skeleton skeleton-text"></div></td></tr>
+                                <tr class="skeleton-row"><td colspan="6"><div class="skeleton skeleton-text"></div></td></tr>
+                                <tr class="skeleton-row"><td colspan="6"><div class="skeleton skeleton-text"></div></td></tr>
+                                <tr class="skeleton-row"><td colspan="6"><div class="skeleton skeleton-text"></div></td></tr>
                             </tbody>
                     </table>
                 </div>
@@ -1543,7 +1542,6 @@
                 const checked = selectedCompanyIds.has(id) ? 'checked' : '';
                 const website = c.website || '';
                 const address = c.address || '';
-                const phone = c.phone || '';
                 return `
                     <tr class="fade-in" style="animation-delay: ${idx * 30}ms">
                         <td><input type="checkbox" class="company-checkbox" data-id="${id}" ${checked}></td>
@@ -1555,12 +1553,6 @@
                             </a>` : '<span style="color: var(--gray-400);">-</span>'}
                         </td>
                         <td>${escapeHtml(address) || '<span style="color: var(--gray-400);">-</span>'}</td>
-                        <td>
-                            ${phone ? `<a href="tel:${phone}" style="color: var(--primary); text-decoration: none;">
-                                <i class="fas fa-phone" style="font-size: 0.85em; margin-right: 4px;"></i>
-                                ${escapeHtml(phone)}
-                            </a>` : '<span style="color: var(--gray-400);">-</span>'}
-                        </td>
                         <td>
                             <span class="badge badge-gray">${escapeHtml(c.industry || 'N/A')}</span>
                         </td>
@@ -1720,7 +1712,6 @@
                                     </div>
                                     <div class="contact-details">
                                         ${c.email ? `<a href="mailto:${c.email}"><i class="fas fa-envelope"></i> ${c.email}</a>` : ''}
-                                        ${c.phone || c.phone_number ? `<a href="tel:${c.phone || c.phone_number}"><i class="fas fa-phone"></i> ${c.phone || c.phone_number}</a>` : '<span style="color: var(--gray-400);"><i class="fas fa-phone"></i> No phone</span>'}
                                         ${c.linkedin_url ? `<a href="${c.linkedin_url}" target="_blank"><i class="fab fa-linkedin"></i> LinkedIn</a>` : ''}
                                     </div>
                                 </div>
@@ -1997,7 +1988,7 @@
                 }
             }
             
-            // Load contacts immediately - phone numbers will update via webhook in background
+            // Load contacts immediately
             try {
                 const res = await fetch(`/api/level2/contacts?project_name=${encodeURIComponent(currentProject)}`);
                 const data = await res.json();
@@ -2010,9 +2001,6 @@
                 
                 // Render contacts immediately
                 renderContacts();
-                
-                // Start polling for phone numbers in background (they'll update automatically via webhook)
-                pollForPhoneNumbers();
             } catch (e) {
                 processingModal.classList.remove('open');
                 alert('Error loading contacts: ' + e.message);
@@ -2036,7 +2024,7 @@
                 
                 companiesCard.style.display = 'none';
                 contactsCard.style.display = 'block';
-                // Render contacts (phone numbers should already be included from webhook)
+                // Render contacts
                 renderContacts();
             } catch (e) {
                 alert('Error loading batch: ' + e.message);
@@ -2162,67 +2150,8 @@
             window.location.href = '/level3?batch=' + encodeURIComponent(currentBatchName);
         });
         
-        // Poll for phone numbers in background - they'll update automatically via webhook
-        let phonePollInterval = null; // Track polling interval to prevent duplicates
-        
-        async function pollForPhoneNumbers() {
-            if (!contacts || contacts.length === 0) return;
-            if (!currentProject) {
-                console.warn('⚠️ Cannot poll for phone numbers: no project selected');
-                return;
-            }
-            
-            // Clear any existing polling interval
-            if (phonePollInterval) {
-                clearInterval(phonePollInterval);
-                phonePollInterval = null;
-            }
-            
-            let pollCount = 0;
-            const maxPolls = 10; // Poll for up to 30 seconds (10 * 3 seconds)
-            let previousPhoneCount = contacts.filter(c => c.phone || c.phone_number).length;
-            
-            phonePollInterval = setInterval(async () => {
-                pollCount++;
-                
-                try {
-                    // Refresh contacts to get updated phone numbers
-                    const res = await fetch(`/api/level2/contacts?project_name=${encodeURIComponent(currentProject)}`);
-                    const data = await res.json();
-                    const updatedContacts = data.contacts || [];
-                    
-                    // Check if any new phone numbers arrived
-                    const contactsWithPhone = updatedContacts.filter(c => c.phone || c.phone_number).length;
-                    const totalContacts = updatedContacts.length;
-                    
-                    // Only update if phone count increased (new numbers arrived)
-                    if (contactsWithPhone > previousPhoneCount) {
-                        // Update contacts data and re-render
-                        contacts = updatedContacts;
-                        renderContacts();
-                        console.log(`📞 Phone numbers updated: ${contactsWithPhone}/${totalContacts} contacts now have phones (+${contactsWithPhone - previousPhoneCount} new)`);
-                        previousPhoneCount = contactsWithPhone;
-                    }
-                    
-                    // Stop polling after max attempts or if all have phones
-                    if (pollCount >= maxPolls || (totalContacts > 0 && contactsWithPhone >= totalContacts)) {
-                        clearInterval(phonePollInterval);
-                        phonePollInterval = null;
-                        if (contactsWithPhone >= totalContacts) {
-                            console.log(`✅ All ${totalContacts} contacts now have phone numbers!`);
-                        } else {
-                            console.log(`⏱️ Stopped polling after ${pollCount * 3} seconds. ${contactsWithPhone}/${totalContacts} contacts have phones.`);
-                        }
-                    }
-                } catch (e) {
-                    console.error('Error polling for phone numbers:', e);
-                    clearInterval(phonePollInterval);
-                    phonePollInterval = null;
-                }
-            }, 3000); // Poll every 3 seconds
-        }
-        
-        // Phone numbers now come via webhook during processing - no need for separate enrichment
+        // Phone numbers are not requested via API to save credits
+        // Users should reveal phone numbers in Apollo.io dashboard when needed
         
         // Init
         loadProjects();

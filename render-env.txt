@@ -2,7 +2,7 @@
 # Copy this content and use "Add from .env" button in Render dashboard
 # Or manually add each variable
 
-GOOGLE_PLACES_API_KEY=AIzaSyCoswhxLIQDt1LwthoYInHKDnLsMyBbHbM
+GOOGLE_PLACES_API_KEY=AIzaSyAEO0aq-QKAFNo6Jw-bP0BAIBxmB7DPVPs
 APOLLO_API_KEY=lpLP_qGLdPOXeHgp6yNBKg
 SECRET_KEY=dev-secret-key-change-in-production
 SUPABASE_URL=https://wxlcehpfchasdhitkiyg.supabase.co

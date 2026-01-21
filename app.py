@@ -701,14 +701,14 @@ def level2_process():
         if not batch_companies:
             return jsonify({'message': 'All companies processed', 'completed': True}), 200
         
-        # Process batch with Enrichment Service (lazy loading - get contacts AND phone numbers in parallel)
+        # Process batch with Enrichment Service (get contacts with emails only - phone numbers revealed in Apollo.io dashboard)
         enriched_companies = []
         current_company_name = ''  # Track the last company being processed
         
         import concurrent.futures
         
         def process_single_company(company):
-            """Process a single company - get contacts AND phone numbers in parallel"""
+            """Process a single company - get contacts with emails only (phone numbers revealed in Apollo.io dashboard)"""
             company_name = company.get('company_name', '')
             website = company.get('website', '')
             place_id = company.get('place_id', '')
@@ -723,7 +723,7 @@ def level2_process():
             else:
                 print(f"  🔍 No designation specified, using default titles")
             
-            # Get contacts from Enrichment Service (this already includes phone number requests via webhook)
+            # Get contacts from Enrichment Service (emails only - phone numbers revealed in Apollo.io dashboard)
             try:
                 people = apollo_client.search_people_by_company(company_name, website, titles=titles)
                 print(f"  ✅ Found {len(people) if people else 0} contacts for {company_name}")
@@ -817,9 +817,9 @@ def level2_process():
         
         total_contacts = sum(len(c.get('people', [])) for c in enriched_companies)
         
-        # Phone numbers will arrive via webhook asynchronously
-        # Don't block - show contacts immediately, phone numbers will update when they arrive
-        print(f"  ✅ Contacts saved. Phone numbers will arrive via webhook and update automatically.")
+        # Phone numbers are not requested to save credits
+        # Users should reveal phone numbers in Apollo.io dashboard when needed
+        print(f"  ✅ Contacts saved with emails. Phone numbers can be revealed in Apollo.io dashboard when needed.")
         
         # Get the last processed company name for progress display
         if enriched_companies:
@@ -1248,93 +1248,18 @@ def level2_contacts():
 @app.route('/api/level2/enrich-phones', methods=['POST'])
 def enrich_phones_parallel():
     """
-    Enrich phone numbers for multiple contacts in parallel (lazy loading)
-    Accepts list of contact IDs or emails and returns phone numbers
+    DEPRECATED: Phone numbers are no longer enriched via API to save credits.
+    Phone numbers should be revealed in Apollo.io dashboard when needed.
+    This endpoint returns empty results with a message.
     """
-    try:
-        data = request.json or {}
-        contact_ids = data.get('contact_ids', [])
-        contact_emails = data.get('contact_emails', [])
-        
-        if not contact_ids and not contact_emails:
-            return jsonify({'error': 'contact_ids or contact_emails required'}), 400
-        
-        # Get contacts from database
-        supabase = get_supabase_client()
-        contacts = []
-        
-        if contact_ids:
-            contacts = supabase.get_level2_contacts_by_ids(contact_ids)
-        elif contact_emails:
-            # Get contacts by email
-            try:
-                response = supabase.client.table('level2_contacts').select('*').in_('email', contact_emails).execute()
-                contacts = response.data if response.data else []
-            except Exception as e:
-                print(f"Error fetching contacts by email: {str(e)}")
-                contacts = []
-        
-        if not contacts:
-            return jsonify({'success': True, 'phones': {}}), 200
-        
-        # Extract person IDs from contacts (if available)
-        # Or use email/name to search enrichment service
-        phone_results = {}
-        
-        # Use threading to make parallel requests
-        import concurrent.futures
-        import threading
-        
-        def enrich_single_contact(contact):
-            """Enrich a single contact's phone number"""
-            contact_id = contact.get('id')
-            email = contact.get('email', '')
-            name = contact.get('contact_name', '') or contact.get('name', '')
-            
-            if not email:
-                return contact_id, None
-            
-            try:
-                # Try to find person in enrichment service by email
-                # This is a simplified version - you might need to adjust based on API
-                person_id = None
-                
-                # If we have person ID stored, use it
-                # Otherwise, search by email
-                if person_id:
-                    enriched = apollo_client.enrich_single_person(person_id)
-                    if enriched and enriched.get('phone'):
-                        return contact_id, enriched.get('phone')
-                
-                # Alternative: Use webhook approach (already implemented)
-                # Phone will come via webhook
-                return contact_id, None
-                
-            except Exception as e:
-                print(f"Error enriching contact {contact_id}: {str(e)}")
-                return contact_id, None
-        
-        # Make parallel requests (limit to 10 at a time to avoid rate limits)
-        phone_results = {}
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            future_to_contact = {executor.submit(enrich_single_contact, contact): contact for contact in contacts[:20]}
-            
-            for future in concurrent.futures.as_completed(future_to_contact):
-                contact_id, phone = future.result()
-                if phone:
-                    phone_results[contact_id] = phone
-        
-        return jsonify({
-            'success': True,
-            'phones': phone_results,
-            'count': len(phone_results)
-        }), 200
-        
-    except Exception as e:
-        print(f"Error enriching phones in parallel: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+    # Phone numbers are not requested via API to save credits
+    # Users should reveal phone numbers in Apollo.io dashboard when needed
+    return jsonify({
+        'success': True,
+        'phones': {},
+        'message': 'Phone numbers are not enriched via API to save credits. Please reveal phone numbers in Apollo.io dashboard when needed.',
+        'note': 'This saves ~2-3 credits per contact. Reveal phone numbers in Apollo.io dashboard for contacts you want to call.'
+    }), 200
 
 @app.route('/api/level2/save-batch', methods=['POST'])
 def level2_save_batch():
@@ -1601,17 +1526,9 @@ def level3_transfer_one():
             'title': contact.get('contact_type', '') or contact.get('title', '')
         }
 
-        # Duplicate check
-        dup = apollo_client.find_contact_by_email(contact_data.get('email', ''))
-        if dup.get('exists'):
-            return jsonify({
-                'success': True,
-                'status': 'skipped',
-                'reason': 'Duplicate email in Outreach Platform',
-                'contact': contact_name
-            }), 200
-
         # Create contact in Outreach Platform
+        # Note: Duplicate check removed to save credits (~1 credit per contact)
+        # Apollo.io handles duplicates automatically, and users can filter by name/email in dashboard
         result = apollo_client.create_contact(contact_data)
         if not result.get('success'):
             return jsonify({
