@@ -38,6 +38,10 @@ output/
 .pytest_cache/
 .coverage
 htmlcov/
+test_*.py
+check_*.py
+check_*.sh
+diagnose_*.py
 
 
 

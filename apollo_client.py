@@ -505,15 +505,42 @@ class ApolloClient:
                         'phone': '',  # Phone numbers not requested - reveal in Apollo.io dashboard
                         'title': person.get('title', ''),
                         'linkedin_url': person.get('linkedin_url', ''),
+                        'apollo_id': person_id,  # Include the person ID
                         'source': 'apollo'
                     }
             else:
-                if response:
-                    print(f"    ⚠️  people/match failed (status {response.status_code}): {response.text[:200]}")
-                else:
-                    print(f"    ⚠️  people/match failed: No response received, trying GET /people/{person_id}")
+                # Check for specific error codes that shouldn't be retried
+                error_status = response.status_code if response else None
+                error_text = response.text[:200] if response else "No response"
                 
-                # METHOD 2: If match fails, try to get person by ID directly
+                # Don't retry on authentication/authorization errors (waste credits)
+                if error_status in (401, 403):
+                    print(f"    ❌ Authentication/Authorization error (status {error_status}): {error_text}")
+                    print(f"    ⚠️  Check your Apollo.io API key - it may be invalid or expired")
+                    return None
+                
+                # Don't retry on rate limit (429) - wait instead
+                if error_status == 429:
+                    print(f"    ⚠️  Rate limit exceeded (429): {error_text}")
+                    print(f"    ⚠️  Apollo.io API rate limit reached - please wait before trying again")
+                    return None
+                
+                # Don't retry on 404 (person not found)
+                if error_status == 404:
+                    print(f"    ⚠️  Person not found (404): Person ID {person_id} doesn't exist")
+                    return None
+                
+                # Only retry on network/timeout errors, not API errors
+                if response:
+                    print(f"    ⚠️  people/match failed (status {error_status}): {error_text}")
+                    print(f"    ⚠️  Not retrying to avoid wasting credits - check API status")
+                    return None
+                else:
+                    print(f"    ⚠️  people/match failed: No response received (network error)")
+                    # Only retry on network errors, not API errors
+                    print(f"    ⚠️  Retrying with GET method (network error only)...")
+                
+                # METHOD 2: Only retry on network errors, not API errors
                 url2 = f"{self.base_url}/people/{person_id}"
                 params = {'reveal_personal_emails': 'true'}  # Email only - no phone
                 
@@ -522,6 +549,7 @@ class ApolloClient:
                     response2 = requests.get(url2, headers=self.headers, params=params, timeout=10)
                 except Exception as e:
                     print(f"    ⚠️  GET /people/{person_id} request exception: {str(e)}")
+                    return None  # Network error - don't waste more credits
                 
                 if response2 and response2.status_code == 200:
                     person = response2.json().get('person', {})
@@ -534,12 +562,15 @@ class ApolloClient:
                             'phone': '',  # Phone numbers not requested - reveal in Apollo.io dashboard
                             'title': person.get('title', ''),
                             'linkedin_url': person.get('linkedin_url', ''),
+                            'apollo_id': person_id,  # Include the person ID
                             'source': 'apollo'
                         }
                 else:
-                    print(f"    ❌ GET /people/{person_id} also failed: {response2.status_code if response2 else 'No response'}")
+                    error_status2 = response2.status_code if response2 else None
+                    print(f"    ❌ GET /people/{person_id} also failed: {error_status2 if response2 else 'No response'}")
                     if response2:
                         print(f"    Response: {response2.text[:300]}")
+                    return None  # Don't waste more credits
         except Exception as e:
             print(f"    ❌ Error enriching person {person_id}: {str(e)}")
             import traceback

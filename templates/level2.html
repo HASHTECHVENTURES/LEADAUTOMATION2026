@@ -1642,16 +1642,49 @@
             
             // Calculate total employees from contacts (get unique company employees)
             const companyEmployees = {};
+            
+            // Helper function to safely parse employee count
+            function parseEmployeeCount(employees) {
+                if (!employees) return null;
+                
+                // If it's already a number, return it
+                if (typeof employees === 'number') {
+                    return employees > 0 && employees < 10000000 ? employees : null; // Sanity check: max 10M
+                }
+                
+                // If it's a string, try to parse it
+                if (typeof employees === 'string') {
+                    // Remove commas and spaces
+                    let cleaned = employees.replace(/[, ]/g, '');
+                    
+                    // Handle ranges like "50-100" -> take first number
+                    if (cleaned.includes('-')) {
+                        cleaned = cleaned.split('-')[0];
+                    }
+                    
+                    // Handle "500+" -> take the number
+                    if (cleaned.includes('+')) {
+                        cleaned = cleaned.replace('+', '');
+                    }
+                    
+                    // Try to parse as integer
+                    const empNum = parseInt(cleaned, 10);
+                    if (!isNaN(empNum) && empNum > 0 && empNum < 10000000) { // Sanity check
+                        return empNum;
+                    }
+                }
+                
+                return null;
+            }
+            
             contacts.forEach(c => {
                 const company = c.company_name || '';
                 if (company && !companyEmployees[company]) {
                     // Try to get from company_total_employees field
                     const employees = c.company_total_employees || '';
-                    if (employees) {
-                        const empNum = typeof employees === 'string' ? parseInt(employees.replace(/,/g, '')) : employees;
-                        if (!isNaN(empNum) && empNum > 0) {
-                            companyEmployees[company] = empNum;
-                        }
+                    const empNum = parseEmployeeCount(employees);
+                    if (empNum) {
+                        companyEmployees[company] = empNum;
                     }
                 }
             });
@@ -1661,11 +1694,9 @@
                 const company = c.company_name || '';
                 if (company && !companyEmployees[company]) {
                     const employees = c.total_employees || c.active_members || '';
-                    if (employees) {
-                        const empNum = typeof employees === 'string' ? parseInt(employees.replace(/,/g, '')) : employees;
-                        if (!isNaN(empNum) && empNum > 0) {
-                            companyEmployees[company] = empNum;
-                        }
+                    const empNum = parseEmployeeCount(employees);
+                    if (empNum) {
+                        companyEmployees[company] = empNum;
                     }
                 }
             });

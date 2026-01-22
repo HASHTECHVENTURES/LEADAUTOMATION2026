@@ -10,6 +10,7 @@ import threading
 from datetime import datetime
 import os
 import logging
+import requests
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -51,9 +52,9 @@ def get_supabase_client():
 def filter_companies_by_employee_range(companies, employee_range):
     """
     Filter companies by employee range.
-    employee_range format: "1-10", "10-50", "50-100", "100-250", "250-500", "500-1000", "1000-5000", "5000+"
+    employee_range format: "1-10", "10-50", "50-100", "100-250", "250-500", "500-1000", "1000-5000", "5000+", "all"
     """
-    if not employee_range:
+    if not employee_range or employee_range.lower() == 'all':
         return companies
     
     filtered = []
@@ -311,6 +312,7 @@ def level1_search():
                 all_companies = []
                 total_pin_codes = len(pin_codes)
                 companies_per_pin = max(1, max_companies // total_pin_codes)  # Distribute companies across PIN codes
+                search_errors = []  # Track errors for better user feedback
                 
                 for idx, pin_code in enumerate(pin_codes, 1):
                     # Progress for PIN-level search (so the UI doesn't look "stuck")
@@ -320,11 +322,17 @@ def level1_search():
                     
                     # Search locations for this PIN code
                     try:
+                        print(f"🔍 [DEBUG] About to call search_by_pin_and_industry for PIN {pin_code}")
+                        logger.info(f"🔍 [DEBUG] Calling Google Places API for PIN {pin_code}, Industry: {industry}")
+                        
                         companies = google_client.search_by_pin_and_industry(
                             pin_code=pin_code,
                             industry=industry,
                             max_results=companies_per_pin
                         )
+                        
+                        print(f"🔍 [DEBUG] search_by_pin_and_industry returned {len(companies)} companies for PIN {pin_code}")
+                        logger.info(f"🔍 [DEBUG] Google Places API returned {len(companies)} companies for PIN {pin_code}")
                         
                         # Add PIN code to each company for tracking
                         for company in companies:
@@ -332,12 +340,26 @@ def level1_search():
                         
                         all_companies.extend(companies)
                         print(f"✅ Found {len(companies)} companies for PIN {pin_code}")
+                        logger.info(f"✅ Successfully found {len(companies)} companies for PIN {pin_code}")
 
                         # Emit a progress update after each PIN finishes so "Companies Found" updates live
                         yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Finished PIN {idx}/{total_pin_codes}: {pin_code}. Found {len(companies)} companies (Total: {len(all_companies)}).', 'current': idx, 'total': total_pin_codes, 'companies_found': len(all_companies)}})}\n\n"
                         
                     except Exception as e:
-                        print(f"❌ Error searching PIN {pin_code}: {str(e)}")
+                        error_msg = str(e)
+                        print(f"❌ Error searching PIN {pin_code}: {error_msg}")
+                        logger.error(f"❌ Error searching PIN {pin_code}: {error_msg}")
+                        # Log full traceback for debugging
+                        import traceback
+                        logger.error(f"Traceback: {traceback.format_exc()}")
+                        # Track error for user feedback
+                        if 'OVER_QUERY_LIMIT' in error_msg or 'quota' in error_msg.lower():
+                            search_errors.append(f"PIN {pin_code}: API quota exceeded")
+                        elif 'network' in error_msg.lower() or 'connection' in error_msg.lower():
+                            search_errors.append(f"PIN {pin_code}: Network error")
+                        else:
+                            search_errors.append(f"PIN {pin_code}: {error_msg[:50]}")
+                        # Continue to next PIN code but track errors
                         continue
                 
                 companies = all_companies[:max_companies]  # Limit to max_companies total
@@ -347,10 +369,17 @@ def level1_search():
                 
                 if not companies or companies_count == 0:
                     pin_codes_str = ', '.join(pin_codes)
-                    error_msg = f'No companies found for PIN code(s): {pin_codes_str}. Please try different PIN codes or check if they are correct.'
+                    
+                    # Provide better error message based on what happened
+                    if search_errors:
+                        error_details = '; '.join(search_errors)
+                        error_msg = f'No companies found for PIN code(s): {pin_codes_str}. Errors: {error_details}. This may be due to API quota limits or network issues. Please try again in a few minutes or check your Google Places API quota.'
+                    else:
+                        error_msg = f'No companies found for PIN code(s): {pin_codes_str}. Please try different PIN codes or check if they are correct. You may also want to try a broader industry term.'
+                    
                     print(f"⚠️  {error_msg}")
-                    logger.warning(f"⚠️  No companies found for project '{project_name}' with PIN codes: {pin_codes_str}")
-                    yield f"data: {json.dumps({'type': 'complete', 'data': {'companies': [], 'message': error_msg, 'total_companies': 0}})}\n\n"
+                    logger.warning(f"⚠️  No companies found for project '{project_name}' with PIN codes: {pin_codes_str}. Errors: {search_errors}")
+                    yield f"data: {json.dumps({'type': 'complete', 'data': {'companies': [], 'message': error_msg, 'total_companies': 0, 'errors': search_errors}})}\n\n"
                     return
                 
                 # Log company details for debugging
@@ -643,6 +672,21 @@ def level2_process():
         if not project_name:
             return jsonify({'error': 'project_name is required'}), 400
         
+        # Validate Apollo API key before processing (save credits)
+        print("🔍 Validating Apollo.io API key...")
+        try:
+            health_url = "https://api.apollo.io/v1/auth/health"
+            health_response = requests.get(health_url, headers=apollo_client.headers, timeout=5)
+            if health_response.status_code != 200:
+                error_msg = f"Apollo.io API key validation failed (status {health_response.status_code}). Check your API key in config.py"
+                print(f"❌ {error_msg}")
+                return jsonify({'error': error_msg}), 401
+            print("✅ Apollo.io API key is valid")
+        except Exception as e:
+            error_msg = f"Apollo.io API connection error: {str(e)}. Check your internet connection and API key."
+            print(f"❌ {error_msg}")
+            return jsonify({'error': error_msg}), 500
+        
         # Get ONLY selected companies from Supabase for the active project
         companies = get_supabase_client().get_level1_companies(project_name=project_name, selected_only=True, limit=50)
         
@@ -650,33 +694,42 @@ def level2_process():
             return jsonify({'error': 'No companies selected for Level 2. Please select companies first.'}), 400
         
         # Filter companies by employee range if specified
-        if employee_range:
+        if employee_range and employee_range != 'all':
             print(f"  🔍 Filtering companies by employee range: {employee_range}")
             print(f"  📊 Starting with {len(companies)} companies")
             # First, fetch employee counts for companies that don't have them yet
             companies_without_employee_data = [c for c in companies if not c.get('total_employees')]
             if companies_without_employee_data:
                 print(f"  📊 Fetching employee counts for {len(companies_without_employee_data)} companies...")
+                fetched_count = 0
                 for company in companies_without_employee_data:
                     company_name = company.get('company_name', '')
                     website = company.get('website', '')
                     if company_name:
                         try:
                             total_employees = apollo_client.get_company_total_employees(company_name, website) or ''
-                            company['total_employees'] = total_employees
-                            print(f"    ✅ {company_name}: {total_employees} employees")
-                            # Update in database for future use
-                            if company.get('place_id'):
-                                try:
-                                    get_supabase_client().update_level1_company_metrics(
-                                        project_name=project_name,
-                                        place_id=company['place_id'],
-                                        total_employees=total_employees
-                                    )
-                                except:
-                                    pass  # Best effort - don't fail if update fails
+                            if total_employees:
+                                company['total_employees'] = total_employees
+                                fetched_count += 1
+                                print(f"    ✅ {company_name}: {total_employees} employees")
+                                # Update in database for future use
+                                if company.get('place_id'):
+                                    try:
+                                        get_supabase_client().update_level1_company_metrics(
+                                            project_name=project_name,
+                                            place_id=company['place_id'],
+                                            total_employees=total_employees
+                                        )
+                                    except:
+                                        pass  # Best effort - don't fail if update fails
+                            else:
+                                print(f"    ⚠️  {company_name}: No employee data available in Apollo")
                         except Exception as e:
-                            print(f"  ⚠️  Could not fetch employee count for {company_name}: {str(e)}")
+                            print(f"    ⚠️  Could not fetch employee count for {company_name}: {str(e)}")
+                            import traceback
+                            traceback.print_exc()
+                
+                print(f"  📊 Fetched employee data for {fetched_count} out of {len(companies_without_employee_data)} companies")
             
             # Now filter by employee range
             companies_before_filter = len(companies)
@@ -685,8 +738,15 @@ def level2_process():
             print(f"  📊 After filtering: {companies_after_filter} companies (filtered out {companies_before_filter - companies_after_filter})")
             
             if not companies:
+                # Check if any companies had employee data
+                companies_with_data = [c for c in companies_before_filter if c.get('total_employees')]
+                if not companies_with_data:
+                    error_msg = f'No companies have employee data available. Employee range filter "{employee_range}" requires employee data, but none of the {companies_before_filter} companies have this information in Apollo.io. Please select "All Company Sizes" to process all companies regardless of employee count.'
+                else:
+                    error_msg = f'No companies found matching employee range: {employee_range}. {companies_before_filter - companies_after_filter} companies were filtered out. Try selecting "All Company Sizes" or a different employee range.'
+                
                 return jsonify({
-                    'message': f'No companies found matching employee range: {employee_range}. Try selecting "All Company Sizes" or check if companies have employee data.',
+                    'message': error_msg,
                     'completed': True,
                     'processed': 0,
                     'total_companies': 0,

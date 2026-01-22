@@ -84,8 +84,13 @@ class GooglePlacesClient:
             return results
             
         except Exception as e:
-            print(f"Error in search: {str(e)}")
-            return results
+            error_msg = str(e)
+            print(f"❌ Error in search for PIN {pin_code}: {error_msg}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            # Re-raise the exception so the caller knows what went wrong
+            # This allows the web app to show proper error messages
+            raise Exception(f"Google Places API error for PIN {pin_code}: {error_msg}") from e
     
     def get_place_details(self, place_id: str) -> Optional[Dict]:
         """Get detailed information about a place"""
