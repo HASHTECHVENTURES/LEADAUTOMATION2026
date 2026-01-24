@@ -271,12 +271,44 @@ class ApolloClient:
                 'per_page': 50  # Get more results
             }
 
-            # Try current-employee filter first; if Apollo rejects, fallback without it
-            payload = self._add_current_employee_filter(base_payload)
-            response = requests.post(url, json=payload, headers=self.headers)
-            if response.status_code not in (200,):
-                # retry without filters
-                response = requests.post(url, json=base_payload, headers=self.headers)
+            # Retry logic: Try up to 3 times with exponential backoff
+            max_retries = 3
+            response = None
+            for attempt in range(max_retries):
+                try:
+                    # Try current-employee filter first; if Apollo rejects, fallback without it
+                    payload = self._add_current_employee_filter(base_payload)
+                    response = requests.post(url, json=payload, headers=self.headers, timeout=30)
+                    if response.status_code not in (200,):
+                        # retry without filters
+                        response = requests.post(url, json=base_payload, headers=self.headers, timeout=30)
+                    
+                    if response.status_code == 200:
+                        break  # Success, exit retry loop
+                    elif response.status_code == 429:  # Rate limit
+                        wait_time = (2 ** attempt) * 2  # Exponential backoff: 2s, 4s, 8s
+                        print(f"    ⚠️  Rate limited (429), waiting {wait_time}s before retry {attempt + 1}/{max_retries}...")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        if attempt < max_retries - 1:
+                            wait_time = (2 ** attempt) * 1  # Exponential backoff: 1s, 2s, 4s
+                            print(f"    ⚠️  API error (status {response.status_code}), retrying in {wait_time}s...")
+                            time.sleep(wait_time)
+                            continue
+                except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                    if attempt < max_retries - 1:
+                        wait_time = (2 ** attempt) * 2  # Exponential backoff: 2s, 4s, 8s
+                        print(f"    ⚠️  Network error ({str(e)}), retrying in {wait_time}s...")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        print(f"    ❌ Network error after {max_retries} attempts: {str(e)}")
+                        raise
+            
+            if not response:
+                print(f"    ❌ Apollo api_search failed: No response after {max_retries} attempts")
+                return people
             
             print(f"    Apollo api_search response status: {response.status_code}")
             
