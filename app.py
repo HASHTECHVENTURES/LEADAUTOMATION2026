@@ -54,9 +54,22 @@ def filter_companies_by_employee_range(companies, employee_ranges):
     Filter companies by employee range(s).
     employee_ranges: List of ranges like ["50-100", "100-250"] or single string for backward compatibility
     """
-    # Handle backward compatibility (single string)
-    if isinstance(employee_ranges, str):
+    # Ensure employee_ranges is always a list to prevent "'int' object is not iterable" error
+    if employee_ranges is None:
+        employee_ranges = []
+    elif isinstance(employee_ranges, (int, float)):
+        # If it's a number, treat as no filter (empty list)
+        employee_ranges = []
+    elif isinstance(employee_ranges, str):
+        # Handle backward compatibility (single string)
         employee_ranges = [employee_ranges] if employee_ranges and employee_ranges.lower() != 'all' else []
+    elif not isinstance(employee_ranges, (list, tuple)):
+        # If it's any other type that's not a list/tuple, convert to empty list
+        employee_ranges = []
+    
+    # Ensure it's a list (convert tuple to list if needed)
+    if isinstance(employee_ranges, tuple):
+        employee_ranges = list(employee_ranges)
     
     if not employee_ranges or len(employee_ranges) == 0:
         return companies
@@ -715,6 +728,23 @@ def level2_process():
         
         # Accept multiple employee ranges (new) or single range (backward compatibility)
         employee_ranges = data.get('employee_ranges', [])  # Accept array
+        
+        # Ensure employee_ranges is always a list to prevent "'int' object is not iterable" error
+        if employee_ranges is None:
+            employee_ranges = []
+        elif isinstance(employee_ranges, (int, float)):
+            # If it's a number, treat as no filter (empty list)
+            employee_ranges = []
+        elif isinstance(employee_ranges, str):
+            # If it's a string, convert to list
+            employee_ranges = [employee_ranges] if employee_ranges and employee_ranges.lower() != 'all' else []
+        elif isinstance(employee_ranges, tuple):
+            # Convert tuple to list
+            employee_ranges = list(employee_ranges)
+        elif not isinstance(employee_ranges, list):
+            # If it's any other type that's not a list, convert to empty list
+            employee_ranges = []
+        
         # Backward compatibility: also check for old 'employee_range' parameter
         if not employee_ranges and data.get('employee_range'):
             employee_range_str = data.get('employee_range', '').strip()
