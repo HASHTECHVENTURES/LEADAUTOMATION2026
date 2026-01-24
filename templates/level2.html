@@ -942,22 +942,49 @@
                         <div>
                             <label class="form-label" style="display: block; margin-bottom: 8px; font-weight: 500; color: var(--gray-700);">
                                 <i class="fas fa-users" style="margin-right: 6px; color: var(--primary);"></i>
-                                Employee Range
+                                Employee Range (Select Multiple)
                             </label>
-                            <select class="form-input" id="employeeRangeSelect" style="width: 100%;">
-                                <option value="">All Company Sizes</option>
-                                <option value="1-10">1 to 10 employees</option>
-                                <option value="10-50">10 to 50 employees</option>
-                                <option value="50-100">50 to 100 employees</option>
-                                <option value="100-250">100 to 250 employees</option>
-                                <option value="250-500">250 to 500 employees</option>
-                                <option value="500-1000">500 to 1000 employees</option>
-                                <option value="1000-5000">1000 to 5000 employees</option>
-                                <option value="5000+">5000 and above</option>
-                            </select>
+                            <div id="employeeRangeContainer" style="display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto; border: 1px solid var(--gray-300); padding: 12px; border-radius: 8px; background: var(--gray-50);">
+                                <label style="display: flex; align-items: center; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.2s;" onmouseover="this.style.background='var(--gray-100)'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" class="employee-range-checkbox" value="all" checked style="margin-right: 8px; cursor: pointer;">
+                                    <span>All Company Sizes</span>
+                                </label>
+                                <label style="display: flex; align-items: center; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.2s;" onmouseover="this.style.background='var(--gray-100)'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" class="employee-range-checkbox" value="1-10" style="margin-right: 8px; cursor: pointer;">
+                                    <span>1 to 10 employees</span>
+                                </label>
+                                <label style="display: flex; align-items: center; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.2s;" onmouseover="this.style.background='var(--gray-100)'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" class="employee-range-checkbox" value="10-50" style="margin-right: 8px; cursor: pointer;">
+                                    <span>10 to 50 employees</span>
+                                </label>
+                                <label style="display: flex; align-items: center; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.2s;" onmouseover="this.style.background='var(--gray-100)'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" class="employee-range-checkbox" value="50-100" style="margin-right: 8px; cursor: pointer;">
+                                    <span>50 to 100 employees</span>
+                                </label>
+                                <label style="display: flex; align-items: center; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.2s;" onmouseover="this.style.background='var(--gray-100)'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" class="employee-range-checkbox" value="100-250" style="margin-right: 8px; cursor: pointer;">
+                                    <span>100 to 250 employees</span>
+                                </label>
+                                <label style="display: flex; align-items: center; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.2s;" onmouseover="this.style.background='var(--gray-100)'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" class="employee-range-checkbox" value="250-500" style="margin-right: 8px; cursor: pointer;">
+                                    <span>250 to 500 employees</span>
+                                </label>
+                                <label style="display: flex; align-items: center; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.2s;" onmouseover="this.style.background='var(--gray-100)'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" class="employee-range-checkbox" value="500-1000" style="margin-right: 8px; cursor: pointer;">
+                                    <span>500 to 1000 employees</span>
+                                </label>
+                                <label style="display: flex; align-items: center; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.2s;" onmouseover="this.style.background='var(--gray-100)'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" class="employee-range-checkbox" value="1000-5000" style="margin-right: 8px; cursor: pointer;">
+                                    <span>1000 to 5000 employees</span>
+                                </label>
+                                <label style="display: flex; align-items: center; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.2s;" onmouseover="this.style.background='var(--gray-100)'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" class="employee-range-checkbox" value="5000+" style="margin-right: 8px; cursor: pointer;">
+                                    <span>5000 and above</span>
+                                </label>
+                            </div>
                             <div class="form-hint" style="margin-top: 4px; font-size: 0.85em; color: var(--gray-500);">
                                 <i class="fas fa-info-circle"></i>
-                                Filter companies by employee count
+                                Select one or more company size ranges to filter
                             </div>
                         </div>
                     </div>
@@ -1937,6 +1964,32 @@
             }
         });
         
+        // Handle employee range checkbox logic
+        const employeeRangeCheckboxes = document.querySelectorAll('.employee-range-checkbox');
+        const allCheckbox = document.querySelector('.employee-range-checkbox[value="all"]');
+        
+        // When "All" is checked, uncheck others
+        if (allCheckbox) {
+            allCheckbox.addEventListener('change', function() {
+                if (this.checked) {
+                    employeeRangeCheckboxes.forEach(cb => {
+                        if (cb !== this) cb.checked = false;
+                    });
+                }
+            });
+        }
+        
+        // When any other checkbox is checked, uncheck "All"
+        employeeRangeCheckboxes.forEach(cb => {
+            if (cb.value !== 'all') {
+                cb.addEventListener('change', function() {
+                    if (this.checked && allCheckbox) {
+                        allCheckbox.checked = false;
+                    }
+                });
+            }
+        });
+        
         // Process companies
         document.getElementById('processBtn').addEventListener('click', async function() {
             if (!selectedCompanyIds.size) {
@@ -1955,9 +2008,16 @@
             
             // Get search settings
             const designationInput = document.getElementById('designationInput');
-            const employeeRangeSelect = document.getElementById('employeeRangeSelect');
             const designation = (designationInput?.value || '').trim();
-            const employeeRange = (employeeRangeSelect?.value || '').trim();
+            
+            // Get multiple employee range selections
+            const employeeRangeCheckboxes = document.querySelectorAll('.employee-range-checkbox:checked');
+            let employeeRanges = Array.from(employeeRangeCheckboxes).map(cb => cb.value);
+            
+            // If "all" is selected or no selections, treat it as no filter (empty array)
+            if (employeeRanges.includes('all') || employeeRanges.length === 0) {
+                employeeRanges = [];
+            }
             
             // Save selection first
             await fetch('/api/level2/selection', {
@@ -1984,13 +2044,13 @@
                     const res = await fetch('/api/level2/process', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            project_name: currentProject,
-                            batch_size: 1,
-                            batch_number: batchNumber,
-                            designation: designation,
-                            employee_range: employeeRange
-                        })
+                    body: JSON.stringify({
+                        project_name: currentProject,
+                        batch_size: 1,
+                        batch_number: batchNumber,
+                        designation: designation,
+                        employee_ranges: employeeRanges
+                    })
                     });
                     
                     const data = await res.json();

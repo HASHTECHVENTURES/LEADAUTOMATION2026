@@ -49,12 +49,16 @@ def get_supabase_client():
             raise  # Re-raise for actual usage
     return supabase_client
 
-def filter_companies_by_employee_range(companies, employee_range):
+def filter_companies_by_employee_range(companies, employee_ranges):
     """
-    Filter companies by employee range.
-    employee_range format: "1-10", "10-50", "50-100", "100-250", "250-500", "500-1000", "1000-5000", "5000+", "all"
+    Filter companies by employee range(s).
+    employee_ranges: List of ranges like ["50-100", "100-250"] or single string for backward compatibility
     """
-    if not employee_range or employee_range.lower() == 'all':
+    # Handle backward compatibility (single string)
+    if isinstance(employee_ranges, str):
+        employee_ranges = [employee_ranges] if employee_ranges and employee_ranges.lower() != 'all' else []
+    
+    if not employee_ranges or len(employee_ranges) == 0:
         return companies
     
     filtered = []
@@ -88,24 +92,28 @@ def filter_companies_by_employee_range(companies, employee_range):
         if employee_count is None:
             continue
         
-        # Check if company matches the selected range
+        # Check if company matches ANY of the selected ranges
         matches = False
-        if employee_range == "1-10":
-            matches = 1 <= employee_count <= 10
-        elif employee_range == "10-50":
-            matches = 10 <= employee_count <= 50
-        elif employee_range == "50-100":
-            matches = 50 <= employee_count <= 100
-        elif employee_range == "100-250":
-            matches = 100 <= employee_count <= 250
-        elif employee_range == "250-500":
-            matches = 250 <= employee_count <= 500
-        elif employee_range == "500-1000":
-            matches = 500 <= employee_count <= 1000
-        elif employee_range == "1000-5000":
-            matches = 1000 <= employee_count <= 5000
-        elif employee_range == "5000+":
-            matches = employee_count >= 5000
+        for employee_range in employee_ranges:
+            if employee_range == "1-10":
+                matches = 1 <= employee_count <= 10
+            elif employee_range == "10-50":
+                matches = 10 <= employee_count <= 50
+            elif employee_range == "50-100":
+                matches = 50 <= employee_count <= 100
+            elif employee_range == "100-250":
+                matches = 100 <= employee_count <= 250
+            elif employee_range == "250-500":
+                matches = 250 <= employee_count <= 500
+            elif employee_range == "500-1000":
+                matches = 500 <= employee_count <= 1000
+            elif employee_range == "1000-5000":
+                matches = 1000 <= employee_count <= 5000
+            elif employee_range == "5000+":
+                matches = employee_count >= 5000
+            
+            if matches:
+                break  # Company matches at least one range, no need to check others
         
         if matches:
             filtered.append(company)
@@ -704,7 +712,13 @@ def level2_process():
         batch_number = int(data.get('batch_number', 1))
         project_name = data.get('project_name')
         designation = data.get('designation', '').strip()  # Custom designation/titles
-        employee_range = data.get('employee_range', '').strip()  # Employee range filter
+        
+        # Accept multiple employee ranges (new) or single range (backward compatibility)
+        employee_ranges = data.get('employee_ranges', [])  # Accept array
+        # Backward compatibility: also check for old 'employee_range' parameter
+        if not employee_ranges and data.get('employee_range'):
+            employee_range_str = data.get('employee_range', '').strip()
+            employee_ranges = [employee_range_str] if employee_range_str and employee_range_str.lower() != 'all' else []
         
         if not project_name:
             return jsonify({'error': 'project_name is required'}), 400
@@ -730,9 +744,9 @@ def level2_process():
         if not companies:
             return jsonify({'error': 'No companies selected for Level 2. Please select companies first.'}), 400
         
-        # Filter companies by employee range if specified
-        if employee_range and employee_range != 'all':
-            print(f"  🔍 Filtering companies by employee range: {employee_range}")
+        # Filter companies by employee range(s) if specified
+        if employee_ranges and len(employee_ranges) > 0:
+            print(f"  🔍 Filtering companies by employee ranges: {employee_ranges}")
             print(f"  📊 Starting with {len(companies)} companies")
             # First, fetch employee counts for companies that don't have them yet
             companies_without_employee_data = [c for c in companies if not c.get('total_employees')]
@@ -768,19 +782,20 @@ def level2_process():
                 
                 print(f"  📊 Fetched employee data for {fetched_count} out of {len(companies_without_employee_data)} companies")
             
-            # Now filter by employee range
+            # Now filter by employee ranges
             companies_before_filter = len(companies)
-            companies = filter_companies_by_employee_range(companies, employee_range)
+            companies = filter_companies_by_employee_range(companies, employee_ranges)
             companies_after_filter = len(companies)
             print(f"  📊 After filtering: {companies_after_filter} companies (filtered out {companies_before_filter - companies_after_filter})")
             
             if not companies:
                 # Check if any companies had employee data
                 companies_with_data = [c for c in companies_before_filter if c.get('total_employees')]
+                ranges_str = ', '.join(employee_ranges)
                 if not companies_with_data:
-                    error_msg = f'No companies have employee data available. Employee range filter "{employee_range}" requires employee data, but none of the {companies_before_filter} companies have this information in Apollo.io. Please select "All Company Sizes" to process all companies regardless of employee count.'
+                    error_msg = f'No companies have employee data available. Employee range filter(s) "{ranges_str}" require employee data, but none of the {companies_before_filter} companies have this information in Apollo.io. Please select "All Company Sizes" to process all companies regardless of employee count.'
                 else:
-                    error_msg = f'No companies found matching employee range: {employee_range}. {companies_before_filter - companies_after_filter} companies were filtered out. Try selecting "All Company Sizes" or a different employee range.'
+                    error_msg = f'No companies found matching employee range(s): {ranges_str}. {companies_before_filter - companies_after_filter} companies were filtered out. Try selecting "All Company Sizes" or different employee ranges.'
                 
                 return jsonify({
                     'message': error_msg,
@@ -927,16 +942,16 @@ def level2_process():
         print(f"  ✅ Batch {batch_number} complete: {len(batch_companies)} companies, {total_contacts} contacts found")
         if designation:
             print(f"  🔍 Designation filter used: {designation}")
-        if employee_range:
-            print(f"  👥 Employee range filter used: {employee_range}")
+        if employee_ranges:
+            print(f"  👥 Employee range filter(s) used: {employee_ranges}")
         
         # If no contacts found, provide helpful message
         if total_contacts == 0:
             print(f"  ⚠️  No contacts found. This could be because:")
             if designation:
                 print(f"     - Designation filter '{designation}' is too specific")
-            if employee_range:
-                print(f"     - Employee range filter '{employee_range}' filtered out companies")
+            if employee_ranges:
+                print(f"     - Employee range filter(s) '{employee_ranges}' filtered out companies")
             print(f"     - Companies don't have contacts matching the criteria")
         
         return jsonify({
@@ -950,7 +965,7 @@ def level2_process():
             'contacts_found': total_contacts,
             'current_company': current_company_name,  # For progress display
             'designation_used': designation if designation else None,
-            'employee_range_used': employee_range if employee_range else None
+            'employee_ranges_used': employee_ranges if employee_ranges else None
         }), 200
         
     except Exception as e:
