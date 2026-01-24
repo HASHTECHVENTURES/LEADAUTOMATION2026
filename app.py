@@ -55,21 +55,25 @@ def filter_companies_by_employee_range(companies, employee_ranges):
     employee_ranges: List of ranges like ["50-100", "100-250"] or single string for backward compatibility
     """
     # Ensure employee_ranges is always a list to prevent "'int' object is not iterable" error
-    if employee_ranges is None:
+    try:
+        if employee_ranges is None:
+            employee_ranges = []
+        elif isinstance(employee_ranges, (int, float)):
+            # If it's a number, treat as no filter (empty list)
+            employee_ranges = []
+        elif isinstance(employee_ranges, str):
+            # Handle backward compatibility (single string)
+            employee_ranges = [employee_ranges] if employee_ranges and employee_ranges.lower() != 'all' else []
+        elif isinstance(employee_ranges, tuple):
+            # Convert tuple to list
+            employee_ranges = list(employee_ranges)
+        elif not isinstance(employee_ranges, list):
+            # If it's any other type that's not a list, convert to empty list
+            employee_ranges = []
+    except Exception as e:
+        # If anything goes wrong during validation, default to empty list (no filter)
+        print(f"⚠️  Error validating employee_ranges: {e}, defaulting to no filter")
         employee_ranges = []
-    elif isinstance(employee_ranges, (int, float)):
-        # If it's a number, treat as no filter (empty list)
-        employee_ranges = []
-    elif isinstance(employee_ranges, str):
-        # Handle backward compatibility (single string)
-        employee_ranges = [employee_ranges] if employee_ranges and employee_ranges.lower() != 'all' else []
-    elif not isinstance(employee_ranges, (list, tuple)):
-        # If it's any other type that's not a list/tuple, convert to empty list
-        employee_ranges = []
-    
-    # Ensure it's a list (convert tuple to list if needed)
-    if isinstance(employee_ranges, tuple):
-        employee_ranges = list(employee_ranges)
     
     if not employee_ranges or len(employee_ranges) == 0:
         return companies
@@ -107,6 +111,13 @@ def filter_companies_by_employee_range(companies, employee_ranges):
         
         # Check if company matches ANY of the selected ranges
         matches = False
+        # Extra safety: ensure employee_ranges is iterable before looping
+        try:
+            iter(employee_ranges)
+        except TypeError:
+            # If not iterable, skip this company (safety fallback)
+            continue
+        
         for employee_range in employee_ranges:
             if employee_range == "1-10":
                 matches = 1 <= employee_count <= 10
@@ -821,7 +832,10 @@ def level2_process():
             if not companies:
                 # Check if any companies had employee data
                 companies_with_data = [c for c in companies_before_filter if c.get('total_employees')]
-                ranges_str = ', '.join(employee_ranges)
+                # Ensure employee_ranges is a list before joining (extra safety check)
+                if not isinstance(employee_ranges, (list, tuple)):
+                    employee_ranges = []
+                ranges_str = ', '.join(str(r) for r in employee_ranges) if employee_ranges else ''
                 if not companies_with_data:
                     error_msg = f'No companies have employee data available. Employee range filter(s) "{ranges_str}" require employee data, but none of the {companies_before_filter} companies have this information in Apollo.io. Please select "All Company Sizes" to process all companies regardless of employee count.'
                 else:
