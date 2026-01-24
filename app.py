@@ -1928,6 +1928,7 @@ def apollo_webhook():
 # Vercel serverless handler (required for Vercel Python runtime)
 # Vercel expects the app to be directly callable
 # The @vercel/python builder automatically wraps Flask apps
+# Updated: 2026-01-24 - Multiple employee range selection feature added
 
 if __name__ == '__main__':
     Config.validate()
