@@ -343,7 +343,8 @@ def level1_search():
                 # Step 1: Search locations for all PIN codes
                 all_companies = []
                 total_pin_codes = len(pin_codes)
-                companies_per_pin = max(1, max_companies // total_pin_codes)  # Distribute companies across PIN codes
+                # Request more companies per PIN to account for duplicates (request 1.5x to ensure we get enough unique results)
+                companies_per_pin = max(1, int((max_companies * 1.5) // total_pin_codes))  # Request extra to account for duplicates
                 search_errors = []  # Track errors for better user feedback
                 
                 for idx, pin_code in enumerate(pin_codes, 1):
@@ -413,8 +414,15 @@ def level1_search():
                 print(f"🔍 Deduplication: {len(all_companies)} companies → {len(deduplicated_companies)} unique companies")
                 logger.info(f"🔍 Deduplication: {len(all_companies)} companies → {len(deduplicated_companies)} unique companies")
                 
+                # Show all unique companies up to max_companies limit
+                # This ensures users see all unique results, not cut off due to duplicates
                 companies = deduplicated_companies[:max_companies]  # Limit to max_companies total
                 companies_count = len(companies) if companies else 0
+                
+                # Log if we have more unique companies than the limit
+                if len(deduplicated_companies) > max_companies:
+                    print(f"⚠️  Found {len(deduplicated_companies)} unique companies, but limiting to {max_companies} as requested")
+                    logger.info(f"⚠️  Found {len(deduplicated_companies)} unique companies, but limiting to {max_companies} as requested")
                 print(f"✅ Location search returned {companies_count} companies total from {total_pin_codes} PIN code(s)")
                 logger.info(f"✅ Location search completed: {companies_count} companies found for project '{project_name}'")
                 
@@ -677,7 +685,9 @@ def search_sync():
         
         # Search all PIN codes
         all_companies = []
-        companies_per_pin = max(1, 20 // len(pin_codes))  # Distribute 20 companies across PIN codes
+        # Request more companies per PIN to account for duplicates (request 1.5x to ensure we get enough unique results)
+        max_companies_sync = 20
+        companies_per_pin = max(1, int((max_companies_sync * 1.5) // len(pin_codes)))  # Request extra to account for duplicates
         
         for pin_code in pin_codes:
             companies = google_client.search_by_pin_and_industry(
