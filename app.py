@@ -362,7 +362,26 @@ def level1_search():
                         # Continue to next PIN code but track errors
                         continue
                 
-                companies = all_companies[:max_companies]  # Limit to max_companies total
+                # Deduplicate companies by place_id (Google's unique identifier)
+                # This prevents the same company from appearing multiple times when searching multiple PIN codes
+                seen_place_ids = set()
+                deduplicated_companies = []
+                for company in all_companies:
+                    place_id = company.get('place_id')
+                    if place_id and place_id not in seen_place_ids:
+                        seen_place_ids.add(place_id)
+                        deduplicated_companies.append(company)
+                    elif not place_id:
+                        # If no place_id, use company_name + address as fallback identifier
+                        company_key = f"{company.get('company_name', '')}_{company.get('address', '')}"
+                        if company_key not in seen_place_ids:
+                            seen_place_ids.add(company_key)
+                            deduplicated_companies.append(company)
+                
+                print(f"🔍 Deduplication: {len(all_companies)} companies → {len(deduplicated_companies)} unique companies")
+                logger.info(f"🔍 Deduplication: {len(all_companies)} companies → {len(deduplicated_companies)} unique companies")
+                
+                companies = deduplicated_companies[:max_companies]  # Limit to max_companies total
                 companies_count = len(companies) if companies else 0
                 print(f"✅ Location search returned {companies_count} companies total from {total_pin_codes} PIN code(s)")
                 logger.info(f"✅ Location search completed: {companies_count} companies found for project '{project_name}'")
@@ -636,7 +655,25 @@ def search_sync():
             )
             all_companies.extend(companies)
         
-        companies = all_companies[:20]  # Limit to 20 total
+        # Deduplicate companies by place_id (Google's unique identifier)
+        # This prevents the same company from appearing multiple times when searching multiple PIN codes
+        seen_place_ids = set()
+        deduplicated_companies = []
+        for company in all_companies:
+            place_id = company.get('place_id')
+            if place_id and place_id not in seen_place_ids:
+                seen_place_ids.add(place_id)
+                deduplicated_companies.append(company)
+            elif not place_id:
+                # If no place_id, use company_name + address as fallback identifier
+                company_key = f"{company.get('company_name', '')}_{company.get('address', '')}"
+                if company_key not in seen_place_ids:
+                    seen_place_ids.add(company_key)
+                    deduplicated_companies.append(company)
+        
+        print(f"🔍 Deduplication: {len(all_companies)} companies → {len(deduplicated_companies)} unique companies")
+        
+        companies = deduplicated_companies[:20]  # Limit to 20 total
         
         if not companies:
             return jsonify({
