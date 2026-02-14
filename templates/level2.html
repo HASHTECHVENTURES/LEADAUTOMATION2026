@@ -483,6 +483,12 @@
         .stat-card.success .stat-icon { background: var(--success-light); color: var(--success); }
         .stat-card.warning .stat-icon { background: var(--warning-light); color: var(--warning); }
         
+        /* Hide Total Employees stat - removed due to incorrect calculation */
+        #totalEmployees, [id*="totalEmployees"], .stat-card:has(#totalEmployees) {
+            display: none !important;
+            visibility: hidden !important;
+        }
+        
         .stat-value {
             font-size: 2em;
             font-weight: 700;
@@ -1018,11 +1024,7 @@
                         <div class="stat-value" id="totalEmails">0</div>
                         <div class="stat-label">With Email</div>
                     </div>
-                    <div class="stat-card" style="background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);">
-                        <div class="stat-icon" style="background: #6366f1; color: white;"><i class="fas fa-users"></i></div>
-                        <div class="stat-value" id="totalEmployees" style="color: #4338ca;">0</div>
-                        <div class="stat-label" style="color: #4338ca;">Total Employees</div>
-                    </div>
+                    <!-- Total Employees stat removed - calculation was incorrect -->
                 </div>
                 
                 <div class="contacts-container" id="contactsList"></div>
@@ -1619,6 +1621,50 @@
             }
         }
         
+        // Remove Total Employees stat if it exists (for old cached pages)
+        function removeTotalEmployeesCard() {
+            // Remove by ID
+            const totalEmployeesEl = document.getElementById('totalEmployees');
+            if (totalEmployeesEl) {
+                const statCard = totalEmployeesEl.closest('.stat-card');
+                if (statCard) {
+                    statCard.style.display = 'none';
+                    statCard.remove();
+                }
+                totalEmployeesEl.remove();
+            }
+            // Remove any stat-card containing totalEmployees
+            document.querySelectorAll('.stat-card').forEach(card => {
+                const label = card.querySelector('.stat-label');
+                if (label && label.textContent && label.textContent.includes('Total Employees')) {
+                    card.style.display = 'none';
+                    card.remove();
+                }
+                if (card.querySelector('#totalEmployees')) {
+                    card.style.display = 'none';
+                    card.remove();
+                }
+            });
+            // Remove any element with purple gradient background that might be the card
+            document.querySelectorAll('.stat-card').forEach(card => {
+                const style = window.getComputedStyle(card);
+                if (style.background && style.background.includes('e0e7ff') && style.background.includes('c7d2fe')) {
+                    const label = card.querySelector('.stat-label');
+                    if (label && label.textContent && label.textContent.toLowerCase().includes('employee')) {
+                        card.style.display = 'none';
+                        card.remove();
+                    }
+                }
+            });
+        }
+        
+        // Run immediately and on DOM ready
+        removeTotalEmployeesCard();
+        document.addEventListener('DOMContentLoaded', removeTotalEmployeesCard);
+        // Also run after a short delay to catch dynamically loaded content
+        setTimeout(removeTotalEmployeesCard, 500);
+        setTimeout(removeTotalEmployeesCard, 1000);
+        
         // Get contact avatar class
         function getAvatarClass(title) {
             const t = (title || '').toLowerCase();
@@ -1667,33 +1713,27 @@
             
             const emailCount = filtered.filter(c => c.email).length;
             
-            // Calculate total employees from contacts (get unique company employees)
-            const companyEmployees = {};
-            
-            // Helper function to safely parse employee count
+            // Helper function to safely parse employee count (for per-company display only)
             function parseEmployeeCount(employees) {
                 if (!employees) return null;
                 
                 // If it's already a number, return it (with strict validation)
                 if (typeof employees === 'number') {
-                    // Reject obviously wrong numbers (too large or negative)
-                    if (employees > 0 && employees <= 1000000) { // Max 1M employees (reasonable limit)
+                    if (employees > 0 && employees <= 1000000) {
                         return employees;
                     }
-                    return null; // Reject numbers that are too large
+                    return null;
                 }
                 
                 // If it's a string, try to parse it
                 if (typeof employees === 'string') {
-                    // Remove commas and spaces
                     let cleaned = employees.replace(/[, ]/g, '').trim();
                     
-                    // Skip if empty or contains non-numeric characters (except - and +)
                     if (!cleaned || !/^[\d\-\+]+$/.test(cleaned)) {
                         return null;
                     }
                     
-                    // Handle ranges like "50-100" -> take midpoint (consistent with backend)
+                    // Handle ranges like "50-100" -> take midpoint
                     if (cleaned.includes('-')) {
                         const parts = cleaned.split('-');
                         if (parts.length === 2) {
@@ -1702,10 +1742,10 @@
                             if (!isNaN(low) && !isNaN(high) && low > 0 && high > low && high <= 1000000) {
                                 cleaned = Math.floor((low + high) / 2).toString();
                             } else {
-                                return null; // Invalid range
+                                return null;
                             }
                         } else {
-                            return null; // Invalid format
+                            return null;
                         }
                     }
                     
@@ -1714,9 +1754,7 @@
                         cleaned = cleaned.replace('+', '');
                     }
                     
-                    // Try to parse as integer
                     const empNum = parseInt(cleaned, 10);
-                    // Strict validation: must be between 1 and 1,000,000
                     if (!isNaN(empNum) && empNum > 0 && empNum <= 1000000) {
                         return empNum;
                     }
@@ -1725,52 +1763,41 @@
                 return null;
             }
             
-            // First, try to get from contacts data (most accurate - per contact record)
+            // Get employee counts per company (for display only, NOT for total calculation)
+            const companyEmployees = {};
+            
+            // Get from contacts data
             contacts.forEach(c => {
                 const company = c.company_name || '';
                 if (company && !companyEmployees[company]) {
-                    // Try to get from company_total_employees field
                     const employees = c.company_total_employees || '';
                     const empNum = parseEmployeeCount(employees);
                     if (empNum) {
                         companyEmployees[company] = empNum;
-                        console.log(`✅ Found employee count for ${company}: ${empNum} (from contact)`);
                     }
                 }
             });
             
-            // Fallback: try to get from companies data if not found in contacts
+            // Fallback: get from companies data
             if (companies && Array.isArray(companies)) {
                 companies.forEach(c => {
                     const company = c.company_name || '';
                     if (company && !companyEmployees[company]) {
-                        // ONLY use total_employees - active_members is NOT company size!
                         const employees = c.total_employees || '';
                         const empNum = parseEmployeeCount(employees);
                         if (empNum) {
                             companyEmployees[company] = empNum;
-                            console.log(`✅ Found employee count for ${company}: ${empNum} (from company)`);
                         }
                     }
                 });
             }
             
-            // Calculate total - only sum valid employee counts
-            const totalEmployees = Object.values(companyEmployees).reduce((sum, emp) => {
-                // Double-check: only add if emp is a valid number
-                if (typeof emp === 'number' && emp > 0 && emp <= 1000000) {
-                    return sum + emp;
-                }
-                console.warn(`⚠️ Skipping invalid employee count: ${emp}`);
-                return sum;
-            }, 0);
-            
-            console.log(`📊 Total employees calculated: ${totalEmployees} from ${Object.keys(companyEmployees).length} companies`);
+            // Total employees calculation REMOVED - was showing incorrect totals
             
             document.getElementById('totalContacts').textContent = filtered.length;
             document.getElementById('totalCompanies').textContent = Object.keys(groups).length;
             document.getElementById('totalEmails').textContent = emailCount;
-            document.getElementById('totalEmployees').textContent = totalEmployees > 0 ? totalEmployees.toLocaleString() : '0';
+            // Total employees stat removed
             
             contactsList.innerHTML = Object.entries(groups).map(([company, contactList], idx) => {
                 const companyEmpCount = companyEmployees[company] || 0;
