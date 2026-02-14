@@ -147,10 +147,36 @@ class ApolloClient:
     def _extract_employee_count(self, org: Dict) -> str:
         """
         Try to extract a human-friendly employee count / range from Apollo organization object.
-        Returns '' if not available.
+        Returns '' if not available or if value is invalid.
         """
         if not org:
             return ''
+
+        # Helper to validate employee count
+        def is_valid_employee_count(val):
+            """Validate that employee count is reasonable (1 to 1,000,000)"""
+            if val is None or val == '':
+                return False
+            try:
+                # Convert to string and clean
+                val_str = str(val).replace(',', '').replace(' ', '').strip()
+                # Handle ranges like "50-100"
+                if '-' in val_str:
+                    parts = val_str.split('-')
+                    if len(parts) == 2:
+                        low = int(parts[0])
+                        high = int(parts[1])
+                        return low > 0 and high > low and high <= 1000000
+                # Handle "500+"
+                elif '+' in val_str:
+                    num = int(val_str.replace('+', ''))
+                    return num > 0 and num <= 1000000
+                # Handle single number
+                else:
+                    num = int(val_str)
+                    return num > 0 and num <= 1000000
+            except (ValueError, AttributeError):
+                return False
 
         # Common Apollo fields (varies by endpoint/plan)
         for key in [
@@ -164,7 +190,9 @@ class ApolloClient:
             val = org.get(key)
             if val is None or val == '':
                 continue
-            return str(val)
+            # Validate before returning
+            if is_valid_employee_count(val):
+                return str(val)
 
         for key in [
             'estimated_num_employees_range',
@@ -174,7 +202,9 @@ class ApolloClient:
             val = org.get(key)
             if val is None or val == '':
                 continue
-            return str(val)
+            # Validate before returning
+            if is_valid_employee_count(val):
+                return str(val)
 
         return ''
 

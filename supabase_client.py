@@ -866,7 +866,7 @@ class SupabaseClient:
                         'company_address': company_address,
                         'company_website': company_website,
                         'company_phone': company_phone,
-                        'company_total_employees': company.get('total_employees', '') or company.get('num_employees', ''),
+                        'company_total_employees': company.get('total_employees', '') or '',
                         'contact_name': person.get('name', ''),
                         'title': person.get('title', ''),  # Original job title from contact database
                         'contact_type': contact_type,

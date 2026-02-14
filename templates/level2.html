@@ -1674,19 +1674,39 @@
             function parseEmployeeCount(employees) {
                 if (!employees) return null;
                 
-                // If it's already a number, return it
+                // If it's already a number, return it (with strict validation)
                 if (typeof employees === 'number') {
-                    return employees > 0 && employees < 10000000 ? employees : null; // Sanity check: max 10M
+                    // Reject obviously wrong numbers (too large or negative)
+                    if (employees > 0 && employees <= 1000000) { // Max 1M employees (reasonable limit)
+                        return employees;
+                    }
+                    return null; // Reject numbers that are too large
                 }
                 
                 // If it's a string, try to parse it
                 if (typeof employees === 'string') {
                     // Remove commas and spaces
-                    let cleaned = employees.replace(/[, ]/g, '');
+                    let cleaned = employees.replace(/[, ]/g, '').trim();
                     
-                    // Handle ranges like "50-100" -> take first number
+                    // Skip if empty or contains non-numeric characters (except - and +)
+                    if (!cleaned || !/^[\d\-\+]+$/.test(cleaned)) {
+                        return null;
+                    }
+                    
+                    // Handle ranges like "50-100" -> take midpoint (consistent with backend)
                     if (cleaned.includes('-')) {
-                        cleaned = cleaned.split('-')[0];
+                        const parts = cleaned.split('-');
+                        if (parts.length === 2) {
+                            const low = parseInt(parts[0], 10);
+                            const high = parseInt(parts[1], 10);
+                            if (!isNaN(low) && !isNaN(high) && low > 0 && high > low && high <= 1000000) {
+                                cleaned = Math.floor((low + high) / 2).toString();
+                            } else {
+                                return null; // Invalid range
+                            }
+                        } else {
+                            return null; // Invalid format
+                        }
                     }
                     
                     // Handle "500+" -> take the number
@@ -1696,7 +1716,8 @@
                     
                     // Try to parse as integer
                     const empNum = parseInt(cleaned, 10);
-                    if (!isNaN(empNum) && empNum > 0 && empNum < 10000000) { // Sanity check
+                    // Strict validation: must be between 1 and 1,000,000
+                    if (!isNaN(empNum) && empNum > 0 && empNum <= 1000000) {
                         return empNum;
                     }
                 }
@@ -1704,6 +1725,7 @@
                 return null;
             }
             
+            // First, try to get from contacts data (most accurate - per contact record)
             contacts.forEach(c => {
                 const company = c.company_name || '';
                 if (company && !companyEmployees[company]) {
@@ -1712,23 +1734,38 @@
                     const empNum = parseEmployeeCount(employees);
                     if (empNum) {
                         companyEmployees[company] = empNum;
+                        console.log(`✅ Found employee count for ${company}: ${empNum} (from contact)`);
                     }
                 }
             });
             
-            // Also try to get from companies data if available
-            companies.forEach(c => {
-                const company = c.company_name || '';
-                if (company && !companyEmployees[company]) {
-                    const employees = c.total_employees || c.active_members || '';
-                    const empNum = parseEmployeeCount(employees);
-                    if (empNum) {
-                        companyEmployees[company] = empNum;
+            // Fallback: try to get from companies data if not found in contacts
+            if (companies && Array.isArray(companies)) {
+                companies.forEach(c => {
+                    const company = c.company_name || '';
+                    if (company && !companyEmployees[company]) {
+                        // ONLY use total_employees - active_members is NOT company size!
+                        const employees = c.total_employees || '';
+                        const empNum = parseEmployeeCount(employees);
+                        if (empNum) {
+                            companyEmployees[company] = empNum;
+                            console.log(`✅ Found employee count for ${company}: ${empNum} (from company)`);
+                        }
                     }
-                }
-            });
+                });
+            }
             
-            const totalEmployees = Object.values(companyEmployees).reduce((sum, emp) => sum + emp, 0);
+            // Calculate total - only sum valid employee counts
+            const totalEmployees = Object.values(companyEmployees).reduce((sum, emp) => {
+                // Double-check: only add if emp is a valid number
+                if (typeof emp === 'number' && emp > 0 && emp <= 1000000) {
+                    return sum + emp;
+                }
+                console.warn(`⚠️ Skipping invalid employee count: ${emp}`);
+                return sum;
+            }, 0);
+            
+            console.log(`📊 Total employees calculated: ${totalEmployees} from ${Object.keys(companyEmployees).length} companies`);
             
             document.getElementById('totalContacts').textContent = filtered.length;
             document.getElementById('totalCompanies').textContent = Object.keys(groups).length;

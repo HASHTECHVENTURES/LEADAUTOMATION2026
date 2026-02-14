@@ -89,19 +89,34 @@ def filter_companies_by_employee_range(companies, employee_ranges):
         # Try to extract numeric value from employee string (e.g., "50-100" -> 75, "500+" -> 500)
         employee_count = None
         try:
+            # Clean the string first
+            cleaned = total_employees_str.strip().replace(',', '').replace(' ', '')
+            
+            # Validate: reject if contains non-numeric characters (except - and +)
+            if not cleaned or not all(c.isdigit() or c in ['-', '+'] for c in cleaned):
+                continue
+            
             # Handle ranges like "50-100" -> take midpoint
-            if '-' in total_employees_str:
-                parts = total_employees_str.split('-')
+            if '-' in cleaned:
+                parts = cleaned.split('-')
                 if len(parts) == 2:
-                    low = int(parts[0].strip().replace(',', ''))
-                    high = int(parts[1].strip().replace(',', ''))
-                    employee_count = (low + high) // 2
+                    low = int(parts[0])
+                    high = int(parts[1])
+                    # Validate range is reasonable
+                    if low > 0 and high > low and high <= 1000000:
+                        employee_count = (low + high) // 2
             # Handle "500+" or "5000+"
-            elif '+' in total_employees_str:
-                employee_count = int(total_employees_str.replace('+', '').strip().replace(',', ''))
+            elif '+' in cleaned:
+                num = int(cleaned.replace('+', ''))
+                # Validate number is reasonable
+                if num > 0 and num <= 1000000:
+                    employee_count = num
             # Handle single number
             else:
-                employee_count = int(total_employees_str.strip().replace(',', ''))
+                num = int(cleaned)
+                # Validate number is reasonable
+                if num > 0 and num <= 1000000:
+                    employee_count = num
         except (ValueError, AttributeError):
             # If we can't parse, skip this company when filtering
             continue
@@ -800,9 +815,10 @@ def level2_process():
             print(f"  🔍 Filtering companies by employee ranges: {employee_ranges}")
             print(f"  📊 Starting with {len(companies)} companies")
             # First, fetch employee counts for companies that don't have them yet
+            # IMPORTANT: Only fetch if NOT in database (saves API credits!)
             companies_without_employee_data = [c for c in companies if not c.get('total_employees')]
             if companies_without_employee_data:
-                print(f"  📊 Fetching employee counts for {len(companies_without_employee_data)} companies...")
+                print(f"  📊 Fetching employee counts for {len(companies_without_employee_data)} companies (saving API credits by skipping {len(companies) - len(companies_without_employee_data)} companies that already have data)...")
                 fetched_count = 0
                 for company in companies_without_employee_data:
                     company_name = company.get('company_name', '')
@@ -811,19 +827,34 @@ def level2_process():
                         try:
                             total_employees = apollo_client.get_company_total_employees(company_name, website) or ''
                             if total_employees:
-                                company['total_employees'] = total_employees
-                                fetched_count += 1
-                                print(f"    ✅ {company_name}: {total_employees} employees")
-                                # Update in database for future use
-                                if company.get('place_id'):
-                                    try:
-                                        get_supabase_client().update_level1_company_metrics(
-                                            project_name=project_name,
-                                            place_id=company['place_id'],
-                                            total_employees=total_employees
-                                        )
-                                    except:
-                                        pass  # Best effort - don't fail if update fails
+                                # Validate employee count before using it
+                                # Check if it's a reasonable number (not corrupted data)
+                                try:
+                                    # Try to parse and validate
+                                    cleaned = str(total_employees).replace(',', '').replace(' ', '').strip()
+                                    # If it's a simple number, check it's reasonable
+                                    if cleaned.isdigit():
+                                        num = int(cleaned)
+                                        if num <= 0 or num > 1000000:  # Reject unreasonable numbers
+                                            print(f"    ⚠️  {company_name}: Rejected invalid employee count: {total_employees}")
+                                            total_employees = ''
+                                except:
+                                    pass  # If validation fails, still use the original value
+                                
+                                if total_employees:
+                                    company['total_employees'] = total_employees
+                                    fetched_count += 1
+                                    print(f"    ✅ {company_name}: {total_employees} employees")
+                                    # Update in database for future use
+                                    if company.get('place_id'):
+                                        try:
+                                            get_supabase_client().update_level1_company_metrics(
+                                                project_name=project_name,
+                                                place_id=company['place_id'],
+                                                total_employees=total_employees
+                                            )
+                                        except:
+                                            pass  # Best effort - don't fail if update fails
                             else:
                                 print(f"    ⚠️  {company_name}: No employee data available in Apollo")
                         except Exception as e:
@@ -834,22 +865,23 @@ def level2_process():
                 print(f"  📊 Fetched employee data for {fetched_count} out of {len(companies_without_employee_data)} companies")
             
             # Now filter by employee ranges
-            companies_before_filter = len(companies)
+            companies_before_filter_list = companies.copy()  # Save the actual list, not just the length
+            companies_before_filter_count = len(companies)
             companies = filter_companies_by_employee_range(companies, employee_ranges)
             companies_after_filter = len(companies)
-            print(f"  📊 After filtering: {companies_after_filter} companies (filtered out {companies_before_filter - companies_after_filter})")
+            print(f"  📊 After filtering: {companies_after_filter} companies (filtered out {companies_before_filter_count - companies_after_filter})")
             
             if not companies:
                 # Check if any companies had employee data
-                companies_with_data = [c for c in companies_before_filter if c.get('total_employees')]
+                companies_with_data = [c for c in companies_before_filter_list if c.get('total_employees')]
                 # Ensure employee_ranges is a list before joining (extra safety check)
                 if not isinstance(employee_ranges, (list, tuple)):
                     employee_ranges = []
                 ranges_str = ', '.join(str(r) for r in employee_ranges) if employee_ranges else ''
                 if not companies_with_data:
-                    error_msg = f'No companies have employee data available. Employee range filter(s) "{ranges_str}" require employee data, but none of the {companies_before_filter} companies have this information in Apollo.io. Please select "All Company Sizes" to process all companies regardless of employee count.'
+                    error_msg = f'No companies have employee data available. Employee range filter(s) "{ranges_str}" require employee data, but none of the {companies_before_filter_count} companies have this information in Apollo.io. Please select "All Company Sizes" to process all companies regardless of employee count.'
                 else:
-                    error_msg = f'No companies found matching employee range(s): {ranges_str}. {companies_before_filter - companies_after_filter} companies were filtered out. Try selecting "All Company Sizes" or different employee ranges.'
+                    error_msg = f'No companies found matching employee range(s): {ranges_str}. {companies_before_filter_count - companies_after_filter} companies were filtered out. Try selecting "All Company Sizes" or different employee ranges.'
                 
                 return jsonify({
                     'message': error_msg,
@@ -899,8 +931,15 @@ def level2_process():
                 traceback.print_exc()
                 people = []
             
-            # Company metrics
-            total_employees = apollo_client.get_company_total_employees(company_name, website) or ''
+            # Company metrics - USE EXISTING DATA FIRST to save API credits!
+            # Only fetch from API if we don't already have it (from database or filtering step)
+            total_employees = company.get('total_employees', '') or ''
+            # Only make API call if we don't have employee data (saves credits!)
+            if not total_employees:
+                total_employees = apollo_client.get_company_total_employees(company_name, website) or ''
+                # If we got it from API, update the company object for future use
+                if total_employees:
+                    company['total_employees'] = total_employees
             active_members = len(people or [])
             active_members_with_email = sum(1 for p in (people or []) if p.get('email'))
             
