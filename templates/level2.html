@@ -1184,6 +1184,48 @@
         /**
          * User-friendly error messages
          */
+        function showUserFriendlySuccess(message, duration = 3000) {
+            // Remove existing success notifications
+            const existing = document.querySelector('.success-notification');
+            if (existing) {
+                existing.remove();
+            }
+            
+            const successDiv = document.createElement('div');
+            successDiv.className = 'success-notification';
+            successDiv.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #10b981;
+                color: white;
+                padding: 16px 24px;
+                border-radius: 12px;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+                z-index: 10000;
+                max-width: 400px;
+                animation: slideInRight 0.3s ease-out;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+            `;
+            
+            successDiv.innerHTML = `
+                <i class="fas fa-check-circle" style="font-size: 1.2em;"></i>
+                <div>
+                    <strong>Success</strong>
+                    <div style="font-size: 0.9em; margin-top: 4px;">${escapeHtml(message)}</div>
+                </div>
+            `;
+            
+            document.body.appendChild(successDiv);
+            
+            setTimeout(() => {
+                successDiv.style.animation = 'slideOutRight 0.3s ease-in';
+                setTimeout(() => successDiv.remove(), 300);
+            }, duration);
+        }
+        
         function showUserFriendlyError(message, duration = 5000) {
             // Fallback if escapeHtml is not yet defined
             if (typeof escapeHtml === 'undefined') {
@@ -2084,7 +2126,8 @@
             }
             
             // Save selection first
-            await fetch('/api/level2/selection', {
+            console.log(`💾 Saving selection: ${selectedCompanyIds.size} companies selected`);
+            const selectionRes = await fetch('/api/level2/selection', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -2092,55 +2135,107 @@
                     selected_place_ids: Array.from(selectedCompanyIds)
                 })
             });
+            const selectionData = await selectionRes.json();
+            console.log('✅ Selection saved:', selectionData);
             
             processingModal.classList.add('open');
             document.getElementById('progressFill').style.width = '0%';
             document.getElementById('progressPercent').textContent = '0%';
-            document.getElementById('progressText').textContent = 'Starting...';
-            document.getElementById('progressStatus').textContent = 'Connecting to contact database';
+            document.getElementById('progressText').textContent = 'Initializing...';
+            document.getElementById('progressStatus').textContent = 'Connecting to contact database...';
             
-            let batchNumber = 1;
-            let totalProcessed = 0;
-            let totalContacts = 0;
-            
-            while (true) {
-                try {
-                    const res = await fetch('/api/level2/process', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+            // Use SSE streaming like Level 1 for real-time progress
+            try {
+                const response = await fetch('/api/level2/process', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         project_name: currentProject,
-                        batch_size: 1,
-                        batch_number: batchNumber,
                         designation: designation,
                         employee_ranges: employeeRanges
                     })
-                    });
-                    
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.error);
-                    
-                    totalProcessed = data.processed || 0;
-                    totalContacts += data.contacts_found || 0;
-                    const total = data.total_companies || selectedCompanyIds.size;
-                    
-                    const pct = total > 0 ? Math.round((totalProcessed / total) * 100) : 0;
-                    document.getElementById('progressFill').style.width = pct + '%';
-                    document.getElementById('progressPercent').textContent = pct + '%';
-                    document.getElementById('progressText').textContent = `${totalProcessed} of ${total} companies processed`;
-                    document.getElementById('progressStatus').textContent = data.current_company 
-                        ? `Processing: ${data.current_company}` 
-                        : `Found ${totalContacts} contacts`;
-                    
-                    if (data.completed) break;
-                    batchNumber++;
-                    
-                    await new Promise(r => setTimeout(r, 300));
-                } catch (e) {
-                    processingModal.classList.remove('open');
-                    alert('Error: ' + e.message);
-                    return;
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                    throw new Error(errorData.error || `HTTP ${response.status}: Processing failed`);
                 }
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) {
+                        console.log('✅ Stream completed');
+                        setTimeout(() => {
+                            if (processingModal.classList.contains('open')) {
+                                processingModal.classList.remove('open');
+                            }
+                        }, 1000);
+                        break;
+                    }
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const jsonStr = line.slice(6).trim();
+                                if (!jsonStr) continue;
+                                
+                                const evt = JSON.parse(jsonStr);
+                                
+                                if (evt.type === 'progress') {
+                                    const p = evt.data || {};
+                                    const pct = p.total > 0 ? Math.round((p.current / p.total) * 100) : 0;
+                                    document.getElementById('progressFill').style.width = pct + '%';
+                                    document.getElementById('progressPercent').textContent = pct + '%';
+                                    document.getElementById('progressText').textContent = p.message || 'Processing...';
+                                    document.getElementById('progressStatus').textContent = `Found ${p.contacts_found || 0} contacts`;
+                                }
+                                
+                                if (evt.type === 'company_update') {
+                                    const company = evt.data;
+                                    const progress = evt.progress || {};
+                                    const pct = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
+                                    document.getElementById('progressFill').style.width = pct + '%';
+                                    document.getElementById('progressPercent').textContent = pct + '%';
+                                    document.getElementById('progressText').textContent = `Processing: ${company.company_name || ''}... (${progress.current || 0}/${progress.total || 0})`;
+                                    document.getElementById('progressStatus').textContent = `Found ${progress.contacts_found || 0} contacts so far...`;
+                                }
+                                
+                                if (evt.type === 'complete') {
+                                    const data = evt.data || {};
+                                    console.log('✅ Processing complete:', data);
+                                    processingModal.classList.remove('open');
+                                    if (data.message) {
+                                        showUserFriendlySuccess(data.message);
+                                    }
+                                    break;
+                                }
+                                
+                                if (evt.type === 'error') {
+                                    const error = evt.data?.error || 'Unknown error';
+                                    console.error('❌ Processing error:', error);
+                                    processingModal.classList.remove('open');
+                                    showUserFriendlyError(error);
+                                    return;
+                                }
+                            } catch (e) {
+                                console.error('Error parsing SSE event:', e);
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('❌ Processing error:', e);
+                processingModal.classList.remove('open');
+                showUserFriendlyError('Error processing companies: ' + e.message);
+                return;
             }
             
             // Load contacts immediately

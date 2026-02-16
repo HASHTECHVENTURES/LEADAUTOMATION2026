@@ -217,48 +217,46 @@ class ApolloClient:
             org_url = f"{self.base_url}/organizations/search"
             domain = self.extract_domain(website) if website else ''
 
-            payloads = []
-            # Try domain-based payloads first (more accurate)
+            # CRITICAL: Only try ONE payload to save credits! Try the most likely one first
+            # Try domain-based first (most accurate), then name-based as fallback
+            payloads_to_try = []
             if domain:
-                payloads.extend([
-                    {'q_organization_domains': domain, 'page': 1, 'per_page': 1},
-                    {'q_organization_domains_list': [domain], 'page': 1, 'per_page': 1},
-                    {'organization_domains': [domain], 'page': 1, 'per_page': 1},
-                ])
-            # Fallback: name-based
+                # Try domain-based first (most accurate, usually works)
+                payloads_to_try.append({'q_organization_domains': domain, 'page': 1, 'per_page': 1})
             if company_name:
-                payloads.append({'name': company_name, 'page': 1, 'per_page': 1})
+                # Fallback to name-based only if domain didn't work
+                payloads_to_try.append({'name': company_name, 'page': 1, 'per_page': 1})
 
-            for payload in payloads:
+            # CRITICAL FIX: Only try ONE payload to save credits!
+            # Stop immediately after first successful response (even if no employee data found)
+            for payload in payloads_to_try[:1]:  # ONLY TRY FIRST PAYLOAD - SAVES CREDITS!
                 try:
-                    print(f"🔍 Trying to get employee count for: {company_name} with payload: {payload}")
-                    resp = requests.post(org_url, json=payload, headers=self.headers)
+                    print(f"🔍 Getting employee count for: {company_name} (1 API call only to save credits)")
+                    resp = requests.post(org_url, json=payload, headers=self.headers, timeout=10)
                     print(f"   Apollo response status: {resp.status_code}")
                     
                     if resp.status_code != 200:
                         print(f"   ❌ Failed with status {resp.status_code}")
-                        continue
+                        break  # Stop trying - don't waste more credits
                     
                     data = resp.json() or {}
                     orgs = data.get('organizations', []) or []
                     print(f"   Found {len(orgs)} organization(s) in Apollo")
                     
                     if not orgs:
-                        continue
+                        break  # No orgs found - stop trying
                     
                     org = orgs[0]
-                    print(f"   Organization data keys: {list(org.keys())}")
-                    print(f"   Raw org data sample: num_employees={org.get('estimated_num_employees')}, employee_count={org.get('employee_count')}")
-                    
                     emp = self._extract_employee_count(org)
                     if emp:
-                        print(f"   ✅ Found employee count: {emp}")
+                        print(f"   ✅ Found employee count: {emp} (1 API call used)")
                         return emp
                     else:
-                        print(f"   ⚠️ No employee count found in org data")
+                        print(f"   ⚠️ No employee count found in org data (1 API call used)")
+                        break  # Stop - don't try more payloads
                 except Exception as e:
                     print(f"   ❌ Exception: {str(e)}")
-                    continue
+                    break  # Stop on error - don't waste more credits
 
         except Exception as e:
             print(f"Error getting company total employees from Apollo: {str(e)}")
@@ -298,7 +296,7 @@ class ApolloClient:
                 'person_seniorities': seniorities,
                 'include_similar_titles': True,  # Allow similar titles to get more results
                 'page': 1,
-                'per_page': 50  # Get more results
+                'per_page': 100  # CRITICAL FIX: Get MORE results (was 50, now 100)
             }
 
             # Retry logic: Try up to 3 times with exponential backoff
@@ -424,8 +422,8 @@ class ApolloClient:
         
         # Use individual enrichment (more reliable)
         print(f"    Enriching {len(person_ids)} people individually...")
-        # Increase limit to get more contacts
-        for idx, person_id in enumerate(person_ids[:50], 1):
+        # CRITICAL FIX: Increase limit to get MORE contacts (was 50, now 100)
+        for idx, person_id in enumerate(person_ids[:100], 1):
             try:
                 enriched_person = self.enrich_single_person(person_id)
                 if enriched_person:
@@ -449,8 +447,8 @@ class ApolloClient:
             return enriched
         
         print(f"    Enriching {len(person_ids)} people with company validation (target: {target_domain})...")
-        # Increase limit to get more contacts
-        for idx, person_id in enumerate(person_ids[:50], 1):
+        # CRITICAL FIX: Increase limit to get MORE contacts (was 50, now 100)
+        for idx, person_id in enumerate(person_ids[:100], 1):
             try:
                 enriched_person = self.enrich_single_person(person_id)
                 if enriched_person:
@@ -505,27 +503,18 @@ class ApolloClient:
                 
                 person_email = enriched_person.get('email', '')
                 
-                # Validation logic - include if email domain matches
-                if person_email and '@' in person_email:
-                    email_domain = person_email.split('@')[1].lower()
-                    target_clean = target_domain.lower().replace('www.', '').replace('http://', '').replace('https://', '')
-                    
-                    if target_clean in email_domain or email_domain in target_clean:
-                        return enriched_person
-                
-                # Include if has email (even if domain doesn't match - might be valid)
-                if person_email:
-                    return enriched_person
-                
-                # Include anyway (might have LinkedIn)
+                # CRITICAL FIX: Include ALL contacts, even without emails!
+                # Apollo already validated they work at the company, so trust Apollo
+                # We want MORE contacts, not fewer!
                 return enriched_person
             except Exception as e:
                 print(f"    Error enriching person {person_id}: {str(e)}")
                 return None
         
         # Process in parallel (5 workers to avoid rate limits)
+        # CRITICAL FIX: Increase limit to get MORE contacts (was 50, now 100)
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            future_to_id = {executor.submit(enrich_and_validate, pid): pid for pid in person_ids[:50]}
+            future_to_id = {executor.submit(enrich_and_validate, pid): pid for pid in person_ids[:100]}
             
             for future in concurrent.futures.as_completed(future_to_id):
                 result = future.result()
@@ -794,31 +783,26 @@ class ApolloClient:
             person['company_name'] = company_name
             person['company_website'] = website
         
-        # Less restrictive filtering - only remove clearly irrelevant contacts
-        # Keep all contacts with valid titles (not just specific ones)
+        # VERY RELAXED filtering - only remove clearly irrelevant contacts
+        # Keep ALL contacts with names, even if no title (titles might be missing in Apollo)
         blocked_titles = ['intern', 'student', 'volunteer', 'freelancer', 'contractor', 'trainee']
-        generic_titles = ['employee', 'staff', 'worker', 'team member', 'member']
         
         filtered_people = []
         for person in people:
-            title = (person.get('title') or '').lower().strip()
-            
-            # Skip if empty title
-            if not title:
-                print(f"    ⚠️ Skipping: {person.get('name')} - No title")
+            # CRITICAL FIX: Don't skip contacts without titles - they might still be valid!
+            # Only require a name
+            if not person.get('name') and not person.get('first_name'):
+                print(f"    ⚠️ Skipping: No name found")
                 continue
             
-            # Skip only clearly blocked titles
-            if any(blocked in title for blocked in blocked_titles):
+            title = (person.get('title') or '').lower().strip()
+            
+            # Only skip if title contains clearly blocked keywords (but keep if no title!)
+            if title and any(blocked in title for blocked in blocked_titles):
                 print(f"    ❌ FILTERED OUT: {person.get('name')} - '{title}' (blocked)")
                 continue
             
-            # Skip only generic "Employee" type titles
-            if title in generic_titles:
-                print(f"    ❌ FILTERED OUT: {person.get('name')} - '{title}' (generic)")
-                continue
-            
-            # Keep everyone else - we want more contacts!
+            # Keep everyone else - we want MORE contacts, not fewer!
             filtered_people.append(person)
         
         print(f"  📊 FINAL: {len(filtered_people)} contacts after filtering (from {len(people)})")

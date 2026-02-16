@@ -265,16 +265,28 @@ def level1_search():
     try:
         data = request.json
         project_name = data.get('project_name', '').strip()
+        search_type = data.get('search_type', 'pin').strip()  # 'pin' or 'place'
         pin_codes_input = data.get('pin_code', '').strip()
+        place_names_input = data.get('place_name', '').strip()
         industry = data.get('industry', '').strip()
         
         # Validate project name
         if not project_name:
             return jsonify({'error': 'Project name is required'}), 400
         
-        # Validate project name format (alphanumeric, spaces, hyphens, underscores)
-        if not all(c.isalnum() or c in (' ', '-', '_') for c in project_name):
-            return jsonify({'error': 'Project name can only contain letters, numbers, spaces, hyphens, and underscores'}), 400
+        # Validate project name format (alphanumeric, spaces, hyphens, underscores, forward slashes)
+        # Allow forward slashes (/) as they're commonly used in project names like "Medical / Healthcare"
+        import re
+        # Check if project name contains only allowed characters
+        if not re.match(r'^[a-zA-Z0-9\s\-_/]+$', project_name):
+            # Provide helpful error message with suggestions
+            invalid_chars = set(re.findall(r'[^a-zA-Z0-9\s\-_/]', project_name))
+            if invalid_chars:
+                invalid_chars_str = ', '.join(f"'{c}'" for c in sorted(invalid_chars)[:5])
+                return jsonify({
+                    'error': f'Project name contains invalid characters: {invalid_chars_str}. Please use only letters, numbers, spaces, hyphens (-), underscores (_), and forward slashes (/).'
+                }), 400
+            return jsonify({'error': 'Project name can only contain letters, numbers, spaces, hyphens, underscores, and forward slashes'}), 400
         
         if len(project_name) < 3:
             return jsonify({'error': 'Project name must be at least 3 characters'}), 400
@@ -282,36 +294,53 @@ def level1_search():
         if len(project_name) > 100:
             return jsonify({'error': 'Project name must be less than 100 characters'}), 400
         
-        # Parse multiple PIN codes (comma-separated)
-        # Parse and auto-complete PIN codes
-        all_pins = [p.strip() for p in pin_codes_input.split(',') if p.strip()]
-        
-        # Separate into valid (6 digits), incomplete (numeric but < 6 digits), and invalid
-        valid_pins = []
-        incomplete_pins = []
-        invalid_pins = []
-        
-        for pin in all_pins:
-            if pin.isdigit() and len(pin) == 6:
-                valid_pins.append(pin)
-            elif pin.isdigit() and len(pin) < 6:
-                incomplete_pins.append(pin)
-            else:
-                invalid_pins.append(pin)
-        
-        # Auto-complete incomplete PIN codes using prefix from first valid PIN
-        if valid_pins and incomplete_pins:
-            first_valid = valid_pins[0]
-            for incomplete in incomplete_pins:
-                digits_needed = 6 - len(incomplete)
-                if digits_needed > 0:
-                    prefix = first_valid[:digits_needed]
-                    completed = prefix + incomplete.zfill(len(incomplete))
-                    if len(completed) == 6 and completed.isdigit():
-                        valid_pins.append(completed)
-                        print(f"✅ Auto-completed '{incomplete}' to '{completed}' using prefix from '{first_valid}'")
-        
-        pin_codes = valid_pins
+        # Handle PIN code search
+        if search_type == 'pin':
+            # Parse multiple PIN codes (comma-separated)
+            # Parse and auto-complete PIN codes
+            all_pins = [p.strip() for p in pin_codes_input.split(',') if p.strip()]
+            
+            # Separate into valid (6 digits), incomplete (numeric but < 6 digits), and invalid
+            valid_pins = []
+            incomplete_pins = []
+            invalid_pins = []
+            
+            for pin in all_pins:
+                if pin.isdigit() and len(pin) == 6:
+                    valid_pins.append(pin)
+                elif pin.isdigit() and len(pin) < 6:
+                    incomplete_pins.append(pin)
+                else:
+                    invalid_pins.append(pin)
+            
+            # Auto-complete incomplete PIN codes using prefix from first valid PIN
+            if valid_pins and incomplete_pins:
+                first_valid = valid_pins[0]
+                for incomplete in incomplete_pins:
+                    digits_needed = 6 - len(incomplete)
+                    if digits_needed > 0:
+                        prefix = first_valid[:digits_needed]
+                        completed = prefix + incomplete.zfill(len(incomplete))
+                        if len(completed) == 6 and completed.isdigit():
+                            valid_pins.append(completed)
+                            print(f"✅ Auto-completed '{incomplete}' to '{completed}' using prefix from '{first_valid}'")
+            
+            pin_codes = valid_pins
+            
+            if not pin_codes:
+                error_msg = 'No valid PIN codes found. '
+                if incomplete_pins:
+                    error_msg += f'Incomplete: {", ".join(incomplete_pins)} (need at least one full 6-digit PIN to auto-complete). '
+                if invalid_pins:
+                    error_msg += f'Invalid: {", ".join(invalid_pins)}. '
+                error_msg += 'Please enter at least one valid 6-digit PIN code.'
+                return jsonify({'error': error_msg}), 400
+        else:
+            # Handle Place Name search
+            place_names = [p.strip() for p in place_names_input.split(',') if p.strip()]
+            if not place_names:
+                return jsonify({'error': 'Please enter at least one place name (e.g., Mumbai, Delhi, Bangalore)'}), 400
+            pin_codes = []  # Not used for place search
         
         # Safely get max_companies with error handling
         try:
@@ -319,20 +348,14 @@ def level1_search():
         except (ValueError, TypeError):
             max_companies = 20  # Default to 20 if conversion fails
         
-        if not pin_codes:
-            error_msg = 'No valid PIN codes found. '
-            if incomplete_pins:
-                error_msg += f'Incomplete: {", ".join(incomplete_pins)} (need at least one full 6-digit PIN to auto-complete). '
-            if invalid_pins:
-                error_msg += f'Invalid: {", ".join(invalid_pins)}. '
-            error_msg += 'Please enter at least one valid 6-digit PIN code.'
-            return jsonify({'error': error_msg}), 400
-        
         # Validate max_companies (limit to reasonable range)
         if max_companies < 1 or max_companies > 100:
             max_companies = 20  # Default to 20 if invalid
         
-        print(f"🔍 Search request: PINs={pin_codes}, Industry={industry}, MaxCompanies={max_companies}")
+        if search_type == 'pin':
+            print(f"🔍 Search request: PINs={pin_codes}, Industry={industry}, MaxCompanies={max_companies}")
+        else:
+            print(f"🔍 Search request: Places={place_names}, Industry={industry}, MaxCompanies={max_companies}")
         
         def generate():
             try:
@@ -355,63 +378,114 @@ def level1_search():
                 
                 yield f"data: {json.dumps({'type': 'progress', 'data': initial_progress})}\n\n"
                 
-                # Step 1: Search locations for all PIN codes
+                # Step 1: Search locations based on search type
                 all_companies = []
-                total_pin_codes = len(pin_codes)
-                # Request more companies per PIN to account for duplicates (request 1.5x to ensure we get enough unique results)
-                companies_per_pin = max(1, int((max_companies * 1.5) // total_pin_codes))  # Request extra to account for duplicates
                 search_errors = []  # Track errors for better user feedback
                 
-                for idx, pin_code in enumerate(pin_codes, 1):
-                    # Progress for PIN-level search (so the UI doesn't look "stuck")
-                    yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Searching PIN {idx}/{total_pin_codes}: {pin_code}...', 'current': idx, 'total': total_pin_codes, 'companies_found': len(all_companies)}})}\n\n"
+                if search_type == 'pin':
+                    # PIN code search
+                    total_locations = len(pin_codes)
+                    companies_per_location = max(1, int((max_companies * 1.5) // total_locations)) if total_locations > 0 else max_companies
                     
-                    print(f"🔍 Calling location search API: PIN={pin_code} ({idx}/{total_pin_codes}), Industry={industry}, MaxResults={companies_per_pin}")
-                    
-                    # Search locations for this PIN code
-                    try:
-                        print(f"🔍 [DEBUG] About to call search_by_pin_and_industry for PIN {pin_code}")
-                        logger.info(f"🔍 [DEBUG] Calling Google Places API for PIN {pin_code}, Industry: {industry}")
+                    for idx, pin_code in enumerate(pin_codes, 1):
+                        # Progress for PIN-level search (so the UI doesn't look "stuck")
+                        yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Searching PIN {idx}/{total_locations}: {pin_code}...', 'current': idx, 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
                         
-                        companies = google_client.search_by_pin_and_industry(
-                            pin_code=pin_code,
-                            industry=industry,
-                            max_results=companies_per_pin
-                        )
+                        print(f"🔍 Calling location search service: PIN={pin_code} ({idx}/{total_locations}), Industry={industry}, MaxResults={companies_per_location}")
                         
-                        print(f"🔍 [DEBUG] search_by_pin_and_industry returned {len(companies)} companies for PIN {pin_code}")
-                        logger.info(f"🔍 [DEBUG] Google Places API returned {len(companies)} companies for PIN {pin_code}")
-                        
-                        # Add PIN code to each company for tracking
-                        for company in companies:
-                            company['pin_code'] = pin_code
-                        
-                        all_companies.extend(companies)
-                        print(f"✅ Found {len(companies)} companies for PIN {pin_code}")
-                        logger.info(f"✅ Successfully found {len(companies)} companies for PIN {pin_code}")
+                        # Search locations for this PIN code
+                        try:
+                            print(f"🔍 [DEBUG] About to call search_by_pin_and_industry for PIN {pin_code}")
+                            logger.info(f"🔍 [DEBUG] Calling Google Places service for PIN {pin_code}, Industry: {industry}")
+                            
+                            companies = google_client.search_by_pin_and_industry(
+                                pin_code=pin_code,
+                                industry=industry,
+                                max_results=companies_per_location
+                            )
+                            
+                            print(f"🔍 [DEBUG] search_by_pin_and_industry returned {len(companies)} companies for PIN {pin_code}")
+                            logger.info(f"🔍 [DEBUG] Google Places service returned {len(companies)} companies for PIN {pin_code}")
+                            
+                            # Add PIN code to each company for tracking
+                            for company in companies:
+                                company['pin_code'] = pin_code
+                            
+                            all_companies.extend(companies)
+                            print(f"✅ Found {len(companies)} companies for PIN {pin_code}")
+                            logger.info(f"✅ Successfully found {len(companies)} companies for PIN {pin_code}")
 
-                        # Emit a progress update after each PIN finishes so "Companies Found" updates live
-                        yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Finished PIN {idx}/{total_pin_codes}: {pin_code}. Found {len(companies)} companies (Total: {len(all_companies)}).', 'current': idx, 'total': total_pin_codes, 'companies_found': len(all_companies)}})}\n\n"
+                            # Emit a progress update after each PIN finishes so "Companies Found" updates live
+                            yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Finished PIN {idx}/{total_locations}: {pin_code}. Found {len(companies)} companies (Total: {len(all_companies)}).', 'current': idx, 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
+                            
+                        except Exception as e:
+                            error_msg = str(e)
+                            print(f"❌ Error searching PIN {pin_code}: {error_msg}")
+                            logger.error(f"❌ Error searching PIN {pin_code}: {error_msg}")
+                            # Log full traceback for debugging
+                            import traceback
+                            logger.error(f"Traceback: {traceback.format_exc()}")
+                            # Track error for user feedback
+                            if 'OVER_QUERY_LIMIT' in error_msg or 'quota' in error_msg.lower():
+                                search_errors.append(f"PIN {pin_code}: Service quota exceeded")
+                            elif 'network' in error_msg.lower() or 'connection' in error_msg.lower():
+                                search_errors.append(f"PIN {pin_code}: Network error")
+                            else:
+                                search_errors.append(f"PIN {pin_code}: {error_msg[:50]}")
+                            # Continue to next PIN code but track errors
+                            continue
+                else:
+                    # Place name search
+                    total_locations = len(place_names)
+                    companies_per_location = max(1, int((max_companies * 1.5) // total_locations)) if total_locations > 0 else max_companies
+                    
+                    for idx, place_name in enumerate(place_names, 1):
+                        # Progress for place-level search
+                        yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Searching Place {idx}/{total_locations}: {place_name}...', 'current': idx, 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
                         
-                    except Exception as e:
-                        error_msg = str(e)
-                        print(f"❌ Error searching PIN {pin_code}: {error_msg}")
-                        logger.error(f"❌ Error searching PIN {pin_code}: {error_msg}")
-                        # Log full traceback for debugging
-                        import traceback
-                        logger.error(f"Traceback: {traceback.format_exc()}")
-                        # Track error for user feedback
-                        if 'OVER_QUERY_LIMIT' in error_msg or 'quota' in error_msg.lower():
-                            search_errors.append(f"PIN {pin_code}: API quota exceeded")
-                        elif 'network' in error_msg.lower() or 'connection' in error_msg.lower():
-                            search_errors.append(f"PIN {pin_code}: Network error")
-                        else:
-                            search_errors.append(f"PIN {pin_code}: {error_msg[:50]}")
-                        # Continue to next PIN code but track errors
-                        continue
+                        print(f"🔍 Calling location search service: Place={place_name} ({idx}/{total_locations}), Industry={industry}, MaxResults={companies_per_location}")
+                        
+                        # Search locations for this place name
+                        try:
+                            print(f"🔍 [DEBUG] About to call search_by_place_and_industry for Place {place_name}")
+                            logger.info(f"🔍 [DEBUG] Calling Google Places service for Place {place_name}, Industry: {industry}")
+                            
+                            companies = google_client.search_by_place_and_industry(
+                                place_name=place_name,
+                                industry=industry,
+                                max_results=companies_per_location
+                            )
+                            
+                            print(f"🔍 [DEBUG] search_by_place_and_industry returned {len(companies)} companies for Place {place_name}")
+                            logger.info(f"🔍 [DEBUG] Google Places service returned {len(companies)} companies for Place {place_name}")
+                            
+                            # Add place name to each company for tracking
+                            for company in companies:
+                                company['place_name'] = place_name
+                            
+                            all_companies.extend(companies)
+                            print(f"✅ Found {len(companies)} companies for Place {place_name}")
+                            logger.info(f"✅ Successfully found {len(companies)} companies for Place {place_name}")
+
+                            # Emit a progress update after each place finishes
+                            yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Finished Place {idx}/{total_locations}: {place_name}. Found {len(companies)} companies (Total: {len(all_companies)}).', 'current': idx, 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
+                            
+                        except Exception as e:
+                            error_msg = str(e)
+                            print(f"❌ Error searching Place {place_name}: {error_msg}")
+                            logger.error(f"❌ Error searching Place {place_name}: {error_msg}")
+                            import traceback
+                            logger.error(f"Traceback: {traceback.format_exc()}")
+                            if 'OVER_QUERY_LIMIT' in error_msg or 'quota' in error_msg.lower():
+                                search_errors.append(f"Place {place_name}: Service quota exceeded")
+                            elif 'network' in error_msg.lower() or 'connection' in error_msg.lower():
+                                search_errors.append(f"Place {place_name}: Network error")
+                            else:
+                                search_errors.append(f"Place {place_name}: {error_msg[:50]}")
+                            continue
                 
                 # Deduplicate companies by place_id (Google's unique identifier)
-                # This prevents the same company from appearing multiple times when searching multiple PIN codes
+                # This prevents the same company from appearing multiple times when searching multiple locations
                 seen_place_ids = set()
                 deduplicated_companies = []
                 for company in all_companies:
@@ -438,18 +512,26 @@ def level1_search():
                 if len(deduplicated_companies) > max_companies:
                     print(f"⚠️  Found {len(deduplicated_companies)} unique companies, but limiting to {max_companies} as requested")
                     logger.info(f"⚠️  Found {len(deduplicated_companies)} unique companies, but limiting to {max_companies} as requested")
-                print(f"✅ Location search returned {companies_count} companies total from {total_pin_codes} PIN code(s)")
+                
+                total_locations = len(pin_codes) if search_type == 'pin' else len(place_names)
+                location_type = 'PIN code(s)' if search_type == 'pin' else 'Place(s)'
+                print(f"✅ Location search returned {companies_count} companies total from {total_locations} {location_type}")
                 logger.info(f"✅ Location search completed: {companies_count} companies found for project '{project_name}'")
                 
                 if not companies or companies_count == 0:
-                    pin_codes_str = ', '.join(pin_codes)
+                    if search_type == 'pin':
+                        location_str = ', '.join(pin_codes)
+                        location_type_str = 'PIN code(s)'
+                    else:
+                        location_str = ', '.join(place_names)
+                        location_type_str = 'Place(s)'
                     
                     # Provide better error message based on what happened
                     if search_errors:
                         error_details = '; '.join(search_errors)
-                        error_msg = f'No companies found for PIN code(s): {pin_codes_str}. Errors: {error_details}. This may be due to API quota limits or network issues. Please try again in a few minutes or check your Google Places API quota.'
+                        error_msg = f'No companies found for {location_type_str}: {location_str}. Errors: {error_details}. This may be due to service quota limits or network issues. Please try again in a few minutes.'
                     else:
-                        error_msg = f'No companies found for PIN code(s): {pin_codes_str}. Please try different PIN codes or check if they are correct. You may also want to try a broader industry term.'
+                        error_msg = f'No companies found for {location_type_str}: {location_str}. Please try different locations or check if they are correct. You may also want to try a broader industry term.'
                     
                     print(f"⚠️  {error_msg}")
                     logger.warning(f"⚠️  No companies found for project '{project_name}' with PIN codes: {pin_codes_str}. Errors: {search_errors}")
@@ -480,10 +562,14 @@ def level1_search():
                 try:
                     search_params = {
                         'project_name': project_name,  # User-defined project name
-                        'pin_codes': ','.join(pin_codes),  # Store all PIN codes as comma-separated
                         'industry': industry,
                         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     }
+                    # Store search parameters based on search type
+                    if search_type == 'pin':
+                        search_params['pin_codes'] = ','.join(pin_codes)  # Store all PIN codes as comma-separated
+                    else:
+                        search_params['place_names'] = ','.join(place_names)  # Store all place names as comma-separated
                     
                     logger.info(f"💾 Starting save operation for project '{project_name}' with {len(companies)} companies")
                     save_result = get_supabase_client().save_level1_results(companies, search_params)
@@ -789,18 +875,18 @@ def level2_process():
         if not project_name:
             return jsonify({'error': 'project_name is required'}), 400
         
-        # Validate Apollo API key before processing (save credits)
-        print("🔍 Validating Apollo.io API key...")
+        # Validate Apollo service key before processing (save credits)
+        print("🔍 Validating Apollo.io service connection...")
         try:
             health_url = "https://api.apollo.io/v1/auth/health"
             health_response = requests.get(health_url, headers=apollo_client.headers, timeout=5)
             if health_response.status_code != 200:
-                error_msg = f"Apollo.io API key validation failed (status {health_response.status_code}). Check your API key in config.py"
+                error_msg = f"Apollo.io service connection failed (status {health_response.status_code}). Check your service key in config.py"
                 print(f"❌ {error_msg}")
                 return jsonify({'error': error_msg}), 401
-            print("✅ Apollo.io API key is valid")
+            print("✅ Apollo.io service connection is valid")
         except Exception as e:
-            error_msg = f"Apollo.io API connection error: {str(e)}. Check your internet connection and API key."
+            error_msg = f"Apollo.io service connection error: {str(e)}. Check your internet connection and service key."
             print(f"❌ {error_msg}")
             return jsonify({'error': error_msg}), 500
         
@@ -891,175 +977,162 @@ def level2_process():
                     'error': f'Employee range filter removed all companies'
                 }), 200
         
-        # Calculate batch range
-        start_idx = (batch_number - 1) * batch_size
-        end_idx = start_idx + batch_size
-        batch_companies = companies[start_idx:end_idx]
-        
-        if not batch_companies:
-            return jsonify({'message': 'All companies processed', 'completed': True}), 200
-        
-        # Process batch with Enrichment Service (get contacts with emails only - phone numbers revealed in Apollo.io dashboard)
-        enriched_companies = []
-        current_company_name = ''  # Track the last company being processed
-        
-        import concurrent.futures
-        
-        def process_single_company(company):
-            """Process a single company - get contacts with emails only (phone numbers revealed in Apollo.io dashboard)"""
-            company_name = company.get('company_name', '')
-            website = company.get('website', '')
-            place_id = company.get('place_id', '')
-            
-            print(f"  📊 Processing company: {company_name}")
-            
-            # Parse designation into titles list if provided
-            titles = None
-            if designation and designation.strip():
-                titles = [t.strip() for t in designation.split(',') if t.strip()]
-                print(f"  🔍 Using custom designations: {titles}")
-            else:
-                print(f"  🔍 No designation specified, using default titles")
-            
-            # Get contacts from Enrichment Service (emails only - phone numbers revealed in Apollo.io dashboard)
+        # Process all companies sequentially with real-time SSE updates (like Level 1)
+        def generate():
             try:
-                people = apollo_client.search_people_by_company(company_name, website, titles=titles)
-                print(f"  ✅ Found {len(people) if people else 0} contacts for {company_name}")
-            except Exception as e:
-                print(f"  ❌ Error searching contacts for {company_name}: {str(e)}")
-                import traceback
-                traceback.print_exc()
-                people = []
-            
-            # Company metrics - USE EXISTING DATA FIRST to save API credits!
-            # Only fetch from API if we don't already have it (from database or filtering step)
-            total_employees = company.get('total_employees', '') or ''
-            # Only make API call if we don't have employee data (saves credits!)
-            if not total_employees:
-                total_employees = apollo_client.get_company_total_employees(company_name, website) or ''
-                # If we got it from API, update the company object for future use
-                if total_employees:
-                    company['total_employees'] = total_employees
-            active_members = len(people or [])
-            active_members_with_email = sum(1 for p in (people or []) if p.get('email'))
-            
-            return {
-                'company_name': company_name,
-                'address': company.get('address', ''),
-                'website': website,
-                'phone': company.get('phone', ''),
-                'pin_code': company.get('pin_code', ''),
-                'industry': company.get('industry', ''),
-                'total_employees': total_employees,
-                'active_members': active_members,
-                'active_members_with_email': active_members_with_email,
-                'people': people,
-                'place_id': place_id
-            }
-        
-        # Process companies in parallel (but limit to avoid rate limits)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-            future_to_company = {executor.submit(process_single_company, company): company for company in batch_companies}
-            
-            for idx, future in enumerate(concurrent.futures.as_completed(future_to_company), start_idx + 1):
-                company = future_to_company[future]
-                try:
-                    enriched_company = future.result()
-                    enriched_companies.append(enriched_company)
-                    current_company_name = enriched_company['company_name']
-                    print(f"  ✅ Completed company {idx}/{len(companies)}: {current_company_name}")
-                except Exception as e:
-                    print(f"  ❌ Error processing company {company.get('company_name')}: {str(e)}")
-                    # Add empty result to continue
-                    enriched_companies.append({
-                        'company_name': company.get('company_name', ''),
+                total_companies = len(companies)
+                total_contacts = 0
+                enriched_companies = []
+                default_batch_name = f"{project_name}_Main_Batch"
+                
+                # Send initial progress
+                yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'processing', 'message': f'Starting to process {total_companies} companies...', 'current': 0, 'total': total_companies, 'contacts_found': 0}})}\n\n"
+                
+                # Process companies one by one with real-time updates
+                for idx, company in enumerate(companies, 1):
+                    company_name = company.get('company_name', '')
+                    website = company.get('website', '')
+                    place_id = company.get('place_id', '')
+                    
+                    # Send progress update
+                    yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'processing', 'message': f'Processing: {company_name}... ({idx}/{total_companies})', 'current': idx, 'total': total_companies, 'contacts_found': total_contacts}})}\n\n"
+                    
+                    print(f"  📊 Processing company {idx}/{total_companies}: {company_name}")
+                    print(f"  📊 Website: {website}")
+                    print(f"  📊 Total companies to process: {total_companies}")
+                    
+                    # CRITICAL: Check if company has website (required for contact search)
+                    if not website or not website.strip():
+                        print(f"  ⚠️  WARNING: {company_name} has NO website - cannot search for contacts!")
+                        print(f"  ⚠️  Skipping contact search for this company (website is required)")
+                        people = []
+                    else:
+                        # Parse designation
+                        titles = None
+                        if designation and designation.strip():
+                            titles = [t.strip() for t in designation.split(',') if t.strip()]
+                        
+                        # Get contacts from Apollo
+                        # CRITICAL: This uses FREE api_search endpoint first, then enrichment (costs credits)
+                        print(f"  💰 Searching contacts for {company_name} (using FREE search, then enrichment)...")
+                        print(f"  🔍 Domain: {apollo_client.extract_domain(website) if website else 'N/A'}")
+                        try:
+                            people = apollo_client.search_people_by_company(company_name, website, titles=titles)
+                            print(f"  ✅ Found {len(people) if people else 0} contacts for {company_name}")
+                            if people:
+                                # Count how many have emails (these cost credits to enrich)
+                                emails_count = sum(1 for p in people if p.get('email'))
+                                print(f"  💰 Credits used: ~{emails_count} (for email enrichment)")
+                            else:
+                                print(f"  ⚠️  No contacts found for {company_name}")
+                                print(f"  💡 Possible reasons:")
+                                print(f"     - Company not in Apollo.io database")
+                                print(f"     - No employees match the search criteria")
+                                print(f"     - Website domain not recognized by Apollo")
+                        except Exception as e:
+                            print(f"  ❌ Error searching contacts for {company_name}: {str(e)}")
+                            import traceback
+                            traceback.print_exc()
+                            people = []
+                    
+                    # Get employee count (use existing data first to save credits!)
+                    # CRITICAL: Check database first, then company object, only then API
+                    total_employees = company.get('total_employees', '') or ''
+                    
+                    # If not in company object, check if it was fetched during filtering
+                    # (it should be, but double-check to avoid duplicate API calls)
+                    if not total_employees:
+                        print(f"  ⚠️  WARNING: {company_name} has no employee data - this should have been fetched during filtering!")
+                        print(f"  💰 Making API call to get employee count (this costs credits)...")
+                        total_employees = apollo_client.get_company_total_employees(company_name, website) or ''
+                        if total_employees:
+                            company['total_employees'] = total_employees
+                            # Save to database immediately to avoid future API calls
+                            if company.get('place_id'):
+                                try:
+                                    get_supabase_client().update_level1_company_metrics(
+                                        project_name=project_name,
+                                        place_id=company['place_id'],
+                                        total_employees=total_employees
+                                    )
+                                    print(f"  ✅ Saved employee count to database to avoid future API calls")
+                                except:
+                                    pass
+                    else:
+                        print(f"  ✅ Using existing employee data: {total_employees} (saved 1 API call)")
+                    
+                    active_members = len(people or [])
+                    active_members_with_email = sum(1 for p in (people or []) if p.get('email'))
+                    total_contacts += active_members
+                    
+                    enriched_company = {
+                        'company_name': company_name,
                         'address': company.get('address', ''),
-                        'website': company.get('website', ''),
+                        'website': website,
                         'phone': company.get('phone', ''),
                         'pin_code': company.get('pin_code', ''),
                         'industry': company.get('industry', ''),
-                        'total_employees': '',
-                        'active_members': 0,
-                        'active_members_with_email': 0,
-                        'people': [],
-                        'place_id': company.get('place_id', '')
-                    })
-        
-        # Update metrics and add founders/hr lists for each enriched company
-        for enriched_company in enriched_companies:
-            place_id = enriched_company.get('place_id', '')
-            people = enriched_company.get('people', [])
-            
-            # Best-effort persist metrics back to Supabase (level1_companies)
-            if place_id:
+                        'total_employees': total_employees,
+                        'active_members': active_members,
+                        'active_members_with_email': active_members_with_email,
+                        'people': people,
+                        'place_id': place_id,
+                        'founders': [p for p in (people or []) if p.get('title') and any(keyword.lower() in p.get('title', '').lower() 
+                                                       for keyword in ['founder', 'owner', 'ceo', 'co-founder', 'founder/owner'])],
+                        'hr_contacts': [p for p in (people or []) if p.get('title') and any(keyword.lower() in p.get('title', '').lower() 
+                                                      for keyword in ['hr', 'human resources', 'recruiter', 'talent', 'human resource'])]
+                    }
+                    
+                    enriched_companies.append(enriched_company)
+                    
+                    # Update metrics in database
+                    if place_id:
+                        try:
+                            get_supabase_client().update_level1_company_metrics(
+                                project_name=project_name,
+                                place_id=place_id,
+                                total_employees=total_employees,
+                                active_members=active_members,
+                                active_members_with_email=active_members_with_email,
+                            )
+                        except:
+                            pass
+                    
+                    # Send company update in real-time
+                    yield f"data: {json.dumps({'type': 'company_update', 'data': enriched_company, 'progress': {'current': idx, 'total': total_companies, 'contacts_found': total_contacts}})}\n\n"
+                
+                # Save all results to Supabase
+                yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'saving', 'message': 'Saving contacts to database...', 'current': total_companies, 'total': total_companies, 'contacts_found': total_contacts}})}\n\n"
+                
+                save_result = get_supabase_client().save_level2_results(
+                    enriched_companies, 
+                    project_name=project_name,
+                    batch_name=default_batch_name
+                )
+                
+                print(f"  ✅ Contacts saved with emails. Phone numbers can be revealed in Apollo.io dashboard when needed.")
+                print(f"  ✅ Complete: {total_companies} companies, {total_contacts} contacts found")
+                
+                # Send completion
+                yield f"data: {json.dumps({'type': 'complete', 'data': {'total_companies': total_companies, 'total_contacts': total_contacts, 'message': f'Found {total_contacts} contacts from {total_companies} companies'}})}\n\n"
+                
+            except (BrokenPipeError, ConnectionResetError, GeneratorExit):
+                print("ℹ️  Client disconnected during Level 2 streaming")
+                return
+            except Exception as e:
+                error_msg = str(e)
+                print(f"❌ Error in Level 2 stream: {error_msg}")
+                import traceback
+                traceback.print_exc()
                 try:
-                    get_supabase_client().update_level1_company_metrics(
-                        project_name=project_name,
-                        place_id=place_id,
-                        total_employees=enriched_company.get('total_employees', ''),
-                        active_members=enriched_company.get('active_members', 0),
-                        active_members_with_email=enriched_company.get('active_members_with_email', 0),
-                    )
-                except Exception as e:
-                    print(f"  ⚠️  Could not update metrics for {enriched_company.get('company_name')}: {str(e)}")
-            
-            # Add founders and HR lists
-            enriched_company['founders'] = [p for p in people if p.get('title') and any(keyword.lower() in p.get('title', '').lower() 
-                                                           for keyword in ['founder', 'owner', 'ceo', 'co-founder', 'founder/owner'])]
-            enriched_company['hr_contacts'] = [p for p in people if p.get('title') and any(keyword.lower() in p.get('title', '').lower() 
-                                                              for keyword in ['hr', 'human resources', 'recruiter', 'talent', 'human resource'])]
+                    yield f"data: {json.dumps({'type': 'error', 'data': {'error': error_msg}})}\n\n"
+                except:
+                    pass
         
-        # Use a consistent batch name for this project session (reuse existing or create new)
-        # This prevents duplicate batches when processing in multiple batches
-        default_batch_name = f"{project_name}_Main_Batch"
-        
-        # Save to Supabase with consistent batch name
-        save_result = get_supabase_client().save_level2_results(
-            enriched_companies, 
-            project_name=project_name,
-            batch_name=default_batch_name
-        )
-        
-        total_contacts = sum(len(c.get('people', [])) for c in enriched_companies)
-        
-        # Phone numbers are not requested to save credits
-        # Users should reveal phone numbers in Apollo.io dashboard when needed
-        print(f"  ✅ Contacts saved with emails. Phone numbers can be revealed in Apollo.io dashboard when needed.")
-        
-        # Get the last processed company name for progress display
-        if enriched_companies:
-            current_company_name = enriched_companies[-1].get('company_name', '')
-        else:
-            current_company_name = ''
-        
-        print(f"  ✅ Batch {batch_number} complete: {len(batch_companies)} companies, {total_contacts} contacts found")
-        if designation:
-            print(f"  🔍 Designation filter used: {designation}")
-        if employee_ranges:
-            print(f"  👥 Employee range filter(s) used: {employee_ranges}")
-        
-        # If no contacts found, provide helpful message
-        if total_contacts == 0:
-            print(f"  ⚠️  No contacts found. This could be because:")
-            if designation:
-                print(f"     - Designation filter '{designation}' is too specific")
-            if employee_ranges:
-                print(f"     - Employee range filter(s) '{employee_ranges}' filtered out companies")
-            print(f"     - Companies don't have contacts matching the criteria")
-        
-        return jsonify({
-            'success': True,
-            'batch_number': batch_number,
-            'batch_size': len(batch_companies),
-            'total_companies': len(companies),
-            'processed': start_idx + len(batch_companies),
-            'remaining': len(companies) - (start_idx + len(batch_companies)),
-            'completed': end_idx >= len(companies),
-            'contacts_found': total_contacts,
-            'current_company': current_company_name,  # For progress display
-            'designation_used': designation if designation else None,
-            'employee_ranges_used': employee_ranges if employee_ranges else None
-        }), 200
+        return Response(stream_with_context(generate()), mimetype='text/event-stream', headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no'
+        })
         
     except Exception as e:
         print(f"Error in Level 2 processing: {str(e)}")
@@ -1859,7 +1932,7 @@ def export():
         excel_file.seek(0)
         
         # Generate filename
-        safe_project_name = "".join(c for c in project_name if c.isalnum() or c in (' ', '-', '_')).strip()[:50]
+        safe_project_name = "".join(c for c in project_name if c.isalnum() or c in (' ', '-', '_', '/')).strip()[:50]
         filename = f"{safe_project_name}_companies.xlsx" if safe_project_name else "companies.xlsx"
         
         return send_file(
@@ -1939,7 +2012,7 @@ def export_contacts():
         excel_file.seek(0)
         
         # Generate filename
-        safe_batch_name = "".join(c for c in batch_name if c.isalnum() or c in (' ', '-', '_')).strip()[:50]
+        safe_batch_name = "".join(c for c in batch_name if c.isalnum() or c in (' ', '-', '_', '/')).strip()[:50]
         filename = f"{safe_batch_name}_contacts.xlsx" if safe_batch_name else "contacts.xlsx"
         
         return send_file(

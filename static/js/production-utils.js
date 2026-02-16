@@ -200,8 +200,8 @@ function validateProjectName(name) {
         return { valid: false, error: 'Project name must be less than 100 characters' };
     }
     
-    if (!/^[a-zA-Z0-9\s\-_]+$/.test(name)) {
-        return { valid: false, error: 'Project name can only contain letters, numbers, spaces, hyphens, and underscores' };
+    if (!/^[a-zA-Z0-9\s\-_/]+$/.test(name)) {
+        return { valid: false, error: 'Project name can only contain letters, numbers, spaces, hyphens, underscores, and forward slashes' };
     }
     
     return { valid: true };

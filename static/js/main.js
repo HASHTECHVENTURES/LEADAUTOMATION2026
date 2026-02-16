@@ -630,9 +630,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            if (!/^[a-zA-Z0-9\s\-_]+$/.test(projectName)) {
+            if (!/^[a-zA-Z0-9\s\-_/]+$/.test(projectName)) {
                 if (errorDiv) {
-                    errorDiv.textContent = 'Project name can only contain letters, numbers, spaces, hyphens, and underscores';
+                    errorDiv.textContent = 'Project name can only contain letters, numbers, spaces, hyphens, underscores, and forward slashes';
                     errorDiv.style.display = 'block';
                 }
                 return;

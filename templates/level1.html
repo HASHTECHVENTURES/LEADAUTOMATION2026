@@ -694,11 +694,50 @@
             <div class="card-body">
                 <form id="searchForm">
                     <div class="form-group">
+                        <label class="form-label"><i class="fas fa-search"></i> Search Type</label>
+                        <div style="display: flex; gap: 20px; margin-bottom: 16px; padding: 12px; background: var(--gray-50); border-radius: 8px; border: 1px solid var(--gray-200);">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px 16px; border-radius: 6px; transition: all 0.2s; flex: 1; justify-content: center; background: white; border: 2px solid var(--gray-300);">
+                                <input type="radio" name="searchType" value="pin" checked style="cursor: pointer; margin: 0; width: 18px; height: 18px;">
+                                <span style="font-weight: 500; color: var(--gray-700);"><i class="fas fa-hashtag" style="color: #6366f1;"></i> PIN Code</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px 16px; border-radius: 6px; transition: all 0.2s; flex: 1; justify-content: center; background: white; border: 2px solid var(--gray-300);">
+                                <input type="radio" name="searchType" value="place" style="cursor: pointer; margin: 0; width: 18px; height: 18px;">
+                                <span style="font-weight: 500; color: var(--gray-700);"><i class="fas fa-city" style="color: #0ea5e9;"></i> Place Name</span>
+                            </label>
+                        </div>
+                        <style>
+                            input[name="searchType"]:checked + span {
+                                color: var(--gray-900) !important;
+                                font-weight: 600 !important;
+                            }
+                            label:has(input[name="searchType"]:checked) {
+                                background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%) !important;
+                                border-color: var(--primary) !important;
+                                box-shadow: 0 2px 4px rgba(99, 102, 241, 0.2) !important;
+                            }
+                            label:has(input[name="searchType"][value="place"]:checked) {
+                                background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%) !important;
+                                border-color: var(--secondary) !important;
+                                box-shadow: 0 2px 4px rgba(14, 165, 233, 0.2) !important;
+                            }
+                        </style>
+                    </div>
+                    
+                    <div class="form-group" id="pinCodeGroup">
                         <label class="form-label">PIN Code(s)</label>
-                        <input type="text" class="form-input" id="pinCode" placeholder="e.g., 400001, 400002, 400003" required>
+                        <input type="text" class="form-input" id="pinCode" placeholder="e.g., 400001, 400002, 400003">
                         <div class="form-hint">
                             <i class="fas fa-info-circle"></i>
                             Enter one or more PIN codes, separated by commas
+                        </div>
+                    </div>
+                    
+                    <div class="form-group" id="placeNameGroup" style="display: none;">
+                        <label class="form-label">Place Name(s)</label>
+                        <input type="text" class="form-input" id="placeName" placeholder="e.g., Mumbai, Pune, Bangalore">
+                        <div class="form-hint">
+                            <i class="fas fa-info-circle"></i>
+                            Enter one or more place names (cities), separated by commas
                         </div>
                     </div>
                     
@@ -816,10 +855,10 @@
                     <div class="progress-bar">
                         <div class="progress-fill" id="progressFill" style="width: 0%"></div>
                     </div>
-                    <div class="progress-text" id="progressText">Starting search...</div>
+                    <div class="progress-text" id="progressText">Initializing...</div>
                     <div class="progress-status">
                         <span class="pulse"></span>
-                        <span id="progressStatus">Starting search...</span>
+                        <span id="progressStatus">Ready to search</span>
                     </div>
                 </div>
             </div>
@@ -1083,8 +1122,8 @@
                 return { valid: false, error: 'Project name must be less than 100 characters' };
             }
             
-            if (!/^[a-zA-Z0-9\s\-_]+$/.test(name)) {
-                return { valid: false, error: 'Project name can only contain letters, numbers, spaces, hyphens, and underscores' };
+            if (!/^[a-zA-Z0-9\s\-_/]+$/.test(name)) {
+                return { valid: false, error: 'Project name can only contain letters, numbers, spaces, hyphens, underscores, and forward slashes' };
             }
             
             return { valid: true };
@@ -1273,6 +1312,31 @@
         let currentProject = '';
         let companies = [];
         let selectedIds = new Set();
+        
+        // Toggle between PIN Code and Place Name search
+        const searchTypeRadios = document.querySelectorAll('input[name="searchType"]');
+        const pinCodeGroup = document.getElementById('pinCodeGroup');
+        const placeNameGroup = document.getElementById('placeNameGroup');
+        const pinCodeInput = document.getElementById('pinCode');
+        const placeNameInput = document.getElementById('placeName');
+        
+        searchTypeRadios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (this.value === 'pin') {
+                    pinCodeGroup.style.display = 'block';
+                    placeNameGroup.style.display = 'none';
+                    pinCodeInput.required = true;
+                    placeNameInput.required = false;
+                    placeNameInput.value = '';
+                } else {
+                    pinCodeGroup.style.display = 'none';
+                    placeNameGroup.style.display = 'block';
+                    pinCodeInput.required = false;
+                    placeNameInput.required = true;
+                    pinCodeInput.value = '';
+                }
+            });
+        });
         
         // Show skeleton loading
         function showSkeleton() {
@@ -1596,16 +1660,26 @@
         searchForm.addEventListener('submit', async function(e) {
             e.preventDefault();
             
+            const searchType = document.querySelector('input[name="searchType"]:checked').value;
             const pinCode = document.getElementById('pinCode').value.trim();
+            const placeName = document.getElementById('placeName').value.trim();
             const industry = document.getElementById('industry').value.trim();
             const maxCompanies = document.getElementById('maxCompanies').value;
             
-            // Validate inputs
-            const pinValidation = validatePinCode(pinCode);
-            if (!pinValidation.valid) {
-                showUserFriendlyError(pinValidation.error);
-                document.getElementById('pinCode').focus();
-                return;
+            // Validate inputs based on search type
+            if (searchType === 'pin') {
+                const pinValidation = validatePinCode(pinCode);
+                if (!pinValidation.valid) {
+                    showUserFriendlyError(pinValidation.error);
+                    document.getElementById('pinCode').focus();
+                    return;
+                }
+            } else {
+                if (!placeName || placeName.trim().length === 0) {
+                    showUserFriendlyError('Place name is required');
+                    document.getElementById('placeName').focus();
+                    return;
+                }
             }
             
             if (!currentProject || currentProject.trim() === '') {
@@ -1618,8 +1692,8 @@
             progressModal.classList.add('open');
             document.getElementById('progressFill').style.width = '0%';
             document.getElementById('progressPercent').textContent = '0%';
-            document.getElementById('progressText').textContent = 'Starting search...';
-            document.getElementById('progressStatus').textContent = 'Starting search...';
+            document.getElementById('progressText').textContent = 'Initializing search...';
+            document.getElementById('progressStatus').textContent = 'Connecting to search service...';
             
             try {
                 // Check if online
@@ -1629,15 +1703,24 @@
                     return;
                 }
                 
+                // Prepare request body based on search type
+                const requestBody = {
+                    project_name: currentProject,
+                    industry: industry,
+                    max_companies: parseInt(maxCompanies),
+                    search_type: searchType
+                };
+                
+                if (searchType === 'pin') {
+                    requestBody.pin_code = pinCode;
+                } else {
+                    requestBody.place_name = placeName;
+                }
+                
                 const response = await fetchWithRetry('/api/level1/search', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        project_name: currentProject,
-                        pin_code: pinCode,
-                        industry: industry,
-                        max_companies: parseInt(maxCompanies)
-                    })
+                    body: JSON.stringify(requestBody)
                 }, 3, 1000);
                 
                 const reader = response.body.getReader();

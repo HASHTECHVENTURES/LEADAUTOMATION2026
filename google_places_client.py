@@ -134,5 +134,88 @@ class GooglePlacesClient:
         except Exception as e:
             print(f"Error getting place details: {str(e)}")
             return None
+    
+    def search_by_place_and_industry(self, place_name: str, industry: str = None, max_results: int = 20) -> List[Dict]:
+        """
+        Search for places by place name (e.g., Mumbai, Pune, Bangalore)
+        Returns list of company data
+        """
+        results = []
+        
+        # First, get location from place name using Geocoding API
+        geocode_url = "https://maps.googleapis.com/maps/api/geocode/json"
+        geocode_params = {
+            'address': f"{place_name}, India",
+            'key': self.api_key
+        }
+        
+        try:
+            geocode_response = requests.get(geocode_url, params=geocode_params)
+            geocode_data = geocode_response.json()
+            
+            print(f"📍 Geocoding response status: {geocode_data.get('status')}")
+            if geocode_data['status'] != 'OK':
+                error_msg = geocode_data.get('error_message', 'Unknown error')
+                print(f"❌ Geocoding error: {geocode_data['status']} - {error_msg}")
+                if geocode_data['status'] == 'ZERO_RESULTS':
+                    print(f"   No location found for place: {place_name}, India")
+                return results
+            
+            location = geocode_data['results'][0]['geometry']['location']
+            lat, lng = location['lat'], location['lng']
+            
+            # Build search query
+            if industry:
+                query = f"{industry} in {place_name}, India"
+            else:
+                query = f"businesses in {place_name}, India"
+            
+            # Search for places near this location
+            places_url = f"{self.base_url}/textsearch/json"
+            
+            places_params = {
+                'query': query,
+                'location': f"{lat},{lng}",
+                'radius': 50000,  # 50km radius for cities (larger than PIN codes)
+                'key': self.api_key
+            }
+            
+            places_response = requests.get(places_url, params=places_params)
+            places_data = places_response.json()
+            
+            print(f"🏢 Places search response status: {places_data.get('status')}")
+            if places_data['status'] != 'OK':
+                error_msg = places_data.get('error_message', 'Unknown error')
+                print(f"❌ Places search error: {places_data['status']} - {error_msg}")
+                if places_data['status'] == 'ZERO_RESULTS':
+                    print(f"   No businesses found for query: {query}")
+                elif places_data['status'] == 'OVER_QUERY_LIMIT':
+                    print(f"   ⚠️  Google Places API quota exceeded!")
+                return results
+            
+            print(f"✅ Found {len(places_data.get('results', []))} places from Google Places API")
+            
+            # Process each place
+            for place in places_data.get('results', [])[:max_results]:
+                place_id = place.get('place_id')
+                if place_id:
+                    details = self.get_place_details(place_id)
+                    if details:
+                        # Preserve the user's search industry
+                        details['place_type'] = details.get('industry', '')
+                        details['industry'] = industry.strip() if industry else details.get('industry', '')
+                        # Add place name for tracking
+                        details['search_location'] = place_name
+                        results.append(details)
+                    time.sleep(0.1)  # Rate limiting
+            
+            return results
+            
+        except Exception as e:
+            error_msg = str(e)
+            print(f"❌ Error in search for place {place_name}: {error_msg}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            raise Exception(f"Google Places API error for place {place_name}: {error_msg}") from e
 
 
