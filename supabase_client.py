@@ -851,13 +851,18 @@ class SupabaseClient:
                 
                 # Create a record for each contact
                 for person in people:
-                    contact_type = 'Employee'
-                    title = person.get('title', '').lower() if person.get('title') else ''
+                    # Get the actual job title from Apollo (this is what should be displayed)
+                    actual_title = person.get('title', '') or ''
+                    title_lower = actual_title.lower() if actual_title else ''
                     
-                    if any(kw in title for kw in ['founder', 'owner', 'ceo', 'co-founder']):
+                    # Categorize contact_type for internal filtering (but don't use this for display!)
+                    contact_type = 'Employee'  # Default
+                    if any(kw in title_lower for kw in ['founder', 'owner', 'ceo', 'co-founder']):
                         contact_type = 'Founder/Owner'
-                    elif any(kw in title for kw in ['hr', 'human resources', 'recruiter', 'talent']):
+                    elif any(kw in title_lower for kw in ['hr', 'human resources', 'recruiter', 'talent']):
                         contact_type = 'HR'
+                    elif any(kw in title_lower for kw in ['director', 'manager', 'vp', 'vice president', 'head', 'chief']):
+                        contact_type = 'Executive'  # Better categorization
                     
                     record = {
                         'project_name': project_name or 'Unknown',
@@ -868,8 +873,8 @@ class SupabaseClient:
                         'company_phone': company_phone,
                         'company_total_employees': company.get('total_employees', '') or '',
                         'contact_name': person.get('name', ''),
-                        'title': person.get('title', ''),  # Original job title from contact database
-                        'contact_type': contact_type,
+                        'title': actual_title,  # CRITICAL: Original job title from Apollo (CEO, Director, etc.) - USE THIS FOR DISPLAY
+                        'contact_type': contact_type,  # Categorized type - for internal filtering only, NOT for display
                         'phone_number': person.get('phone', '') or person.get('phone_number', ''),
                         'linkedin_url': person.get('linkedin_url', '') or person.get('linkedin', ''),
                         'email': person.get('email', ''),
@@ -1102,36 +1107,45 @@ class SupabaseClient:
             elif project_name:
                 query = query.eq('project_name', project_name)
             
-            # Only include contacts with email or phone
+            # Execute query
             if query is not None:
                 response = query.execute()
                 contacts = response.data if response.data else []
             
-            # Filter by designation if provided, otherwise use default allowed titles
+            # Filter by designation if provided
             if designation and designation.strip():
                 # User provided specific designation - ONLY match that
                 user_titles = [t.strip().lower() for t in designation.split(',') if t.strip()]
                 logger.info(f"🔍 Filtering contacts by user designation: {user_titles}")
             else:
-                # No designation provided - use default allowed titles as fallback
-                user_titles = ['founder', 'hr director', 'hr manager', 'chro', 'director', 'hr', 'owner', 'ceo', 'co-founder']
-                logger.info(f"🔍 No designation provided, using default allowed titles: {user_titles}")
+                # No designation provided - return ALL contacts with email/phone (for transfer)
+                # Filter only by email/phone requirement (needed for transfer)
+                filtered_contacts = [c for c in contacts if (c.get('email') or c.get('phone_number'))]
+                logger.info(f"🔍 No designation provided - returning {len(filtered_contacts)} contacts with email/phone")
+                return filtered_contacts
             
             filtered_contacts = []
             for c in contacts:
-                # Must have email or phone
+                # Must have email or phone (required for transfer)
                 if not (c.get('email') or c.get('phone_number')):
                     continue
                 
-                # Check if title matches user's designation (or default titles)
-                title = (c.get('title', '') or c.get('contact_type', '')).lower()
-                contact_type = (c.get('contact_type', '')).lower()
+                # CRITICAL: Check the ACTUAL title field first (not contact_type)
+                # contact_type is just for categorization, title has the real job title
+                actual_title = (c.get('title', '') or '').lower().strip()
+                contact_type_lower = (c.get('contact_type', '') or '').lower()
                 
-                # Check if title or contact_type matches any of the user's titles
-                matches_title = any(user_title in title for user_title in user_titles)
-                matches_contact_type = any(user_title in contact_type for user_title in user_titles)
+                # Check if actual title matches user's designation
+                matches_title = any(user_title in actual_title for user_title in user_titles) if actual_title else False
                 
-                if matches_title or matches_contact_type:
+                # Also check contact_type as fallback (but prefer title)
+                matches_contact_type = any(user_title in contact_type_lower for user_title in user_titles) if contact_type_lower else False
+                
+                # Only include if title matches (contact_type is just categorization, not the real title)
+                if matches_title:
+                    filtered_contacts.append(c)
+                elif matches_contact_type and not actual_title:
+                    # Only use contact_type if title is empty
                     filtered_contacts.append(c)
             
             if designation and designation.strip():
@@ -1144,6 +1158,50 @@ class SupabaseClient:
             logger.error(f"❌ Error retrieving contacts for Level 3: {str(e)}")
             return []
 
+    def get_contacts_by_company(self, company_name: str, project_name: Optional[str] = None, titles: Optional[List[str]] = None) -> List[Dict]:
+        """
+        Check if contacts already exist in database for a company (to avoid re-enriching)
+        Returns contacts if found, empty list if not found
+        """
+        try:
+            query = self.client.table('level2_contacts').select('*')
+            query = query.eq('company_name', company_name)
+            
+            if project_name:
+                query = query.eq('project_name', project_name)
+            
+            response = query.execute()
+            contacts = response.data if response.data else []
+            
+            # Filter by titles if provided
+            if titles and contacts:
+                user_titles_lower = [t.lower().strip() for t in titles]
+                filtered_contacts = []
+                for c in contacts:
+                    contact_title = (c.get('title') or '').lower().strip()
+                    if any(user_title in contact_title for user_title in user_titles_lower):
+                        filtered_contacts.append(c)
+                contacts = filtered_contacts
+            
+            # Convert to format expected by app.py
+            result = []
+            for c in contacts:
+                result.append({
+                    'name': c.get('contact_name', ''),
+                    'first_name': c.get('contact_name', '').split()[0] if c.get('contact_name') else '',
+                    'last_name': ' '.join(c.get('contact_name', '').split()[1:]) if c.get('contact_name') else '',
+                    'email': c.get('email', ''),
+                    'phone': c.get('phone_number', ''),
+                    'title': c.get('title', ''),
+                    'linkedin_url': c.get('linkedin_url', ''),
+                    'source': c.get('source', 'apollo')
+                })
+            
+            return result
+        except Exception as e:
+            logger.error(f"❌ Error checking contacts by company: {str(e)}")
+            return []
+    
     def get_level2_contacts_by_ids(self, contact_ids: List[int]) -> List[Dict]:
         """Fetch Level 2 contacts by IDs"""
         try:

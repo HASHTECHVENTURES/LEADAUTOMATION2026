@@ -660,8 +660,9 @@
                                         ${hasEmail}
                                     </div>
                                     <div class="preview-meta">
-                                        ${escapeHtml(c.title || c.contact_type || '')} · ${escapeHtml(c.company_name || '')}
+                                        ${escapeHtml((c.title || '').trim() || (c.contact_type || 'No Title'))} · ${escapeHtml(c.company_name || '')}
                                         ${c.email ? `<span style="margin-left: 12px; color: var(--gray-500);"><i class="fas fa-envelope"></i> ${escapeHtml(c.email)}</span>` : ''}
+                                        ${c.title && c.contact_type === 'Employee' ? `<span style="margin-left: 8px; color: orange; font-size: 0.85em;" title="Debug: title='${escapeHtml(c.title)}', contact_type='${escapeHtml(c.contact_type)}'">⚠️</span>` : ''}
                                     </div>
                                 </div>
                             </div>

@@ -1718,31 +1718,15 @@
         
         // Render contacts
         function renderContacts() {
-            // Filter and dedupe
+            // Dedupe only - backend already filters by designation before saving
             const seen = new Set();
             
-            // ONLY use user's designation - NO hardcoded fallback!
-            let filterTitles = [];
-            if (userDesignation && userDesignation.trim()) {
-                // Parse user's designation (comma-separated: "CEO, DIRECTOR")
-                filterTitles = userDesignation.split(',').map(t => t.trim().toLowerCase()).filter(t => t);
-                console.log(`🔍 Frontend filtering by: ${filterTitles.join(', ')}`);
-            } else {
-                console.log(`ℹ️  No designation provided - showing all contacts`);
-            }
-            // If no user designation, show ALL contacts (no filtering)
+            console.log(`ℹ️  Displaying ${contacts.length} contacts (already filtered by backend)`);
             
             const filtered = contacts.filter(c => {
                 const title = (c.title || c.contact_type || '').toLowerCase();
                 
-                // If user provided designation, filter by it. Otherwise show all contacts.
-                if (filterTitles.length > 0) {
-                    // Check if title matches ANY of the user's designations (CEO OR Director)
-                    const matchesFilter = filterTitles.some(filterTitle => title.includes(filterTitle));
-                    if (!matchesFilter) return false;
-                }
-                // If no designation provided, show all contacts
-                
+                // Only deduplicate - no filtering needed (backend already filtered before saving)
                 const key = `${(c.company_name || '').toLowerCase()}|${(c.email || c.name || '')}|${title}`;
                 if (seen.has(key)) return false;
                 seen.add(key);

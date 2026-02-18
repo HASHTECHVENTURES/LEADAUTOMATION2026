@@ -11,6 +11,7 @@ from datetime import datetime
 import os
 import logging
 import requests
+import re
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -1313,77 +1314,98 @@ def level2_process():
                         titles = list(set(expanded_titles))  # Remove duplicates
                         print(f"  🔍 Searching for titles: {', '.join(titles[:10])}{'...' if len(titles) > 10 else ''}")
                     
-                    # Get contacts from Apollo - try website first, then company name if no website
-                    if website and website.strip():
-                        # CRITICAL: This uses FREE api_search endpoint first, then enrichment (costs credits)
-                        print(f"  💰 Searching contacts for {company_name} by website (using FREE search, then enrichment)...")
-                        print(f"  🔍 Domain: {apollo_client.extract_domain(website)}")
-                        try:
-                            people = apollo_client.search_people_by_company(company_name, website, titles=titles)
-                            print(f"  ✅ Found {len(people) if people else 0} contacts for {company_name} via website search")
-                            if people:
-                                # Count how many have emails (these cost credits to enrich)
-                                emails_count = sum(1 for p in people if p.get('email'))
-                                print(f"  💰 Credits used: ~{emails_count} (for email enrichment)")
-                            else:
-                                print(f"  ⚠️  No contacts found via website search, trying company name search...")
-                                # Fallback to company name search if website search returns nothing
+                    # OPTIMIZATION: Check Supabase database FIRST before calling Apollo API
+                    # This saves 100% credits on repeat companies
+                    print(f"  🔍 Checking database for existing contacts for {company_name}...")
+                    existing_contacts = get_supabase_client().get_contacts_by_company(company_name, project_name, titles)
+                    
+                    if existing_contacts and len(existing_contacts) > 0:
+                        # Contacts already exist in database - use them (0 credits!)
+                        people = existing_contacts
+                        print(f"  ✅ Found {len(people)} existing contacts in database (SAVED API CREDITS!)")
+                        print(f"  💰 Credits used: 0 (using existing data from database)")
+                    else:
+                        # No existing contacts - call Apollo API
+                        print(f"  📊 No existing contacts found - calling Apollo API...")
+                        # Get contacts from Apollo - try website first, then company name if no website
+                        if website and website.strip():
+                            # CRITICAL: This uses FREE api_search endpoint first, then enrichment (costs credits)
+                            print(f"  💰 Searching contacts for {company_name} by website (using FREE search, then enrichment)...")
+                            print(f"  🔍 Domain: {apollo_client.extract_domain(website)}")
+                            try:
+                                people = apollo_client.search_people_by_company(company_name, website, titles=titles)
+                                print(f"  ✅ Found {len(people) if people else 0} contacts for {company_name} via website search")
+                                if people:
+                                    # Count how many have emails (these cost credits to enrich)
+                                    emails_count = sum(1 for p in people if p.get('email'))
+                                    print(f"  💰 Credits used: ~{emails_count} (for email enrichment)")
+                                else:
+                                    print(f"  ⚠️  No contacts found via website search, trying company name search...")
+                                    # Fallback to company name search if website search returns nothing
+                                    people = apollo_client.search_people_by_company_name(company_name, titles=titles)
+                                    if people:
+                                        print(f"  ✅ Found {len(people)} contacts via company name search")
+                            except Exception as e:
+                                print(f"  ❌ Error searching contacts via website for {company_name}: {str(e)}")
+                                import traceback
+                                traceback.print_exc()
+                                people = []
+                        else:
+                            # No website available - search by company name only
+                            print(f"  ⚠️  {company_name} has NO website - searching by company name only")
+                            print(f"  🔍 Searching Apollo by company name: {company_name}")
+                            try:
                                 people = apollo_client.search_people_by_company_name(company_name, titles=titles)
                                 if people:
                                     print(f"  ✅ Found {len(people)} contacts via company name search")
-                        except Exception as e:
-                            print(f"  ❌ Error searching contacts via website for {company_name}: {str(e)}")
-                            import traceback
-                            traceback.print_exc()
-                            people = []
-                    else:
-                        # No website available - search by company name only
-                        print(f"  ⚠️  {company_name} has NO website - searching by company name only")
-                        print(f"  🔍 Searching Apollo by company name: {company_name}")
-                        try:
-                            people = apollo_client.search_people_by_company_name(company_name, titles=titles)
-                            if people:
-                                print(f"  ✅ Found {len(people)} contacts via company name search")
-                                # Count how many have emails (these cost credits to enrich)
-                                emails_count = sum(1 for p in people if p.get('email'))
-                                print(f"  💰 Credits used: ~{emails_count} (for email enrichment)")
-                            else:
-                                print(f"  ⚠️  No contacts found for {company_name}")
-                                print(f"  💡 Possible reasons:")
-                                print(f"     - Company not in Apollo.io database")
-                                print(f"     - No employees match the search criteria")
-                                print(f"     - Company name not recognized by Apollo")
-                        except Exception as e:
-                            print(f"  ❌ Error searching contacts by company name for {company_name}: {str(e)}")
-                            import traceback
-                            traceback.print_exc()
-                            people = []
+                                    # Count how many have emails (these cost credits to enrich)
+                                    emails_count = sum(1 for p in people if p.get('email'))
+                                    print(f"  💰 Credits used: ~{emails_count} (for email enrichment)")
+                                else:
+                                    print(f"  ⚠️  No contacts found for {company_name}")
+                                    print(f"  💡 Possible reasons:")
+                                    print(f"     - Company not in Apollo.io database")
+                                    print(f"     - No employees match the search criteria")
+                                    print(f"     - Company name not recognized by Apollo")
+                            except Exception as e:
+                                print(f"  ❌ Error searching contacts by company name for {company_name}: {str(e)}")
+                                import traceback
+                                traceback.print_exc()
+                                people = []
                     
                     # Get employee count (use existing data first to save credits!)
-                    # CRITICAL: Check database first, then company object, only then API
+                    # OPTIMIZATION: Only fetch if employee range filter is selected
                     total_employees = company.get('total_employees', '') or ''
                     
-                    # If not in company object, check if it was fetched during filtering
-                    # (it should be, but double-check to avoid duplicate API calls)
-                    if not total_employees:
-                        print(f"  ⚠️  WARNING: {company_name} has no employee data - this should have been fetched during filtering!")
-                        print(f"  💰 Making API call to get employee count (this costs credits)...")
-                        total_employees = apollo_client.get_company_total_employees(company_name, website) or ''
-                        if total_employees:
-                            company['total_employees'] = total_employees
-                            # Save to database immediately to avoid future API calls
-                            if company.get('place_id'):
-                                try:
-                                    get_supabase_client().update_level1_company_metrics(
-                                        project_name=project_name,
-                                        place_id=company['place_id'],
-                                        total_employees=total_employees
-                                    )
-                                    print(f"  ✅ Saved employee count to database to avoid future API calls")
-                                except:
-                                    pass
+                    # Only fetch employee count if user selected employee range filter
+                    # If no filter selected, skip API call to save credits
+                    if employee_ranges and len(employee_ranges) > 0:
+                        # User selected employee filter - we need employee count
+                        if not total_employees:
+                            print(f"  ⚠️  {company_name} has no employee data - fetching from API (required for filtering)...")
+                            print(f"  💰 Making API call to get employee count (this costs credits)...")
+                            total_employees = apollo_client.get_company_total_employees(company_name, website) or ''
+                            if total_employees:
+                                company['total_employees'] = total_employees
+                                # Save to database immediately to avoid future API calls
+                                if company.get('place_id'):
+                                    try:
+                                        get_supabase_client().update_level1_company_metrics(
+                                            project_name=project_name,
+                                            place_id=company['place_id'],
+                                            total_employees=total_employees
+                                        )
+                                        print(f"  ✅ Saved employee count to database to avoid future API calls")
+                                    except:
+                                        pass
+                        else:
+                            print(f"  ✅ Using existing employee data: {total_employees} (saved 1 API call)")
                     else:
-                        print(f"  ✅ Using existing employee data: {total_employees} (saved 1 API call)")
+                        # No employee filter selected - skip fetching employee count to save credits
+                        if total_employees:
+                            print(f"  ✅ Using existing employee data: {total_employees} (no filter selected, skipping API call)")
+                        else:
+                            print(f"  ⚡ Skipping employee count fetch (no employee filter selected - saves 1 credit)")
                     
                     active_members = len(people or [])
                     active_members_with_email = sum(1 for p in (people or []) if p.get('email'))
@@ -1425,7 +1447,65 @@ def level2_process():
                     # Send company update in real-time
                     yield f"data: {json.dumps({'type': 'company_update', 'data': enriched_company, 'progress': {'current': idx, 'total': total_companies, 'contacts_found': total_contacts}})}\n\n"
                 
-                # Save all results to Supabase
+                # Filter contacts by designation BEFORE saving (if designation provided)
+                # This ensures only matching contacts are saved, so Level 3 automatically shows correct data
+                if designation and designation.strip():
+                    user_titles = [t.strip().lower() for t in designation.split(',') if t.strip()]
+                    print(f"  🔍 Filtering contacts by designation before saving: {user_titles}")
+                    
+                    # Titles to explicitly EXCLUDE (generic/employee titles)
+                    excluded_titles = ['employee', 'staff', 'worker', 'member', 'personnel']
+                    
+                    filtered_total = 0
+                    original_total = total_contacts
+                    
+                    for company in enriched_companies:
+                        original_count = len(company.get('people', []))
+                        filtered_people = []
+                        
+                        for person in company.get('people', []):
+                            person_title = (person.get('title', '') or '').lower().strip()
+                            
+                            # Skip if title is empty or just generic employee title
+                            if not person_title or person_title in excluded_titles:
+                                continue
+                            
+                            # Check if person's title matches ANY of the user's designations
+                            # Use word boundary matching: title must START with or be the user title
+                            # This prevents "CEO" matching "CEO Employee" - we want exact or prefix match
+                            matches = False
+                            for user_title in user_titles:
+                                # Exact match
+                                if person_title == user_title:
+                                    matches = True
+                                    break
+                                # Title starts with user title (e.g., "CEO" matches "CEO & Founder")
+                                if person_title.startswith(user_title + ' ') or person_title.startswith(user_title + '&') or person_title.startswith(user_title + '/'):
+                                    matches = True
+                                    break
+                                # User title is in the title as a word (not substring)
+                                # Check if user_title appears as a complete word
+                                if re.search(r'\b' + re.escape(user_title) + r'\b', person_title):
+                                    # But exclude if it's followed by "employee" or similar
+                                    if not any(excluded in person_title for excluded in excluded_titles):
+                                        matches = True
+                                        break
+                            
+                            if matches:
+                                filtered_people.append(person)
+                        
+                        company['people'] = filtered_people
+                        filtered_total += len(filtered_people)
+                        
+                        if original_count != len(filtered_people):
+                            print(f"    📊 {company.get('company_name', 'Unknown')}: {original_count} → {len(filtered_people)} contacts (filtered by designation)")
+                    
+                    total_contacts = filtered_total
+                    print(f"  ✅ Filtered {original_total} contacts → {filtered_total} contacts matching designation (excluded employees)")
+                else:
+                    print(f"  ℹ️  No designation provided - saving all contacts")
+                
+                # Save filtered results to Supabase
                 yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'saving', 'message': 'Saving contacts to database...', 'current': total_companies, 'total': total_companies, 'contacts_found': total_contacts}})}\n\n"
                 
                 save_result = get_supabase_client().save_level2_results(
@@ -1821,14 +1901,18 @@ def level2_contacts():
             return jsonify({'error': 'project_name or batch_name is required'}), 400
         
         # Log the designation being used
+        # Note: For new batches, contacts are already filtered at save time, but we still filter here
+        # for backward compatibility with existing batches that may have unfiltered data
         if designation:
             print(f"🔍 Level 2 contacts API: Filtering by designation: '{designation}'")
             parsed = [t.strip().lower() for t in designation.split(',') if t.strip()]
             print(f"   Parsed titles: {parsed}")
+            print(f"   Note: New batches are filtered at save time, but filtering here for consistency/backward compatibility")
         else:
-            print(f"ℹ️  Level 2 contacts API: No designation provided - using default filter")
+            print(f"ℹ️  Level 2 contacts API: No designation provided - returning all contacts")
         
         # Get contacts from Supabase with designation filter
+        # (Filtering here ensures backward compatibility with old batches, but new batches are already filtered)
         if batch_name:
             contacts = get_supabase_client().get_contacts_for_level3(batch_name=batch_name, designation=designation if designation else None)
         else:
@@ -2090,25 +2174,49 @@ def level3_create_list():
 
 @app.route('/api/level3/contacts', methods=['GET'])
 def level3_contacts():
-    """Return contact list for a batch (for preview and transfer)"""
+    """Return contact list for a batch (for preview and transfer)
+    Level 2 filters at save time, so Level 3 loads filtered contacts.
+    Additional safety: Exclude generic employee titles if they somehow got through.
+    """
     try:
         batch_name = request.args.get('batch_name')
         if not batch_name:
             return jsonify({'error': 'batch_name is required'}), 400
 
-        # Level 3 uses contacts already filtered, but can accept designation for consistency
-        designation = request.args.get('designation', '').strip()
-        contacts = get_supabase_client().get_contacts_for_level3(batch_name=batch_name, designation=designation if designation else None)
-        # Minimal fields for preview/progress
-        minimal = []
+        # Level 2 already filtered at save time, so get contacts from batch
+        contacts = get_supabase_client().get_contacts_for_level3(batch_name=batch_name, designation=None)
+        
+        # Safety filter: Exclude generic employee titles (in case old batches weren't filtered)
+        excluded_titles = ['employee', 'staff', 'worker', 'member', 'personnel']
+        filtered_contacts = []
         for c in contacts:
+            title_lower = (c.get('title') or '').lower().strip()
+            # Skip if title is empty or is a generic employee title
+            if title_lower and title_lower not in excluded_titles:
+                filtered_contacts.append(c)
+            elif not title_lower:
+                # Include contacts without title (might be valid)
+                filtered_contacts.append(c)
+        
+        # Return contacts with proper formatting
+        minimal = []
+        for c in filtered_contacts:
+            # Use title field directly - same as Level 2 saved
+            display_title = (c.get('title') or '').strip()
+            
             minimal.append({
                 'id': c.get('id'),
                 'name': c.get('contact_name', '') or c.get('name', ''),
                 'email': c.get('email', ''),
                 'company_name': c.get('company_name', ''),
-                'title': c.get('contact_type', '') or c.get('title', '')
+                'title': display_title,
+                'contact_type': c.get('contact_type', '')  # Include for debugging
             })
+        
+        excluded_count = len(contacts) - len(minimal)
+        if excluded_count > 0:
+            print(f"⚠️  Level 3: Excluded {excluded_count} employee contacts (safety filter)")
+        print(f"✅ Level 3: Returning {len(minimal)} contacts (filtered from {len(contacts)} total)")
         return jsonify({'success': True, 'contacts': minimal, 'count': len(minimal)}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500

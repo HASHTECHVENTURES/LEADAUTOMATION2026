@@ -298,7 +298,7 @@ class ApolloClient:
                 'q_organization_domains_list': [domain],
                 'person_titles': titles,
                 'person_seniorities': seniorities,
-                'include_similar_titles': True,  # Allow similar titles to get more results
+                'include_similar_titles': False,  # Only exact matches - user wants precise results
                 'page': 1,
                 'per_page': 100  # CRITICAL FIX: Get MORE results (was 50, now 100)
             }
@@ -347,7 +347,43 @@ class ApolloClient:
             if response.status_code == 200:
                 data = response.json()
                 persons = data.get('people', [])
-                print(f"    📊 Apollo api_search found {len(persons)} people (before enrichment)")
+                print(f"    📊 Apollo api_search found {len(persons)} people (before filtering and enrichment)")
+                
+                # CRITICAL: Filter by titles BEFORE enrichment to save API credits!
+                # Apollo search may return contacts that don't match user's exact designation
+                # Filter them out before spending credits on enrichment
+                if titles:
+                    user_titles_lower = [t.lower().strip() for t in titles]
+                    excluded_titles = ['employee', 'staff', 'worker', 'member', 'personnel']
+                    filtered_persons = []
+                    for p in persons:
+                        person_title = (p.get('title') or '').lower().strip()
+                        # Skip if title is empty or generic employee title
+                        if not person_title or person_title in excluded_titles:
+                            continue
+                        # Check if title matches user's search titles
+                        matches = False
+                        for user_title in user_titles_lower:
+                            # Exact match
+                            if person_title == user_title:
+                                matches = True
+                                break
+                            # Title starts with user title
+                            if person_title.startswith(user_title + ' ') or person_title.startswith(user_title + '&') or person_title.startswith(user_title + '/'):
+                                matches = True
+                                break
+                            # User title appears as word in person title
+                            if re.search(r'\b' + re.escape(user_title) + r'\b', person_title):
+                                if not any(excluded in person_title for excluded in excluded_titles):
+                                    matches = True
+                                    break
+                        if matches:
+                            filtered_persons.append(p)
+                    
+                    original_count = len(persons)
+                    persons = filtered_persons
+                    if original_count != len(persons):
+                        print(f"    💰 FILTERED: {original_count} → {len(persons)} contacts (saved {original_count - len(persons)} enrichment credits!)")
                 
                 # Check if phone numbers are in the search results directly (sometimes they are!)
                 for p in persons[:3]:  # Check first 3
@@ -355,9 +391,10 @@ class ApolloClient:
                         print(f"    📞 Found phone_numbers in search result for {p.get('first_name')}: {p.get('phone_numbers')}")
                 
                 # Extract person IDs AND organization domains for validation
+                # NOW only extracting IDs for filtered contacts (saves credits!)
                 person_data_list = [(p.get('id'), p.get('organization', {}).get('primary_domain', '')) 
                                    for p in persons if p.get('id')]
-                print(f"    📋 Extracted {len(person_data_list)} person IDs for enrichment")
+                print(f"    📋 Extracted {len(person_data_list)} person IDs for enrichment (AFTER filtering)")
                 
                 if person_data_list:
                     print(f"    🔄 Enriching {len(person_data_list)} people to get emails in parallel...")
