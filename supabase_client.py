@@ -1072,12 +1072,15 @@ class SupabaseClient:
             logger.error(f"❌ Error retrieving batches: {str(e)}")
             return []
     
-    def get_contacts_for_level3(self, project_name: Optional[str] = None, batch_name: Optional[str] = None) -> List[Dict]:
+    def get_contacts_for_level3(self, project_name: Optional[str] = None, batch_name: Optional[str] = None, designation: Optional[str] = None) -> List[Dict]:
         """
         Get contacts from Level 2 for Level 3 transfer to outreach platform
         Args:
             project_name: Filter by project name (optional)
             batch_name: Filter by batch name (recommended for Level 3)
+            designation: Optional user-provided designation to filter by (e.g., "CEO", "Director")
+                        If provided, ONLY contacts matching this designation will be returned.
+                        If NOT provided, uses default allowed titles as fallback.
         """
         try:
             query = self.client.table('level2_contacts').select('*')
@@ -1104,9 +1107,15 @@ class SupabaseClient:
                 response = query.execute()
                 contacts = response.data if response.data else []
             
-            # Filter to only include contacts with email or phone AND matching job titles (same as Level 2)
-            # Only show Founders, HR, Directors, CEOs, Owners (same filter as Level 2)
-            ALLOWED_TITLES = ['founder', 'hr director', 'hr manager', 'chro', 'director', 'hr', 'owner', 'ceo', 'co-founder']
+            # Filter by designation if provided, otherwise use default allowed titles
+            if designation and designation.strip():
+                # User provided specific designation - ONLY match that
+                user_titles = [t.strip().lower() for t in designation.split(',') if t.strip()]
+                logger.info(f"🔍 Filtering contacts by user designation: {user_titles}")
+            else:
+                # No designation provided - use default allowed titles as fallback
+                user_titles = ['founder', 'hr director', 'hr manager', 'chro', 'director', 'hr', 'owner', 'ceo', 'co-founder']
+                logger.info(f"🔍 No designation provided, using default allowed titles: {user_titles}")
             
             filtered_contacts = []
             for c in contacts:
@@ -1114,18 +1123,21 @@ class SupabaseClient:
                 if not (c.get('email') or c.get('phone_number')):
                     continue
                 
-                # Check if title matches allowed titles (same logic as Level 2)
+                # Check if title matches user's designation (or default titles)
                 title = (c.get('title', '') or c.get('contact_type', '')).lower()
                 contact_type = (c.get('contact_type', '')).lower()
                 
-                # Check if title or contact_type matches any allowed title
-                matches_title = any(allowed_title in title for allowed_title in ALLOWED_TITLES)
-                matches_contact_type = any(allowed_title in contact_type for allowed_title in ALLOWED_TITLES)
+                # Check if title or contact_type matches any of the user's titles
+                matches_title = any(user_title in title for user_title in user_titles)
+                matches_contact_type = any(user_title in contact_type for user_title in user_titles)
                 
                 if matches_title or matches_contact_type:
                     filtered_contacts.append(c)
             
-            logger.info(f"✅ Retrieved {len(filtered_contacts)} contacts from Supabase for Level 3 (filtered to Founders/HR/Directors only)")
+            if designation and designation.strip():
+                logger.info(f"✅ Retrieved {len(filtered_contacts)} contacts filtered by user designation: '{designation}'")
+            else:
+                logger.info(f"✅ Retrieved {len(filtered_contacts)} contacts using default allowed titles")
             return filtered_contacts
             
         except Exception as e:

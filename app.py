@@ -1174,6 +1174,13 @@ def level2_process():
         # Get ONLY selected companies from Supabase for the active project
         companies = get_supabase_client().get_level1_companies(project_name=project_name, selected_only=True, limit=50)
         
+        # Log which companies are being processed
+        print(f"  📋 Found {len(companies)} selected companies for Level 2 processing:")
+        for i, c in enumerate(companies[:10], 1):  # Show first 10
+            print(f"     {i}. {c.get('company_name', 'N/A')} (Website: {c.get('website', 'N/A')})")
+        if len(companies) > 10:
+            print(f"     ... and {len(companies) - 10} more companies")
+        
         if not companies:
             return jsonify({'error': 'No companies selected for Level 2. Please select companies first.'}), 400
         
@@ -1281,26 +1288,62 @@ def level2_process():
                     print(f"  📊 Processing company {idx}/{total_companies}: {company_name}")
                     print(f"  📊 Website: {website}")
                     print(f"  📊 Total companies to process: {total_companies}")
+                    print(f"  📊 Place ID: {place_id}")
                     
-                    # CRITICAL: Check if company has website (required for contact search)
-                    if not website or not website.strip():
-                        print(f"  ⚠️  WARNING: {company_name} has NO website - cannot search for contacts!")
-                        print(f"  ⚠️  Skipping contact search for this company (website is required)")
-                        people = []
-                    else:
-                        # Parse designation
-                        titles = None
-                        if designation and designation.strip():
-                            titles = [t.strip() for t in designation.split(',') if t.strip()]
-                        
-                        # Get contacts from Apollo
+                    # Parse designation and expand variations (e.g., "Director" -> ["Director", "Directors", "Managing Director"])
+                    titles = None
+                    if designation and designation.strip():
+                        base_titles = [t.strip() for t in designation.split(',') if t.strip()]
+                        # Expand titles to include common variations for better matching
+                        expanded_titles = []
+                        for title in base_titles:
+                            title_lower = title.lower()
+                            expanded_titles.append(title)  # Original
+                            # Add variations for common titles
+                            if 'director' in title_lower:
+                                expanded_titles.extend(['Director', 'Directors', 'Managing Director', 'Executive Director', 'Sales Director', 'Marketing Director', 'Operations Director'])
+                            elif 'manager' in title_lower:
+                                expanded_titles.extend(['Manager', 'Managers', 'Senior Manager', 'General Manager'])
+                            elif 'ceo' in title_lower:
+                                expanded_titles.extend(['CEO', 'Chief Executive Officer'])
+                            elif 'founder' in title_lower:
+                                expanded_titles.extend(['Founder', 'Co-Founder', 'Co Founder'])
+                            elif 'hr' in title_lower:
+                                expanded_titles.extend(['HR', 'HR Manager', 'HR Director', 'Human Resources'])
+                        titles = list(set(expanded_titles))  # Remove duplicates
+                        print(f"  🔍 Searching for titles: {', '.join(titles[:10])}{'...' if len(titles) > 10 else ''}")
+                    
+                    # Get contacts from Apollo - try website first, then company name if no website
+                    if website and website.strip():
                         # CRITICAL: This uses FREE api_search endpoint first, then enrichment (costs credits)
-                        print(f"  💰 Searching contacts for {company_name} (using FREE search, then enrichment)...")
-                        print(f"  🔍 Domain: {apollo_client.extract_domain(website) if website else 'N/A'}")
+                        print(f"  💰 Searching contacts for {company_name} by website (using FREE search, then enrichment)...")
+                        print(f"  🔍 Domain: {apollo_client.extract_domain(website)}")
                         try:
                             people = apollo_client.search_people_by_company(company_name, website, titles=titles)
-                            print(f"  ✅ Found {len(people) if people else 0} contacts for {company_name}")
+                            print(f"  ✅ Found {len(people) if people else 0} contacts for {company_name} via website search")
                             if people:
+                                # Count how many have emails (these cost credits to enrich)
+                                emails_count = sum(1 for p in people if p.get('email'))
+                                print(f"  💰 Credits used: ~{emails_count} (for email enrichment)")
+                            else:
+                                print(f"  ⚠️  No contacts found via website search, trying company name search...")
+                                # Fallback to company name search if website search returns nothing
+                                people = apollo_client.search_people_by_company_name(company_name, titles=titles)
+                                if people:
+                                    print(f"  ✅ Found {len(people)} contacts via company name search")
+                        except Exception as e:
+                            print(f"  ❌ Error searching contacts via website for {company_name}: {str(e)}")
+                            import traceback
+                            traceback.print_exc()
+                            people = []
+                    else:
+                        # No website available - search by company name only
+                        print(f"  ⚠️  {company_name} has NO website - searching by company name only")
+                        print(f"  🔍 Searching Apollo by company name: {company_name}")
+                        try:
+                            people = apollo_client.search_people_by_company_name(company_name, titles=titles)
+                            if people:
+                                print(f"  ✅ Found {len(people)} contacts via company name search")
                                 # Count how many have emails (these cost credits to enrich)
                                 emails_count = sum(1 for p in people if p.get('email'))
                                 print(f"  💰 Credits used: ~{emails_count} (for email enrichment)")
@@ -1309,9 +1352,9 @@ def level2_process():
                                 print(f"  💡 Possible reasons:")
                                 print(f"     - Company not in Apollo.io database")
                                 print(f"     - No employees match the search criteria")
-                                print(f"     - Website domain not recognized by Apollo")
+                                print(f"     - Company name not recognized by Apollo")
                         except Exception as e:
-                            print(f"  ❌ Error searching contacts for {company_name}: {str(e)}")
+                            print(f"  ❌ Error searching contacts by company name for {company_name}: {str(e)}")
                             import traceback
                             traceback.print_exc()
                             people = []
@@ -1772,15 +1815,26 @@ def level2_contacts():
     try:
         project_name = request.args.get('project_name')
         batch_name = request.args.get('batch_name')  # Optional: filter by specific batch
+        designation = request.args.get('designation', '').strip()  # User's designation filter
         
         if not project_name and not batch_name:
             return jsonify({'error': 'project_name or batch_name is required'}), 400
         
-        # Get contacts from Supabase
-        if batch_name:
-            contacts = get_supabase_client().get_contacts_for_level3(batch_name=batch_name)
+        # Log the designation being used
+        if designation:
+            print(f"🔍 Level 2 contacts API: Filtering by designation: '{designation}'")
+            parsed = [t.strip().lower() for t in designation.split(',') if t.strip()]
+            print(f"   Parsed titles: {parsed}")
         else:
-            contacts = get_supabase_client().get_contacts_for_level3(project_name=project_name)
+            print(f"ℹ️  Level 2 contacts API: No designation provided - using default filter")
+        
+        # Get contacts from Supabase with designation filter
+        if batch_name:
+            contacts = get_supabase_client().get_contacts_for_level3(batch_name=batch_name, designation=designation if designation else None)
+        else:
+            contacts = get_supabase_client().get_contacts_for_level3(project_name=project_name, designation=designation if designation else None)
+        
+        print(f"✅ Level 2 contacts API: Returning {len(contacts)} contacts")
         
         # Map phone_number to phone for frontend compatibility
         formatted_contacts = []
@@ -2042,7 +2096,9 @@ def level3_contacts():
         if not batch_name:
             return jsonify({'error': 'batch_name is required'}), 400
 
-        contacts = get_supabase_client().get_contacts_for_level3(batch_name=batch_name)
+        # Level 3 uses contacts already filtered, but can accept designation for consistency
+        designation = request.args.get('designation', '').strip()
+        contacts = get_supabase_client().get_contacts_for_level3(batch_name=batch_name, designation=designation if designation else None)
         # Minimal fields for preview/progress
         minimal = []
         for c in contacts:

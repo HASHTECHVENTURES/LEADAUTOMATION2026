@@ -1474,8 +1474,7 @@
         let sortDirection = 'asc';
         let userDesignation = ''; // Store user's custom designation input
         
-        // Default allowed titles (used only if user doesn't specify designation)
-        const ALLOWED_TITLES = ['founder', 'hr director', 'hr manager', 'chro', 'director', 'hr', 'owner', 'ceo', 'co-founder'];
+        // NOTE: No hardcoded default titles - user must provide designation or all contacts will be shown
         
         let projectsData = [];
         
@@ -1722,22 +1721,27 @@
             // Filter and dedupe
             const seen = new Set();
             
-            // Use user's designation if provided, otherwise use default ALLOWED_TITLES
+            // ONLY use user's designation - NO hardcoded fallback!
             let filterTitles = [];
             if (userDesignation && userDesignation.trim()) {
-                // Parse user's designation (comma-separated: "CEO, HR Manager, Director")
+                // Parse user's designation (comma-separated: "CEO, DIRECTOR")
                 filterTitles = userDesignation.split(',').map(t => t.trim().toLowerCase()).filter(t => t);
+                console.log(`🔍 Frontend filtering by: ${filterTitles.join(', ')}`);
             } else {
-                // Use default allowed titles if no custom designation
-                filterTitles = ALLOWED_TITLES;
+                console.log(`ℹ️  No designation provided - showing all contacts`);
             }
+            // If no user designation, show ALL contacts (no filtering)
             
             const filtered = contacts.filter(c => {
                 const title = (c.title || c.contact_type || '').toLowerCase();
                 
-                // Check if title matches user's designation OR default titles
-                const matchesFilter = filterTitles.some(filterTitle => title.includes(filterTitle));
-                if (!matchesFilter) return false;
+                // If user provided designation, filter by it. Otherwise show all contacts.
+                if (filterTitles.length > 0) {
+                    // Check if title matches ANY of the user's designations (CEO OR Director)
+                    const matchesFilter = filterTitles.some(filterTitle => title.includes(filterTitle));
+                    if (!matchesFilter) return false;
+                }
+                // If no designation provided, show all contacts
                 
                 const key = `${(c.company_name || '').toLowerCase()}|${(c.email || c.name || '')}|${title}`;
                 if (seen.has(key)) return false;
@@ -1754,7 +1758,7 @@
                             </svg>
                         </div>
                         <h3>No Matching Contacts</h3>
-                        <p>No founders, HR, or directors found for these companies.</p>
+                        <p>${userDesignation ? `No contacts found matching "${userDesignation}"` : 'No contacts found for these companies.'}</p>
                     </div>
                 `;
                 return;
@@ -2133,6 +2137,7 @@
             
             // Store user's designation for filtering contacts later
             userDesignation = designation;
+            console.log(`💾 Stored user designation: "${userDesignation}"`);
             
             // Get multiple employee range selections
             const employeeRangeCheckboxes = document.querySelectorAll('.employee-range-checkbox:checked');
@@ -2258,16 +2263,22 @@
             
             // Load contacts immediately
             try {
-                const res = await fetch(`/api/level2/contacts?project_name=${encodeURIComponent(currentProject)}`);
+                // Pass user's designation to backend for filtering
+                const designationParam = userDesignation ? `&designation=${encodeURIComponent(userDesignation)}` : '';
+                const url = `/api/level2/contacts?project_name=${encodeURIComponent(currentProject)}${designationParam}`;
+                console.log(`🔍 Fetching contacts with designation: "${userDesignation}"`);
+                console.log(`📡 URL: ${url}`);
+                const res = await fetch(url);
                 const data = await res.json();
                 contacts = data.contacts || [];
+                console.log(`✅ Received ${contacts.length} contacts from backend`);
                 
                 processingModal.classList.remove('open');
                 companiesCard.style.display = 'none';
                 contactsCard.style.display = 'block';
                 contactsCard.scrollIntoView({ behavior: 'smooth' });
                 
-                // Render contacts immediately
+                // Render contacts immediately (backend already filtered by designation)
                 renderContacts();
             } catch (e) {
                 processingModal.classList.remove('open');
@@ -2285,14 +2296,16 @@
             document.getElementById('deleteBatchBtn').style.display = 'inline-flex';
             
             try {
-                const res = await fetch(`/api/level2/contacts?batch_name=${encodeURIComponent(this.value)}`);
+                // Pass user's designation to backend for filtering when loading batch
+                const designationParam = userDesignation ? `&designation=${encodeURIComponent(userDesignation)}` : '';
+                const res = await fetch(`/api/level2/contacts?batch_name=${encodeURIComponent(this.value)}${designationParam}`);
                 const data = await res.json();
                 contacts = data.contacts || [];
                 currentBatchName = this.value;
                 
                 companiesCard.style.display = 'none';
                 contactsCard.style.display = 'block';
-                // Render contacts
+                // Render contacts (backend already filtered by designation)
                 renderContacts();
             } catch (e) {
                 alert('Error loading batch: ' + e.message);

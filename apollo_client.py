@@ -284,8 +284,12 @@ class ApolloClient:
         Phone numbers should be revealed in Apollo.io dashboard to save credits
         """
         people = []
-        titles = titles or ['Founder', 'HR Director', 'HR Manager', 'CHRO', 'Director', 'HR', 'Manager', 'VP', 'Vice President', 'Head', 'Chief', 'Owner', 'CEO', 'CTO', 'CFO', 'COO']
-        seniorities = seniorities or ['owner', 'founder', 'c_suite', 'vp', 'head', 'director', 'manager', 'senior', 'lead']
+        # Only use default titles/seniorities if None explicitly passed
+        # If user provides empty list, respect that (search without filter)
+        if titles is None:
+            titles = ['Founder', 'HR Director', 'HR Manager', 'CHRO', 'Director', 'HR', 'Manager', 'VP', 'Vice President', 'Head', 'Chief', 'Owner', 'CEO', 'CTO', 'CFO', 'COO']
+        if seniorities is None:
+            seniorities = ['owner', 'founder', 'c_suite', 'vp', 'head', 'director', 'manager', 'senior', 'lead']
         
         try:
             url = f"{self.api_search_base}/mixed_people/api_search"
@@ -642,9 +646,44 @@ class ApolloClient:
         """
         OLD METHOD: Search Apollo by domain (uses credits)
         Kept as fallback if new method fails
+        If titles is None, searches without title filter (gets all contacts)
         """
         people = []
-        titles = titles or ['Founder', 'HR Director', 'HR Manager', 'CHRO', 'Director', 'HR']
+        # Only use default titles if None explicitly passed (not if empty list)
+        # If titles is None, use default. If empty list, search without title filter.
+        if titles is None:
+            # No titles provided - use default titles
+            titles = ['Founder', 'HR Director', 'HR Manager', 'CHRO', 'Director', 'HR']
+        
+        # If titles list is empty, search without title filter (get all contacts)
+        if not titles:
+            # Search without title filter
+            try:
+                url = f"{self.base_url}/mixed_people/search"
+                base_payload = {
+                    'organization_domains': [domain],
+                    'page': 1,
+                    'per_page': 25
+                }
+                response = requests.post(url, json=base_payload, headers=self.headers)
+                if response.status_code == 200:
+                    data = response.json()
+                    people_list = data.get('people', [])
+                    for person in people_list:
+                        people.append({
+                            'name': f"{person.get('first_name', '')} {person.get('last_name', '')}".strip(),
+                            'first_name': person.get('first_name', ''),
+                            'last_name': person.get('last_name', ''),
+                            'email': person.get('email', ''),
+                            'phone': person.get('phone_numbers', [{}])[0].get('raw_number', '') if person.get('phone_numbers') else '',
+                            'title': person.get('title', ''),
+                            'linkedin_url': person.get('linkedin_url', ''),
+                            'source': 'apollo'
+                        })
+                time.sleep(0.5)
+            except Exception as e:
+                print(f"Error searching without title filter: {str(e)}")
+            return people
         
         for title in titles:
             try:
@@ -694,9 +733,14 @@ class ApolloClient:
         return people
     
     def search_people_by_company_name(self, company_name: str, titles: List[str] = None) -> List[Dict]:
-        """Search Apollo by company name (alternative method)"""
+        """Search Apollo by company name (alternative method)
+        If titles is None, searches without title filter (gets all contacts)
+        """
         people = []
-        titles = titles or ['Founder', 'HR Director', 'HR Manager', 'CHRO', 'Director', 'HR']
+        # If titles is None, use default. If empty list, search without title filter.
+        if titles is None:
+            # No titles provided - use default titles
+            titles = ['Founder', 'HR Director', 'HR Manager', 'CHRO', 'Director', 'HR']
         
         try:
             # First, search for the organization
@@ -721,12 +765,73 @@ class ApolloClient:
                     if org_domain:
                         domain = self.extract_domain(org_domain)
                         if domain:
-                            # Now search people by the found domain
+                            # Try NEW api_search first (FREE), then fallback to old domain search
+                            print(f"  🔍 Found domain {domain} for {company_name}, trying api_search...")
+                            try:
+                                people = self.search_people_api_search(domain, titles)
+                                if people:
+                                    print(f"  ✅ Found {len(people)} contacts via api_search for {company_name}")
+                                    return people
+                            except Exception as e:
+                                print(f"  ⚠️  api_search failed for {company_name}: {str(e)}, trying fallback...")
+                            
+                            # Fallback to old domain search
                             people = self.search_people_by_domain(domain, titles)
+                            if people:
+                                return people
+                    
+                    # If no domain or domain search failed, try searching by organization ID directly
+                    if org_id and not people:
+                        print(f"  🔍 No domain available, searching by organization ID: {org_id}")
+                        try:
+                            # Search people by organization ID
+                            people_url = f"{self.base_url}/mixed_people/search"
+                            people_payload = {
+                                'organization_ids': [org_id],
+                                'page': 1,
+                                'per_page': 25
+                            }
+                            
+                            # Add title filter if provided
+                            if titles:
+                                people_payload['person_titles'] = titles
+                            
+                            people_response = requests.post(people_url, json=people_payload, headers=self.headers)
+                            if people_response.status_code == 200:
+                                people_data = people_response.json()
+                                persons = people_data.get('people', [])
+                                
+                                for person in persons:
+                                    person_data = {
+                                        'name': f"{person.get('first_name', '')} {person.get('last_name', '')}".strip(),
+                                        'first_name': person.get('first_name', ''),
+                                        'last_name': person.get('last_name', ''),
+                                        'email': person.get('email', ''),
+                                        'phone': '',
+                                        'title': person.get('title', ''),
+                                        'linkedin_url': person.get('linkedin_url', ''),
+                                        'source': 'apollo'
+                                    }
+                                    people.append(person_data)
+                                
+                                if people:
+                                    print(f"  ✅ Found {len(people)} contacts via organization ID search")
+                                    return people
+                        except Exception as e:
+                            print(f"  ⚠️  Organization ID search failed: {str(e)}")
+                    
+                    if not people:
+                        print(f"  ⚠️  Organization {company_name} found in Apollo but has no website URL and organization ID search returned no results")
+                else:
+                    print(f"  ⚠️  Organization {company_name} not found in Apollo database")
+            else:
+                print(f"  ⚠️  Apollo organization search failed with status {org_response.status_code}")
             
             time.sleep(0.5)
         except Exception as e:
-            print(f"Error searching Apollo by company name: {str(e)}")
+            print(f"  ❌ Error searching Apollo by company name: {str(e)}")
+            import traceback
+            traceback.print_exc()
         
         return people
     
@@ -737,9 +842,26 @@ class ApolloClient:
         Strategy 2: OLD search by domain (fallback)
         Strategy 3: Search by company name
         Strategy 4: Web scraping fallback
+        
+        IMPORTANT: We fetch ALL contacts first, then filter by titles on our side.
+        This ensures we get maximum contacts even if Apollo's title matching is restrictive.
         """
         people = []
-        titles = titles or ['Founder', 'HR Director', 'HR Manager', 'CHRO', 'Director', 'HR']
+        user_provided_titles = titles  # Store user's titles for later filtering
+        
+        # If user provided titles, use ONLY those. Otherwise use broad filters to get maximum contacts.
+        if titles:
+            # User provided specific titles - use ONLY those (no hardcoded fallback)
+            search_titles = titles
+            search_seniorities = None  # Let Apollo use default seniorities
+            print(f"  🔍 User provided titles - using ONLY: {titles[:5]}{'...' if len(titles) > 5 else ''}")
+        else:
+            # No user titles - use broad filters to get maximum contacts
+            broad_seniorities = ['owner', 'founder', 'c_suite', 'vp', 'head', 'director', 'manager', 'senior', 'lead', 'executive']
+            broad_titles = ['Founder', 'HR Director', 'HR Manager', 'CHRO', 'Director', 'HR', 'Manager', 'VP', 'Vice President', 'Head', 'Chief', 'Owner', 'CEO', 'CTO', 'CFO', 'COO', 'Executive', 'Senior']
+            search_titles = broad_titles
+            search_seniorities = broad_seniorities
+            print(f"  📋 No user titles - using broad filters to get maximum contacts")
         
         # Strategy 1: NEW api_search endpoint (FREE - no credits for search)
         if website:
@@ -747,10 +869,16 @@ class ApolloClient:
             if domain:
                 print(f"  🔍 Trying NEW Apollo api_search (free) by domain: {domain}")
                 try:
-                    people = self.search_people_api_search(domain, titles)
+                    # Use user's titles if provided, otherwise use broad filters
+                    people = self.search_people_api_search(domain, titles=search_titles, seniorities=search_seniorities)
                     if people:
                         apollo_count = len([p for p in people if p.get('source') == 'apollo'])
                         print(f"  ✅ Found {len(people)} contacts via NEW api_search ({apollo_count} from Apollo)")
+                        # Now filter by user's designation if provided
+                        if user_provided_titles:
+                            filtered_people = self._filter_contacts_by_titles(people, user_provided_titles)
+                            print(f"  🔍 Filtered to {len(filtered_people)} contacts matching user's designation: {', '.join(user_provided_titles)}")
+                            return filtered_people
                         return people
                     else:
                         print(f"  ⚠️  NEW api_search found 0 contacts for {domain}")
@@ -764,17 +892,29 @@ class ApolloClient:
             domain = self.extract_domain(website)
             if domain:
                 print(f"  Trying OLD Apollo search by domain: {domain}")
-                people = self.search_people_by_domain(domain, titles)
+                # Use user's titles if provided, otherwise use None (will use default in function)
+                people = self.search_people_by_domain(domain, titles=search_titles if titles else None)
                 if people:
                     print(f"  Found {len(people)} contacts via OLD domain search")
+                    # Filter by user's designation if provided
+                    if user_provided_titles:
+                        filtered_people = self._filter_contacts_by_titles(people, user_provided_titles)
+                        print(f"  🔍 Filtered to {len(filtered_people)} contacts matching user's designation")
+                        return filtered_people
                     return people
         
-        # Strategy 2: Search by company name
+        # Strategy 3: Search by company name
         if company_name and not people:
             print(f"  Trying Apollo search by company name: {company_name}")
-            people = self.search_people_by_company_name(company_name, titles)
+            # Use user's titles if provided, otherwise use None (will use default in function)
+            people = self.search_people_by_company_name(company_name, titles=search_titles if titles else None)
             if people:
                 print(f"  Found {len(people)} contacts via company name search")
+                # Filter by user's designation if provided
+                if user_provided_titles:
+                    filtered_people = self._filter_contacts_by_titles(people, user_provided_titles)
+                    print(f"  🔍 Filtered to {len(filtered_people)} contacts matching user's designation")
+                    people = filtered_people
         
         # Web scraping fallback removed - using Apollo.io only
         
@@ -803,10 +943,39 @@ class ApolloClient:
                 continue
             
             # Keep everyone else - we want MORE contacts, not fewer!
+            # Note: User title filtering already happened above if user provided titles
             filtered_people.append(person)
         
         print(f"  📊 FINAL: {len(filtered_people)} contacts after filtering (from {len(people)})")
         return filtered_people
+    
+    def _filter_contacts_by_titles(self, contacts: List[Dict], user_titles: List[str]) -> List[Dict]:
+        """
+        Filter contacts based on user-provided titles.
+        Uses flexible matching to find contacts whose titles contain any of the user's title keywords.
+        """
+        if not user_titles:
+            return contacts
+        
+        # Normalize user titles to lowercase for matching
+        user_title_keywords = [t.lower().strip() for t in user_titles]
+        
+        filtered = []
+        for contact in contacts:
+            title = (contact.get('title') or '').lower().strip()
+            contact_type = (contact.get('contact_type') or '').lower().strip()
+            
+            # Check if title or contact_type matches any user-provided title keyword
+            matches = False
+            for keyword in user_title_keywords:
+                if keyword in title or keyword in contact_type:
+                    matches = True
+                    break
+            
+            if matches:
+                filtered.append(contact)
+        
+        return filtered
     
     def enrich_company_data(self, companies: List[Dict]) -> List[Dict]:
         """
