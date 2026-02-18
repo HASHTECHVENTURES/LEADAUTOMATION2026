@@ -1291,28 +1291,12 @@ def level2_process():
                     print(f"  📊 Total companies to process: {total_companies}")
                     print(f"  📊 Place ID: {place_id}")
                     
-                    # Parse designation and expand variations (e.g., "Director" -> ["Director", "Directors", "Managing Director"])
+                    # Parse designation - use EXACTLY what user enters (no hardcoded expansions)
                     titles = None
                     if designation and designation.strip():
-                        base_titles = [t.strip() for t in designation.split(',') if t.strip()]
-                        # Expand titles to include common variations for better matching
-                        expanded_titles = []
-                        for title in base_titles:
-                            title_lower = title.lower()
-                            expanded_titles.append(title)  # Original
-                            # Add variations for common titles
-                            if 'director' in title_lower:
-                                expanded_titles.extend(['Director', 'Directors', 'Managing Director', 'Executive Director', 'Sales Director', 'Marketing Director', 'Operations Director'])
-                            elif 'manager' in title_lower:
-                                expanded_titles.extend(['Manager', 'Managers', 'Senior Manager', 'General Manager'])
-                            elif 'ceo' in title_lower:
-                                expanded_titles.extend(['CEO', 'Chief Executive Officer'])
-                            elif 'founder' in title_lower:
-                                expanded_titles.extend(['Founder', 'Co-Founder', 'Co Founder'])
-                            elif 'hr' in title_lower:
-                                expanded_titles.extend(['HR', 'HR Manager', 'HR Director', 'Human Resources'])
-                        titles = list(set(expanded_titles))  # Remove duplicates
-                        print(f"  🔍 Searching for titles: {', '.join(titles[:10])}{'...' if len(titles) > 10 else ''}")
+                        # Use exactly what user entered, just clean up whitespace
+                        titles = [t.strip() for t in designation.split(',') if t.strip()]
+                        print(f"  🔍 Searching for titles (exact user input): {', '.join(titles[:10])}{'...' if len(titles) > 10 else ''}")
                     
                     # OPTIMIZATION: Check Supabase database FIRST before calling Apollo API
                     # This saves 100% credits on repeat companies
@@ -1327,6 +1311,7 @@ def level2_process():
                     else:
                         # No existing contacts - call Apollo API
                         print(f"  📊 No existing contacts found - calling Apollo API...")
+                        print(f"  💰 CREDIT TRACKING: Starting Apollo search (FREE search, enrichment costs credits)")
                         # Get contacts from Apollo - try website first, then company name if no website
                         if website and website.strip():
                             # CRITICAL: This uses FREE api_search endpoint first, then enrichment (costs credits)
@@ -1335,16 +1320,23 @@ def level2_process():
                             try:
                                 people = apollo_client.search_people_by_company(company_name, website, titles=titles)
                                 print(f"  ✅ Found {len(people) if people else 0} contacts for {company_name} via website search")
-                                if people:
+                                if people and len(people) > 0:
                                     # Count how many have emails (these cost credits to enrich)
                                     emails_count = sum(1 for p in people if p.get('email'))
                                     print(f"  💰 Credits used: ~{emails_count} (for email enrichment)")
+                                    print(f"  ✅ SUCCESS: Found {len(people)} contacts matching your designation")
                                 else:
-                                    print(f"  ⚠️  No contacts found via website search, trying company name search...")
+                                    print(f"  ⚠️  No contacts found via website search - SKIPPED enrichment (saved credits!)")
+                                    print(f"  💰 Credits used: 0 (no contacts found)")
                                     # Fallback to company name search if website search returns nothing
                                     people = apollo_client.search_people_by_company_name(company_name, titles=titles)
-                                    if people:
+                                    if people and len(people) > 0:
                                         print(f"  ✅ Found {len(people)} contacts via company name search")
+                                        emails_count = sum(1 for p in people if p.get('email'))
+                                        print(f"  💰 Credits used: ~{emails_count} (for email enrichment)")
+                                    else:
+                                        print(f"  ⚠️  No contacts found via company name search - SKIPPED enrichment (saved credits!)")
+                                        print(f"  💰 Credits used: 0 (no contacts found)")
                             except Exception as e:
                                 print(f"  ❌ Error searching contacts via website for {company_name}: {str(e)}")
                                 import traceback
@@ -1356,13 +1348,15 @@ def level2_process():
                             print(f"  🔍 Searching Apollo by company name: {company_name}")
                             try:
                                 people = apollo_client.search_people_by_company_name(company_name, titles=titles)
-                                if people:
+                                if people and len(people) > 0:
                                     print(f"  ✅ Found {len(people)} contacts via company name search")
                                     # Count how many have emails (these cost credits to enrich)
                                     emails_count = sum(1 for p in people if p.get('email'))
                                     print(f"  💰 Credits used: ~{emails_count} (for email enrichment)")
+                                    print(f"  ✅ SUCCESS: Found {len(people)} contacts matching your designation")
                                 else:
-                                    print(f"  ⚠️  No contacts found for {company_name}")
+                                    print(f"  ⚠️  No contacts found for {company_name} - SKIPPED enrichment (saved credits!)")
+                                    print(f"  💰 Credits used: 0 (no contacts found)")
                                     print(f"  💡 Possible reasons:")
                                     print(f"     - Company not in Apollo.io database")
                                     print(f"     - No employees match the search criteria")
@@ -1447,18 +1441,15 @@ def level2_process():
                     # Send company update in real-time
                     yield f"data: {json.dumps({'type': 'company_update', 'data': enriched_company, 'progress': {'current': idx, 'total': total_companies, 'contacts_found': total_contacts}})}\n\n"
                 
-                # Filter contacts by designation BEFORE saving (if designation provided)
-                # This ensures only matching contacts are saved, so Level 3 automatically shows correct data
+                # NOTE: Filtering already happens BEFORE enrichment in apollo_client.py
+                # So contacts here are already filtered - no need to filter again (saves credits!)
+                # Only do final safety check to exclude generic employee titles
                 if designation and designation.strip():
                     user_titles = [t.strip().lower() for t in designation.split(',') if t.strip()]
-                    print(f"  🔍 Filtering contacts by designation before saving: {user_titles}")
-                    
-                    # Titles to explicitly EXCLUDE (generic/employee titles)
                     excluded_titles = ['employee', 'staff', 'worker', 'member', 'personnel']
                     
+                    # Final safety filter: Only exclude generic employee titles (contacts already filtered before enrichment)
                     filtered_total = 0
-                    original_total = total_contacts
-                    
                     for company in enriched_companies:
                         original_count = len(company.get('people', []))
                         filtered_people = []
@@ -1466,42 +1457,18 @@ def level2_process():
                         for person in company.get('people', []):
                             person_title = (person.get('title', '') or '').lower().strip()
                             
-                            # Skip if title is empty or just generic employee title
-                            if not person_title or person_title in excluded_titles:
-                                continue
-                            
-                            # Check if person's title matches ANY of the user's designations
-                            # Use word boundary matching: title must START with or be the user title
-                            # This prevents "CEO" matching "CEO Employee" - we want exact or prefix match
-                            matches = False
-                            for user_title in user_titles:
-                                # Exact match
-                                if person_title == user_title:
-                                    matches = True
-                                    break
-                                # Title starts with user title (e.g., "CEO" matches "CEO & Founder")
-                                if person_title.startswith(user_title + ' ') or person_title.startswith(user_title + '&') or person_title.startswith(user_title + '/'):
-                                    matches = True
-                                    break
-                                # User title is in the title as a word (not substring)
-                                # Check if user_title appears as a complete word
-                                if re.search(r'\b' + re.escape(user_title) + r'\b', person_title):
-                                    # But exclude if it's followed by "employee" or similar
-                                    if not any(excluded in person_title for excluded in excluded_titles):
-                                        matches = True
-                                        break
-                            
-                            if matches:
+                            # Only exclude generic employee titles (contacts already matched user's designation before enrichment)
+                            if person_title and person_title not in excluded_titles:
                                 filtered_people.append(person)
                         
                         company['people'] = filtered_people
                         filtered_total += len(filtered_people)
                         
                         if original_count != len(filtered_people):
-                            print(f"    📊 {company.get('company_name', 'Unknown')}: {original_count} → {len(filtered_people)} contacts (filtered by designation)")
+                            print(f"    📊 {company.get('company_name', 'Unknown')}: {original_count} → {len(filtered_people)} contacts (final safety filter)")
                     
                     total_contacts = filtered_total
-                    print(f"  ✅ Filtered {original_total} contacts → {filtered_total} contacts matching designation (excluded employees)")
+                    print(f"  ✅ Final count: {filtered_total} contacts (already filtered before enrichment - no credits wasted)")
                 else:
                     print(f"  ℹ️  No designation provided - saving all contacts")
                 

@@ -605,10 +605,16 @@
                 (data.batches || []).forEach(b => {
                     const opt = document.createElement('option');
                     opt.value = b.batch_name;
+                    // Remove any "(XX contacts)" or "(XX contacts • project)" pattern from batch name
+                    let cleanBatchName = b.batch_name.replace(/\s*\(\d+\s+contacts?[^)]*\)/gi, '').trim();
                     const projectLabel = b.project_name ? ` • ${b.project_name}` : '';
-                    opt.textContent = `${b.batch_name} (${b.contact_count} contacts${projectLabel})`;
+                    opt.textContent = `${cleanBatchName}${projectLabel}`;
                     opt.dataset.project = b.project_name || '';
                     batchSelect.appendChild(opt);
+                    // Debug: Log to verify cleaning is working
+                    if (b.batch_name !== cleanBatchName) {
+                        console.log(`Cleaned batch name: "${b.batch_name}" → "${cleanBatchName}"`);
+                    }
                 });
                 
                 // Store project name from first batch if available
@@ -616,11 +622,19 @@
                     currentProjectName = data.batches[0].project_name || '';
                 }
                 
+                // Check URL parameter first, then auto-load first batch
                 const urlParams = new URLSearchParams(window.location.search);
                 const batchParam = urlParams.get('batch');
-                if (batchParam) {
+                
+                if (batchParam && data.batches && data.batches.some(b => b.batch_name === batchParam)) {
+                    // Load batch from URL parameter
                     batchSelect.value = batchParam;
                     loadBatch(batchParam);
+                } else if (data.batches && data.batches.length > 0) {
+                    // Auto-load the first/most recent batch if no parameter or parameter not found
+                    const firstBatch = data.batches[0].batch_name;
+                    batchSelect.value = firstBatch;
+                    loadBatch(firstBatch);
                 }
             } catch (e) {
                 console.error('Failed to load batches:', e);

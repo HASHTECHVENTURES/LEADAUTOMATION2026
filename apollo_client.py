@@ -1,6 +1,7 @@
 import requests
 import time
 import json
+import re
 from typing import List, Dict, Optional
 from config import Config
 # Web scraper removed - using Apollo.io only
@@ -293,15 +294,20 @@ class ApolloClient:
         
         try:
             url = f"{self.api_search_base}/mixed_people/api_search"
+            # REMOVED STRICT FILTERS: Don't send person_titles or person_seniorities to Apollo
+            # This lets Apollo return ALL contacts for the domain, then we filter locally
             base_payload = {
                 # API key removed from payload - now in header
                 'q_organization_domains_list': [domain],
-                'person_titles': titles,
-                'person_seniorities': seniorities,
-                'include_similar_titles': False,  # Only exact matches - user wants precise results
+                # REMOVED: 'person_titles': titles,  # Too strict - let Apollo return all contacts
+                # REMOVED: 'person_seniorities': seniorities,  # Too strict - filter locally instead
+                'include_similar_titles': True,  # Get more results from Apollo
                 'page': 1,
-                'per_page': 100  # CRITICAL FIX: Get MORE results (was 50, now 100)
+                'per_page': 100  # Get MORE results
             }
+            # DEBUG: Log what we're sending to Apollo
+            print(f"    🔍 DEBUG: Sending to Apollo (NO title/seniority filters) - domain: {domain}")
+            print(f"    🔍 DEBUG: Will filter locally for titles: {titles[:5] if titles else 'None'}")
 
             # Retry logic: Try up to 3 times with exponential backoff
             max_retries = 3
@@ -349,9 +355,15 @@ class ApolloClient:
                 persons = data.get('people', [])
                 print(f"    📊 Apollo api_search found {len(persons)} people (before filtering and enrichment)")
                 
+                # DEBUG: Show sample titles from Apollo to understand what we're getting
+                if persons and len(persons) > 0:
+                    sample_titles = [p.get('title', 'No Title') for p in persons[:5]]
+                    print(f"    🔍 Sample titles from Apollo: {sample_titles}")
+                    print(f"    🔍 User searching for titles: {titles[:5] if titles else 'None'}")
+                
                 # CRITICAL: Filter by titles BEFORE enrichment to save API credits!
-                # Apollo search may return contacts that don't match user's exact designation
-                # Filter them out before spending credits on enrichment
+                # Use smart matching: user's exact input matches various title formats
+                # But NO hardcoded keyword expansions - use only what user entered
                 if titles:
                     user_titles_lower = [t.lower().strip() for t in titles]
                     excluded_titles = ['employee', 'staff', 'worker', 'member', 'personnel']
@@ -361,34 +373,65 @@ class ApolloClient:
                         # Skip if title is empty or generic employee title
                         if not person_title or person_title in excluded_titles:
                             continue
-                        # Check if title matches user's search titles
+                        # SIMPLE FLEXIBLE MATCHING: If person title contains ANY user title, it matches
+                        # This ensures we don't filter out valid contacts
                         matches = False
                         for user_title in user_titles_lower:
-                            # Exact match
-                            if person_title == user_title:
+                            # Simple check: Does person title contain user title anywhere?
+                            if user_title in person_title:
                                 matches = True
                                 break
-                            # Title starts with user title
-                            if person_title.startswith(user_title + ' ') or person_title.startswith(user_title + '&') or person_title.startswith(user_title + '/'):
-                                matches = True
-                                break
-                            # User title appears as word in person title
+                            # Also check as word boundary
                             if re.search(r'\b' + re.escape(user_title) + r'\b', person_title):
-                                if not any(excluded in person_title for excluded in excluded_titles):
-                                    matches = True
-                                    break
-                        if matches:
+                                matches = True
+                                break
+                            # Special cases for acronyms
+                            if user_title == 'hr' and 'human resources' in person_title:
+                                matches = True
+                                break
+                            if user_title == 'ceo' and 'chief executive' in person_title:
+                                matches = True
+                                break
+                            if user_title == 'cto' and ('chief technology' in person_title or 'chief technical' in person_title):
+                                matches = True
+                                break
+                            if user_title == 'cfo' and 'chief financial' in person_title:
+                                matches = True
+                                break
+                            if user_title == 'coo' and 'chief operating' in person_title:
+                                matches = True
+                                break
+                            if user_title == 'chro' and ('chief human resources' in person_title or 'chief hr' in person_title):
+                                matches = True
+                                break
+                        
+                        # Only exclude if it's EXACTLY an excluded title (not if it contains it)
+                        if matches and person_title not in excluded_titles:
                             filtered_persons.append(p)
                     
                     original_count = len(persons)
                     persons = filtered_persons
                     if original_count != len(persons):
                         print(f"    💰 FILTERED: {original_count} → {len(persons)} contacts (saved {original_count - len(persons)} enrichment credits!)")
+                        # DEBUG: Show why contacts were filtered out
+                        if original_count > 0 and len(persons) == 0:
+                            print(f"    ⚠️  DEBUG: All {original_count} contacts were filtered out!")
+                            print(f"    ⚠️  DEBUG: User titles: {user_titles_lower}")
+                            print(f"    ⚠️  DEBUG: Sample filtered titles: {[(p.get('title', 'No Title'), p.get('name', 'No Name')) for p in data.get('people', [])[:3]]}")
+                    elif original_count == 0:
+                        print(f"    ⚠️  DEBUG: Apollo returned 0 contacts - check if company exists in Apollo database")
                 
                 # Check if phone numbers are in the search results directly (sometimes they are!)
                 for p in persons[:3]:  # Check first 3
                     if p.get('phone_numbers'):
                         print(f"    📞 Found phone_numbers in search result for {p.get('first_name')}: {p.get('phone_numbers')}")
+                
+                # CRITICAL: Only enrich if we have contacts after filtering (saves credits!)
+                # If filtering removed all contacts, skip enrichment completely
+                if not persons or len(persons) == 0:
+                    print(f"    ⚠️  No contacts found after filtering - SKIPPING enrichment (saved credits!)")
+                    print(f"    💰 CREDIT USAGE: 0 credits (no contacts to enrich)")
+                    return people
                 
                 # Extract person IDs AND organization domains for validation
                 # NOW only extracting IDs for filtered contacts (saves credits!)
@@ -396,23 +439,36 @@ class ApolloClient:
                                    for p in persons if p.get('id')]
                 print(f"    📋 Extracted {len(person_data_list)} person IDs for enrichment (AFTER filtering)")
                 
-                if person_data_list:
+                # CRITICAL: Only enrich if we have person IDs (prevents wasting credits on empty results)
+                if person_data_list and len(person_data_list) > 0:
                     print(f"    🔄 Enriching {len(person_data_list)} people to get emails in parallel...")
+                    print(f"    💰 CREDIT USAGE: Will use ~{len(person_data_list)} credits for enrichment")
                     # Enrich to get emails only (costs credits) and validate company
                     # Phone numbers not requested - reveal in Apollo.io dashboard to save credits
                     # Use parallel enrichment for faster processing
                     enriched_people = self.enrich_people_with_validation_parallel([pid for pid, _ in person_data_list], domain)
                     print(f"    ✅ Enrichment returned {len(enriched_people)} contacts with emails (validated for {domain})")
+                    print(f"    💰 CREDIT USAGE: Used ~{len(enriched_people)} credits (enriched {len(enriched_people)} contacts)")
+                    
+                    # CRITICAL: If enrichment returned fewer contacts than requested, log the waste
+                    if len(enriched_people) < len(person_data_list):
+                        wasted = len(person_data_list) - len(enriched_people)
+                        print(f"    ⚠️  WARNING: {wasted} contacts were enriched but not returned (possible validation failure)")
+                    
                     people.extend(enriched_people)
                 else:
-                    print(f"    ⚠️  No person IDs found - Apollo returned people without IDs")
-                    # If no IDs, still return basic info
+                    print(f"    ⚠️  No person IDs found after filtering - SKIPPING enrichment (saved credits!)")
+                    print(f"    💰 CREDIT USAGE: 0 credits (no person IDs to enrich)")
+                    # If no IDs and no filtered persons, return empty (don't waste credits)
+                    if not persons:
+                        return people
+                    # If no IDs but we have persons, still return basic info (but don't enrich)
                     for person in persons:
                         person_data = {
                             'name': f"{person.get('first_name', '')} {person.get('last_name_obfuscated', '') or person.get('last_name', '')}".strip(),
                             'first_name': person.get('first_name', ''),
                             'last_name': person.get('last_name_obfuscated', '') or person.get('last_name', ''),
-                            'email': '',  # Will be filled by enrichment
+                            'email': '',  # No email (not enriched to save credits)
                             'phone': '',  # Phone numbers not requested - reveal in Apollo.io dashboard
                             'title': person.get('title', ''),
                             'linkedin_url': person.get('linkedin_url', ''),
@@ -449,6 +505,122 @@ class ApolloClient:
         
         print(f"    ✅ After filtering: {len(filtered_people)} contacts (from {len(people)})")
         return filtered_people
+
+    def search_people_api_search_by_org_name(self, company_name: str, titles: List[str] = None, seniorities: List[str] = None) -> List[Dict]:
+        """
+        FREE fallback for api_search: search by organization name instead of domain.
+        Some companies return 0 people by domain but return people by org name.
+        We keep Apollo-side filters OFF (no titles/seniorities) and filter locally.
+        """
+        if not company_name:
+            return []
+
+        # Reuse the same defaults as domain-based api_search (used only for local filtering)
+        if titles is None:
+            titles = ['Founder', 'HR Director', 'HR Manager', 'CHRO', 'Director', 'HR', 'Manager', 'VP', 'Vice President', 'Head', 'Chief', 'Owner', 'CEO', 'CTO', 'CFO', 'COO']
+        if seniorities is None:
+            seniorities = ['owner', 'founder', 'c_suite', 'vp', 'head', 'director', 'manager', 'senior', 'lead']
+
+        try:
+            url = f"{self.api_search_base}/mixed_people/api_search"
+            base_payload = {
+                'q_organization_names': [company_name],
+                'include_similar_titles': True,
+                'page': 1,
+                'per_page': 100
+            }
+            print(f"    🔍 DEBUG: Sending to Apollo (NO title/seniority filters) - org_name: {company_name}")
+            print(f"    🔍 DEBUG: Will filter locally for titles: {titles[:5] if titles else 'None'}")
+
+            response = requests.post(url, json=base_payload, headers=self.headers, timeout=30)
+            print(f"    Apollo api_search(org_name) response status: {response.status_code}")
+            if response.status_code != 200:
+                return []
+
+            data = response.json() or {}
+            persons = data.get('people', []) or []
+            print(f"    📊 Apollo api_search(org_name) found {len(persons)} people (before filtering and enrichment)")
+
+            # Apply the exact same local filtering + enrichment behavior as the domain-based function
+            # by reusing its core logic with a minimal adaptation (we don't have a domain string here).
+            people = []
+
+            if titles:
+                user_titles_lower = [t.lower().strip() for t in titles]
+                excluded_titles = ['employee', 'staff', 'worker', 'member', 'personnel']
+                filtered_persons = []
+                for p in persons:
+                    person_title = (p.get('title') or '').lower().strip()
+                    if not person_title or person_title in excluded_titles:
+                        continue
+                    matches = False
+                    for user_title in user_titles_lower:
+                        if user_title in person_title:
+                            matches = True
+                            break
+                        if re.search(r'\b' + re.escape(user_title) + r'\b', person_title):
+                            matches = True
+                            break
+                        if user_title == 'hr' and 'human resources' in person_title:
+                            matches = True
+                            break
+                        if user_title == 'ceo' and 'chief executive' in person_title:
+                            matches = True
+                            break
+                        if user_title == 'cto' and ('chief technology' in person_title or 'chief technical' in person_title):
+                            matches = True
+                            break
+                        if user_title == 'cfo' and 'chief financial' in person_title:
+                            matches = True
+                            break
+                        if user_title == 'coo' and 'chief operating' in person_title:
+                            matches = True
+                            break
+                        if user_title == 'chro' and ('chief human resources' in person_title or 'chief hr' in person_title):
+                            matches = True
+                            break
+                    if matches and person_title not in excluded_titles:
+                        filtered_persons.append(p)
+
+                original_count = len(persons)
+                persons = filtered_persons
+                if original_count != len(persons):
+                    print(f"    💰 FILTERED: {original_count} → {len(persons)} contacts (saved {original_count - len(persons)} enrichment credits!)")
+
+            if not persons:
+                print(f"    ⚠️  No contacts found after filtering - SKIPPING enrichment (saved credits!)")
+                print(f"    💰 CREDIT USAGE: 0 credits (no contacts to enrich)")
+                return []
+
+            person_ids = [p.get('id') for p in persons if p.get('id')]
+            if not person_ids:
+                print(f"    ⚠️  No person IDs found after filtering - SKIPPING enrichment (saved credits!)")
+                print(f"    💰 CREDIT USAGE: 0 credits (no person IDs to enrich)")
+                return []
+
+            print(f"    🔄 Enriching {len(person_ids)} people to get emails in parallel...")
+            print(f"    💰 CREDIT USAGE: Will use ~{len(person_ids)} credits for enrichment")
+            enriched_people = self.enrich_people_with_validation_parallel(person_ids, company_name)
+            people.extend(enriched_people)
+
+            # Apply the same post-filtering as domain-based function
+            blocked_titles = ['intern', 'student', 'volunteer', 'freelancer', 'contractor']
+            filtered_people = []
+            for person in people:
+                title = (person.get('title') or '').lower()
+                if any(blocked in title for blocked in blocked_titles):
+                    continue
+                filtered_people.append(person)
+
+            print(f"    ✅ After filtering: {len(filtered_people)} contacts (from {len(people)})")
+            return filtered_people
+
+        except Exception as e:
+            print(f"❌ Error in api_search(org_name) for {company_name}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+        return []
     
     def enrich_people(self, person_ids: List[str]) -> List[Dict]:
         """
@@ -528,7 +700,9 @@ class ApolloClient:
         """
         enriched = []
         
-        if not person_ids:
+        # CRITICAL: Don't enrich if no person IDs provided (saves credits!)
+        if not person_ids or len(person_ids) == 0:
+            print(f"    ⚠️  No person IDs provided - SKIPPING enrichment (saved credits!)")
             return enriched
         
         print(f"    Enriching {len(person_ids)} people in PARALLEL with company validation (target: {target_domain})...")
@@ -563,6 +737,13 @@ class ApolloClient:
                     enriched.append(result)
         
         print(f"    ✅ Parallel enrichment completed: {len(enriched)} contacts with emails")
+        print(f"    💰 CREDIT USAGE: Enriched {len(enriched)} contacts (used ~{len(enriched)} credits)")
+        
+        # CRITICAL: Warn if we enriched but got fewer results (wasted credits)
+        if len(enriched) < len(person_ids):
+            wasted = len(person_ids) - len(enriched)
+            print(f"    ⚠️  WARNING: {wasted} contacts were enriched but not returned (wasted ~{wasted} credits)")
+        
         return enriched
     
     def enrich_single_person(self, person_id: str) -> Optional[Dict]:
@@ -919,6 +1100,18 @@ class ApolloClient:
                         return people
                     else:
                         print(f"  ⚠️  NEW api_search found 0 contacts for {domain}")
+                        # FREE fallback: try searching by org name when domain returns 0
+                        if company_name:
+                            print(f"  🔍 Trying NEW Apollo api_search (free) by org name: {company_name}")
+                            people = self.search_people_api_search_by_org_name(company_name, titles=search_titles, seniorities=search_seniorities)
+                            if people:
+                                apollo_count = len([p for p in people if p.get('source') == 'apollo'])
+                                print(f"  ✅ Found {len(people)} contacts via NEW api_search(org_name) ({apollo_count} from Apollo)")
+                                if user_provided_titles:
+                                    filtered_people = self._filter_contacts_by_titles(people, user_provided_titles)
+                                    print(f"  🔍 Filtered to {len(filtered_people)} contacts matching user's designation: {', '.join(user_provided_titles)}")
+                                    return filtered_people
+                                return people
                 except Exception as e:
                     print(f"  ❌ NEW api_search failed: {str(e)}, trying fallback...")
                     import traceback

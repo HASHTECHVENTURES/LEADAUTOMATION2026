@@ -1543,7 +1543,9 @@
                 (data.batches || []).forEach(b => {
                     const opt = document.createElement('option');
                     opt.value = b.batch_name;
-                    opt.textContent = `${b.batch_name} (${b.contact_count} contacts)`;
+                    // Remove any "(XX contacts)" or "(XX contacts • project)" pattern from batch name
+                    let cleanBatchName = b.batch_name.replace(/\s*\(\d+\s+contacts?[^)]*\)/gi, '').trim();
+                    opt.textContent = `${cleanBatchName}`;
                     batchSelect.appendChild(opt);
                 });
             } catch (e) {

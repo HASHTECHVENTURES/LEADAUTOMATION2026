@@ -7,6 +7,7 @@ from typing import List, Dict, Optional
 from config import Config
 from datetime import datetime
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -1006,6 +1007,9 @@ class SupabaseClient:
                 if batch_name.startswith(self.saved_batch_prefix):
                     display_name = batch_name[len(self.saved_batch_prefix):]
                 
+                # Remove any "(XX contacts)" or "(XX contacts • project)" pattern from batch name
+                display_name = re.sub(r'\s*\(\d+\s+contacts?[^)]*\)', '', display_name, flags=re.IGNORECASE).strip()
+                
                 # Detect timestamp-based duplicate batches (old format: Project_Batch_YYYYMMDD_HHMMSS)
                 if proj_name and '_Batch_' in batch_name and batch_name.count('_') >= 3:
                     # Check if it matches timestamp pattern
@@ -1058,6 +1062,10 @@ class SupabaseClient:
                     display_name = batch_name
                     if batch_name.startswith(self.saved_batch_prefix):
                         display_name = batch_name[len(self.saved_batch_prefix):]
+                    
+                # Remove any "(XX contacts)" or "(XX contacts • project)" pattern from batch name
+                display_name = re.sub(r'\s*\(\d+\s+contacts?[^)]*\)', '', display_name, flags=re.IGNORECASE).strip()
+                    
                     if batch_name not in batches_dict:
                         batches_dict[batch_name] = {
                             'batch_name': display_name,
