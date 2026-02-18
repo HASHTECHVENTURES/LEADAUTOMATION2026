@@ -1104,13 +1104,28 @@ class SupabaseClient:
                 response = query.execute()
                 contacts = response.data if response.data else []
             
-            # Filter to only include contacts with email or phone
-            filtered_contacts = [
-                c for c in contacts 
-                if c.get('email') or c.get('phone_number')
-            ]
+            # Filter to only include contacts with email or phone AND matching job titles (same as Level 2)
+            # Only show Founders, HR, Directors, CEOs, Owners (same filter as Level 2)
+            ALLOWED_TITLES = ['founder', 'hr director', 'hr manager', 'chro', 'director', 'hr', 'owner', 'ceo', 'co-founder']
             
-            logger.info(f"✅ Retrieved {len(filtered_contacts)} contacts from Supabase for Level 3")
+            filtered_contacts = []
+            for c in contacts:
+                # Must have email or phone
+                if not (c.get('email') or c.get('phone_number')):
+                    continue
+                
+                # Check if title matches allowed titles (same logic as Level 2)
+                title = (c.get('title', '') or c.get('contact_type', '')).lower()
+                contact_type = (c.get('contact_type', '')).lower()
+                
+                # Check if title or contact_type matches any allowed title
+                matches_title = any(allowed_title in title for allowed_title in ALLOWED_TITLES)
+                matches_contact_type = any(allowed_title in contact_type for allowed_title in ALLOWED_TITLES)
+                
+                if matches_title or matches_contact_type:
+                    filtered_contacts.append(c)
+            
+            logger.info(f"✅ Retrieved {len(filtered_contacts)} contacts from Supabase for Level 3 (filtered to Founders/HR/Directors only)")
             return filtered_contacts
             
         except Exception as e:

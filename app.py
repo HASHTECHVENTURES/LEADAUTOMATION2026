@@ -34,6 +34,222 @@ apollo_client = ApolloClient()
 # Initialize lazily to avoid Vercel cold start issues
 supabase_client = None
 
+def search_places_progressively(place_name: str, industry: str, max_results: int, place_idx: int = 1, total_places: int = 1):
+    """
+    Search for places with progressive pagination - yields companies as they're found
+    This allows lazy loading - results appear immediately without waiting for all pages
+    """
+    import requests
+    
+    # First, get location from place name using Geocoding API
+    geocode_url = "https://maps.googleapis.com/maps/api/geocode/json"
+    geocode_params = {
+        'address': f"{place_name}, India",
+        'key': google_client.api_key
+    }
+    
+    try:
+        geocode_response = requests.get(geocode_url, params=geocode_params)
+        geocode_data = geocode_response.json()
+        
+        if geocode_data['status'] != 'OK':
+            error_msg = geocode_data.get('error_message', 'Unknown error')
+            print(f"❌ Geocoding error: {geocode_data['status']} - {error_msg}")
+            return
+        
+        location = geocode_data['results'][0]['geometry']['location']
+        lat, lng = location['lat'], location['lng']
+        
+        # Build search query
+        if industry:
+            query = f"{industry} in {place_name}, India"
+        else:
+            query = f"businesses in {place_name}, India"
+        
+        # Search for places with pagination support
+        places_url = f"{google_client.base_url}/textsearch/json"
+        next_page_token = None
+        page_number = 1
+        companies_found = 0
+        
+        while companies_found < max_results:
+            places_params = {
+                'query': query,
+                'location': f"{lat},{lng}",
+                'radius': 50000,  # 50km radius for cities
+                'key': google_client.api_key
+            }
+            
+            # Add pagination token if we have one
+            if next_page_token:
+                places_params['pagetoken'] = next_page_token
+                print(f"📄 Fetching page {page_number} for {place_name}...")
+                # Google requires a delay between pagination requests
+                time.sleep(2)
+            
+            places_response = requests.get(places_url, params=places_params)
+            places_data = places_response.json()
+            
+            if places_data['status'] != 'OK':
+                error_msg = places_data.get('error_message', 'Unknown error')
+                print(f"❌ Places search error (page {page_number}): {places_data['status']} - {error_msg}")
+                if places_data['status'] == 'ZERO_RESULTS':
+                    break
+                elif places_data['status'] == 'OVER_QUERY_LIMIT':
+                    raise Exception(f"Google Places API quota exceeded for {place_name}")
+                elif places_data['status'] == 'INVALID_REQUEST' and next_page_token:
+                    break  # Token expired
+                else:
+                    break
+            
+            places_list = places_data.get('results', [])
+            print(f"✅ Found {len(places_list)} places from Google Places API (page {page_number})")
+            logger.info(f"📄 Page {page_number}: Found {len(places_list)} places, currently have {companies_found}/{max_results} companies")
+            
+            # Process each place and yield immediately
+            for place in places_list:
+                if companies_found >= max_results:
+                    break
+                
+                place_id = place.get('place_id')
+                if place_id:
+                    details = google_client.get_place_details(place_id)
+                    if details:
+                        # Preserve the user's search industry
+                        details['place_type'] = details.get('industry', '')
+                        details['industry'] = industry.strip() if industry else details.get('industry', '')
+                        details['search_location'] = place_name
+                        details['place_name'] = place_name
+                        companies_found += 1
+                        yield details  # Yield immediately for lazy loading
+                    time.sleep(0.1)  # Rate limiting
+            
+            # Check if there's a next page token
+            next_page_token = places_data.get('next_page_token')
+            if next_page_token:
+                print(f"📄 Next page token found! Will fetch page {page_number + 1} after delay...")
+                logger.info(f"📄 Page {page_number} complete: {companies_found}/{max_results} companies. Next page token available.")
+            else:
+                print(f"⚠️  No next page token - Google only returned {companies_found} companies total for '{place_name}'")
+                logger.info(f"⚠️  Page {page_number} complete: {companies_found}/{max_results} companies. No more pages available from Google.")
+            
+            if not next_page_token or companies_found >= max_results:
+                break
+            
+            page_number += 1
+        
+        print(f"✅ Total companies fetched for {place_name}: {companies_found} out of {max_results} requested")
+        if companies_found < max_results:
+            print(f"⚠️  WARNING: Only found {companies_found} companies but requested {max_results}. Google may not have more results for this location.")
+            logger.warning(f"⚠️  Only found {companies_found}/{max_results} companies for '{place_name}'. Google may not have more results.")
+        
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ Error in progressive search for place {place_name}: {error_msg}")
+        raise Exception(f"Google Places API error for place {place_name}: {error_msg}") from e
+
+def search_pins_progressively(pin_code: str, industry: str, max_results: int, pin_idx: int = 1, total_pins: int = 1):
+    """
+    Search for places by PIN code with progressive pagination - yields companies as they're found
+    This allows lazy loading - results appear immediately without waiting for all pages
+    """
+    import requests
+    
+    # First, get location from PIN code using Geocoding API
+    geocode_url = "https://maps.googleapis.com/maps/api/geocode/json"
+    geocode_params = {
+        'address': f"{pin_code}, India",
+        'key': google_client.api_key
+    }
+    
+    try:
+        geocode_response = requests.get(geocode_url, params=geocode_params)
+        geocode_data = geocode_response.json()
+        
+        if geocode_data['status'] != 'OK':
+            error_msg = geocode_data.get('error_message', 'Unknown error')
+            print(f"❌ Geocoding error: {geocode_data['status']} - {error_msg}")
+            return
+        
+        location = geocode_data['results'][0]['geometry']['location']
+        lat, lng = location['lat'], location['lng']
+        
+        # Build search query
+        if industry:
+            query = f"{industry} in {pin_code}, India"
+        else:
+            query = f"businesses in {pin_code}, India"
+        
+        # Search for places with pagination support
+        places_url = f"{google_client.base_url}/textsearch/json"
+        next_page_token = None
+        page_number = 1
+        companies_found = 0
+        
+        while companies_found < max_results:
+            places_params = {
+                'query': query,
+                'location': f"{lat},{lng}",
+                'radius': 10000,  # 10km radius for PIN codes
+                'key': google_client.api_key
+            }
+            
+            # Add pagination token if we have one
+            if next_page_token:
+                places_params['pagetoken'] = next_page_token
+                print(f"📄 Fetching page {page_number} for PIN {pin_code}...")
+                # Google requires a delay between pagination requests
+                time.sleep(2)
+            
+            places_response = requests.get(places_url, params=places_params)
+            places_data = places_response.json()
+            
+            if places_data['status'] != 'OK':
+                error_msg = places_data.get('error_message', 'Unknown error')
+                print(f"❌ Places search error (page {page_number}): {places_data['status']} - {error_msg}")
+                if places_data['status'] == 'ZERO_RESULTS':
+                    break
+                elif places_data['status'] == 'OVER_QUERY_LIMIT':
+                    raise Exception(f"Google Places API quota exceeded for PIN {pin_code}")
+                elif places_data['status'] == 'INVALID_REQUEST' and next_page_token:
+                    break  # Token expired
+                else:
+                    break
+            
+            places_list = places_data.get('results', [])
+            print(f"✅ Found {len(places_list)} places from Google Places API (page {page_number})")
+            
+            # Process each place and yield immediately
+            for place in places_list:
+                if companies_found >= max_results:
+                    break
+                
+                place_id = place.get('place_id')
+                if place_id:
+                    details = google_client.get_place_details(place_id)
+                    if details:
+                        # Preserve the user's search industry
+                        details['place_type'] = details.get('industry', '')
+                        details['industry'] = industry.strip() if industry else details.get('industry', '')
+                        details['pin_code'] = pin_code
+                        companies_found += 1
+                        yield details  # Yield immediately for lazy loading
+                    time.sleep(0.1)  # Rate limiting
+            
+            # Check if there's a next page token
+            next_page_token = places_data.get('next_page_token')
+            if not next_page_token or companies_found >= max_results:
+                break
+            
+            page_number += 1
+        
+        print(f"✅ Total companies fetched for PIN {pin_code}: {companies_found} out of {max_results} requested")
+        
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ Error in progressive search for PIN {pin_code}: {error_msg}")
+        raise Exception(f"Google Places API error for PIN {pin_code}: {error_msg}") from e
+
 def get_supabase_client():
     """Lazy initialization of Supabase client"""
     global supabase_client
@@ -381,6 +597,8 @@ def level1_search():
                 # Step 1: Search locations based on search type
                 all_companies = []
                 search_errors = []  # Track errors for better user feedback
+                # Track seen IDs to prevent duplicates during progressive loading (used for BOTH pin + place search)
+                seen_place_ids_progressive = set()
                 
                 if search_type == 'pin':
                     # PIN code search
@@ -393,30 +611,63 @@ def level1_search():
                         
                         print(f"🔍 Calling location search service: PIN={pin_code} ({idx}/{total_locations}), Industry={industry}, MaxResults={companies_per_location}")
                         
-                        # Search locations for this PIN code
+                        # Search locations for this PIN code with progressive pagination (lazy loading)
                         try:
-                            print(f"🔍 [DEBUG] About to call search_by_pin_and_industry for PIN {pin_code}")
-                            logger.info(f"🔍 [DEBUG] Calling Google Places service for PIN {pin_code}, Industry: {industry}")
+                            print(f"🔍 [DEBUG] Starting progressive search for PIN {pin_code}")
+                            logger.info(f"🔍 [DEBUG] Calling Google Places service progressively for PIN {pin_code}, Industry: {industry}")
                             
-                            companies = google_client.search_by_pin_and_industry(
+                            companies_for_pin = []
+                            # Use progressive search that yields companies as they're found
+                            for company in search_pins_progressively(
                                 pin_code=pin_code,
                                 industry=industry,
-                                max_results=companies_per_location
-                            )
+                                max_results=companies_per_location,
+                                pin_idx=idx,
+                                total_pins=total_locations
+                            ):
+                                # Stop if we've reached the global max_companies limit
+                                if len(all_companies) >= max_companies:
+                                    print(f"⚠️  Reached max_companies limit ({max_companies}), stopping search for PIN {pin_code}")
+                                    logger.info(f"⚠️  Reached max_companies limit ({max_companies}), stopping search for PIN {pin_code}")
+                                    break
+                                
+                                # Check for duplicates BEFORE adding (prevent duplicates during progressive loading)
+                                place_id = company.get('place_id')
+                                company_key = None
+                                
+                                if place_id:
+                                    if place_id in seen_place_ids_progressive:
+                                        print(f"⚠️  Duplicate company skipped (place_id): {company.get('company_name', 'Unknown')}")
+                                        logger.debug(f"⚠️  Duplicate company skipped (place_id): {company.get('company_name', 'Unknown')}")
+                                        continue
+                                    seen_place_ids_progressive.add(place_id)
+                                else:
+                                    # Fallback: use company_name + address
+                                    company_key = f"{company.get('company_name', '')}_{company.get('address', '')}"
+                                    if company_key in seen_place_ids_progressive:
+                                        print(f"⚠️  Duplicate company skipped (name+address): {company.get('company_name', 'Unknown')}")
+                                        logger.debug(f"⚠️  Duplicate company skipped (name+address): {company.get('company_name', 'Unknown')}")
+                                        continue
+                                    seen_place_ids_progressive.add(company_key)
+                                
+                                companies_for_pin.append(company)
+                                all_companies.append(company)
+                                
+                                # Send company immediately to frontend (lazy loading - no waiting!)
+                                # Progress uses actual max_companies, not per-location limit
+                                yield f"data: {json.dumps({'type': 'company_update', 'data': company, 'progress': {'current': len(all_companies), 'total': max_companies, 'companies_found': len(all_companies)}})}\n\n"
+                                
+                                # Also emit progress update
+                                yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Found company in PIN {pin_code}... ({len(companies_for_pin)}/{companies_per_location})', 'current': idx, 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
                             
-                            print(f"🔍 [DEBUG] search_by_pin_and_industry returned {len(companies)} companies for PIN {pin_code}")
-                            logger.info(f"🔍 [DEBUG] Google Places service returned {len(companies)} companies for PIN {pin_code}")
+                            print(f"🔍 [DEBUG] Progressive search returned {len(companies_for_pin)} companies for PIN {pin_code}")
+                            logger.info(f"🔍 [DEBUG] Google Places service returned {len(companies_for_pin)} companies for PIN {pin_code}")
                             
-                            # Add PIN code to each company for tracking
-                            for company in companies:
-                                company['pin_code'] = pin_code
-                            
-                            all_companies.extend(companies)
-                            print(f"✅ Found {len(companies)} companies for PIN {pin_code}")
-                            logger.info(f"✅ Successfully found {len(companies)} companies for PIN {pin_code}")
+                            print(f"✅ Found {len(companies_for_pin)} companies for PIN {pin_code}")
+                            logger.info(f"✅ Successfully found {len(companies_for_pin)} companies for PIN {pin_code}")
 
                             # Emit a progress update after each PIN finishes so "Companies Found" updates live
-                            yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Finished PIN {idx}/{total_locations}: {pin_code}. Found {len(companies)} companies (Total: {len(all_companies)}).', 'current': idx, 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
+                            yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Finished PIN {idx}/{total_locations}: {pin_code}. Found {len(companies_for_pin)} companies (Total: {len(all_companies)}).', 'current': idx, 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
                             
                         except Exception as e:
                             error_msg = str(e)
@@ -445,30 +696,63 @@ def level1_search():
                         
                         print(f"🔍 Calling location search service: Place={place_name} ({idx}/{total_locations}), Industry={industry}, MaxResults={companies_per_location}")
                         
-                        # Search locations for this place name
+                        # Search locations for this place name with progressive pagination (lazy loading)
                         try:
-                            print(f"🔍 [DEBUG] About to call search_by_place_and_industry for Place {place_name}")
-                            logger.info(f"🔍 [DEBUG] Calling Google Places service for Place {place_name}, Industry: {industry}")
+                            print(f"🔍 [DEBUG] Starting progressive search for Place {place_name}")
+                            logger.info(f"🔍 [DEBUG] Calling Google Places service progressively for Place {place_name}, Industry: {industry}")
                             
-                            companies = google_client.search_by_place_and_industry(
+                            companies_for_place = []
+                            # Use progressive search that yields companies as they're found
+                            for company in search_places_progressively(
                                 place_name=place_name,
                                 industry=industry,
-                                max_results=companies_per_location
-                            )
+                                max_results=companies_per_location,
+                                place_idx=idx,
+                                total_places=total_locations
+                            ):
+                                # Stop if we've reached the global max_companies limit
+                                if len(all_companies) >= max_companies:
+                                    print(f"⚠️  Reached max_companies limit ({max_companies}), stopping search for {place_name}")
+                                    logger.info(f"⚠️  Reached max_companies limit ({max_companies}), stopping search for {place_name}")
+                                    break
+                                
+                                # Check for duplicates BEFORE adding (prevent duplicates during progressive loading)
+                                place_id = company.get('place_id')
+                                company_key = None
+                                
+                                if place_id:
+                                    if place_id in seen_place_ids_progressive:
+                                        print(f"⚠️  Duplicate company skipped (place_id): {company.get('company_name', 'Unknown')}")
+                                        logger.debug(f"⚠️  Duplicate company skipped (place_id): {company.get('company_name', 'Unknown')}")
+                                        continue
+                                    seen_place_ids_progressive.add(place_id)
+                                else:
+                                    # Fallback: use company_name + address
+                                    company_key = f"{company.get('company_name', '')}_{company.get('address', '')}"
+                                    if company_key in seen_place_ids_progressive:
+                                        print(f"⚠️  Duplicate company skipped (name+address): {company.get('company_name', 'Unknown')}")
+                                        logger.debug(f"⚠️  Duplicate company skipped (name+address): {company.get('company_name', 'Unknown')}")
+                                        continue
+                                    seen_place_ids_progressive.add(company_key)
+                                
+                                companies_for_place.append(company)
+                                all_companies.append(company)
+                                
+                                # Send company immediately to frontend (lazy loading - no waiting!)
+                                # Progress uses actual max_companies, not per-location limit
+                                yield f"data: {json.dumps({'type': 'company_update', 'data': company, 'progress': {'current': len(all_companies), 'total': max_companies, 'companies_found': len(all_companies)}})}\n\n"
+                                
+                                # Also emit progress update
+                                yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Found company in {place_name}... ({len(companies_for_place)}/{companies_per_location})', 'current': idx, 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
                             
-                            print(f"🔍 [DEBUG] search_by_place_and_industry returned {len(companies)} companies for Place {place_name}")
-                            logger.info(f"🔍 [DEBUG] Google Places service returned {len(companies)} companies for Place {place_name}")
+                            print(f"🔍 [DEBUG] Progressive search returned {len(companies_for_place)} companies for Place {place_name}")
+                            logger.info(f"🔍 [DEBUG] Google Places service returned {len(companies_for_place)} companies for Place {place_name}")
                             
-                            # Add place name to each company for tracking
-                            for company in companies:
-                                company['place_name'] = place_name
-                            
-                            all_companies.extend(companies)
-                            print(f"✅ Found {len(companies)} companies for Place {place_name}")
-                            logger.info(f"✅ Successfully found {len(companies)} companies for Place {place_name}")
+                            print(f"✅ Found {len(companies_for_place)} companies for Place {place_name}")
+                            logger.info(f"✅ Successfully found {len(companies_for_place)} companies for Place {place_name}")
 
                             # Emit a progress update after each place finishes
-                            yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Finished Place {idx}/{total_locations}: {place_name}. Found {len(companies)} companies (Total: {len(all_companies)}).', 'current': idx, 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
+                            yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Finished Place {idx}/{total_locations}: {place_name}. Found {len(companies_for_place)} companies (Total: {len(all_companies)}).', 'current': idx, 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
                             
                         except Exception as e:
                             error_msg = str(e)
@@ -512,6 +796,12 @@ def level1_search():
                 if len(deduplicated_companies) > max_companies:
                     print(f"⚠️  Found {len(deduplicated_companies)} unique companies, but limiting to {max_companies} as requested")
                     logger.info(f"⚠️  Found {len(deduplicated_companies)} unique companies, but limiting to {max_companies} as requested")
+                    # Remove excess companies that were already sent via company_update events
+                    # This ensures frontend doesn't show more than max_companies
+                    excess_count = len(deduplicated_companies) - max_companies
+                    if excess_count > 0:
+                        print(f"⚠️  Removing {excess_count} excess companies to respect max_companies limit")
+                        logger.warning(f"⚠️  Removing {excess_count} excess companies to respect max_companies limit")
                 
                 total_locations = len(pin_codes) if search_type == 'pin' else len(place_names)
                 location_type = 'PIN code(s)' if search_type == 'pin' else 'Place(s)'
@@ -534,7 +824,10 @@ def level1_search():
                         error_msg = f'No companies found for {location_type_str}: {location_str}. Please try different locations or check if they are correct. You may also want to try a broader industry term.'
                     
                     print(f"⚠️  {error_msg}")
-                    logger.warning(f"⚠️  No companies found for project '{project_name}' with PIN codes: {pin_codes_str}. Errors: {search_errors}")
+                    logger.warning(
+                        f"⚠️  No companies found for project '{project_name}' with {location_type_str}: {location_str}. "
+                        f"Errors: {search_errors}"
+                    )
                     yield f"data: {json.dumps({'type': 'complete', 'data': {'companies': [], 'message': error_msg, 'total_companies': 0, 'errors': search_errors}})}\n\n"
                     return
                 
@@ -616,30 +909,18 @@ def level1_search():
                     yield f"data: {json.dumps({'type': 'complete', 'data': {'companies': companies, 'message': f'Found {len(companies)} companies but SAVE FAILED: {error_msg}. Please try saving again.', 'total_companies': len(companies), 'save_failed': True}})}\n\n"
                     return
                 
-                # Send incremental company updates
+                # Companies were already sent progressively during search (lazy loading)
+                # No need to send them again - just update progress
                 try:
-                    for idx, company in enumerate(companies, 1):
-                        # Update progress in Supabase periodically (every 5 companies to reduce DB calls)
-                        if idx % 5 == 0 or idx == len(companies):
-                            try:
-                                update_progress = {
-                                    'current': idx,
-                                    'message': f'Processed {company.get("company_name", "")}... ({idx}/{len(companies)})',
-                                    'status': 'in_progress'
-                                }
-                                get_supabase_client().save_progress(session_key, update_progress)
-                            except Exception as progress_err:
-                                # Don't fail if progress update fails
-                                logger.warning(f"⚠️  Could not update progress: {progress_err}")
-                        
-                        try:
-                            yield f"data: {json.dumps({'type': 'company_update', 'data': company, 'progress': {'current': idx, 'total': len(companies), 'companies_found': len(companies)}})}\n\n"
-                        except (BrokenPipeError, ConnectionResetError, GeneratorExit):
-                            # Client disconnected
-                            return
-                except (BrokenPipeError, ConnectionResetError, GeneratorExit):
-                    # Client disconnected during company updates
-                    return
+                    # Update progress in Supabase
+                    update_progress = {
+                        'current': len(companies),
+                        'message': f'Found {len(companies)} companies and saving to database...',
+                        'status': 'in_progress'
+                    }
+                    get_supabase_client().save_progress(session_key, update_progress)
+                except Exception as progress_err:
+                    logger.warning(f"⚠️  Could not update progress: {progress_err}")
                 
                 # Final result - mark as completed in Supabase
                 completed_progress = {

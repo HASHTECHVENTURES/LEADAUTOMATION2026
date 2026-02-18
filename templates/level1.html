@@ -1660,6 +1660,16 @@
         searchForm.addEventListener('submit', async function(e) {
             e.preventDefault();
             
+            // Clear previous results immediately (lazy loading - start fresh)
+            companies = [];
+            selectedIds.clear();
+            if (companyList) {
+                companyList.innerHTML = '';
+            }
+            if (resultsCard) {
+                resultsCard.style.display = 'none';
+            }
+            
             const searchType = document.querySelector('input[name="searchType"]:checked').value;
             const pinCode = document.getElementById('pinCode').value.trim();
             const placeName = document.getElementById('placeName').value.trim();
@@ -1755,21 +1765,97 @@
                                 
                                 if (evt.type === 'progress') {
                                     const p = evt.data || {};
-                                    const pct = p.total > 0 ? Math.round((p.current / p.total) * 100) : 0;
+                                    // Use actual max requested, not per-location total
+                                    const maxRequested = parseInt(document.getElementById('maxCompanies')?.value || '50') || 50;
+                                    const companiesFound = p.companies_found || companies.length || 0;
+                                    const actualPct = maxRequested > 0 ? Math.round((companiesFound / maxRequested) * 100) : 0;
+                                    const pct = Math.min(actualPct, 100); // Cap at 100%
                                     document.getElementById('progressFill').style.width = pct + '%';
                                     document.getElementById('progressPercent').textContent = pct + '%';
                                     document.getElementById('progressText').textContent = p.message || 'Searching...';
-                                    document.getElementById('progressStatus').textContent = `Found ${p.companies_found || 0} companies`;
+                                    document.getElementById('progressStatus').textContent = `Found ${companiesFound} companies`;
+                                }
+                                
+                                // Handle company updates immediately (lazy loading - no waiting!)
+                                if (evt.type === 'company_update') {
+                                    const company = evt.data;
+                                    const progress = evt.progress || {};
+                                    
+                                    // Check for duplicates before adding (robust duplicate detection)
+                                    const companyId = company.place_id || `${(company.company_name || '').trim()}_${(company.address || '').trim()}`;
+                                    const isDuplicate = companies.some(c => {
+                                        const cId = c.place_id || `${(c.company_name || '').trim()}_${(c.address || '').trim()}`;
+                                        // Also check if company names are very similar (fuzzy match)
+                                        if (cId === companyId) return true;
+                                        // Check if same name and similar address
+                                        if (company.company_name && c.company_name) {
+                                            const name1 = (company.company_name || '').trim().toLowerCase();
+                                            const name2 = (c.company_name || '').trim().toLowerCase();
+                                            if (name1 === name2 && company.address && c.address) {
+                                                const addr1 = (company.address || '').trim().toLowerCase();
+                                                const addr2 = (c.address || '').trim().toLowerCase();
+                                                // If names match and addresses are very similar, consider duplicate
+                                                if (addr1 === addr2 || addr1.includes(addr2.substring(0, 20)) || addr2.includes(addr1.substring(0, 20))) {
+                                                    return true;
+                                                }
+                                            }
+                                        }
+                                        return false;
+                                    });
+                                    
+                                    if (!isDuplicate) {
+                                        // Add company to array immediately
+                                        companies.push(company);
+                                        
+                                        console.log(`✅ Company ${companies.length} received: ${company.company_name || 'Unknown'}`);
+                                        
+                                        // Show results card if hidden
+                                        if (resultsCard && resultsCard.style.display === 'none') {
+                                            resultsCard.style.display = 'block';
+                                        }
+                                        
+                                        // Render companies immediately (lazy loading)
+                                        renderCompanies();
+                                        
+                                        // Update progress - use actual companies found vs requested max
+                                        // Don't use progress.total from backend (it's per-location, not total)
+                                        const maxRequested = parseInt(document.getElementById('maxCompanies')?.value || '50') || 50;
+                                        const actualPct = maxRequested > 0 ? Math.round((companies.length / maxRequested) * 100) : 0;
+                                        // Cap at 100% if we got more than requested
+                                        const pct = Math.min(actualPct, 100);
+                                        document.getElementById('progressFill').style.width = pct + '%';
+                                        document.getElementById('progressPercent').textContent = pct + '%';
+                                        document.getElementById('progressText').textContent = `Found: ${company.company_name || 'Company'}... (${companies.length}/${maxRequested})`;
+                                        document.getElementById('progressStatus').textContent = `Found ${companies.length} companies`;
+                                        
+                                        // Scroll to show new company (only for first few)
+                                        if (companies.length <= 3) {
+                                            setTimeout(() => {
+                                                resultsCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                            }, 100);
+                                        }
+                                    } else {
+                                        console.log(`⚠️ Duplicate company skipped: ${company.company_name || 'Unknown'} (ID: ${companyId})`);
+                                    }
                                 }
                                 
                                 if (evt.type === 'complete') {
                                     try {
-                                        companies = evt.data?.companies || [];
+                                        // Companies were already added progressively, but limit to max requested
+                                        const maxRequested = parseInt(document.getElementById('maxCompanies')?.value || '50') || 50;
+                                        
+                                        // Limit companies to max requested (remove excess)
+                                        if (companies.length > maxRequested) {
+                                            console.log(`⚠️ Limiting companies from ${companies.length} to ${maxRequested}`);
+                                            companies = companies.slice(0, maxRequested);
+                                        }
+                                        
                                         const saveFailed = evt.data?.save_failed || false;
                                         const message = evt.data?.message || '';
                                         
                                         console.log('✅ Search complete:', {
                                             companiesFound: companies.length,
+                                            maxRequested: maxRequested,
                                             saveFailed: saveFailed,
                                             message: message
                                         });
@@ -1777,6 +1863,7 @@
                                         // Always close the modal first
                                         progressModal.classList.remove('open');
                                         
+                                        // Final render (companies should already be displayed from progressive updates)
                                         if (companies.length > 0) {
                                             renderCompanies();
                                             resultsCard.style.display = 'block';

@@ -1472,8 +1472,9 @@
         let currentBatchName = '';
         let sortColumn = '';
         let sortDirection = 'asc';
+        let userDesignation = ''; // Store user's custom designation input
         
-        // Allowed titles
+        // Default allowed titles (used only if user doesn't specify designation)
         const ALLOWED_TITLES = ['founder', 'hr director', 'hr manager', 'chro', 'director', 'hr', 'owner', 'ceo', 'co-founder'];
         
         let projectsData = [];
@@ -1720,9 +1721,23 @@
         function renderContacts() {
             // Filter and dedupe
             const seen = new Set();
+            
+            // Use user's designation if provided, otherwise use default ALLOWED_TITLES
+            let filterTitles = [];
+            if (userDesignation && userDesignation.trim()) {
+                // Parse user's designation (comma-separated: "CEO, HR Manager, Director")
+                filterTitles = userDesignation.split(',').map(t => t.trim().toLowerCase()).filter(t => t);
+            } else {
+                // Use default allowed titles if no custom designation
+                filterTitles = ALLOWED_TITLES;
+            }
+            
             const filtered = contacts.filter(c => {
                 const title = (c.title || c.contact_type || '').toLowerCase();
-                if (!ALLOWED_TITLES.some(t => title.includes(t))) return false;
+                
+                // Check if title matches user's designation OR default titles
+                const matchesFilter = filterTitles.some(filterTitle => title.includes(filterTitle));
+                if (!matchesFilter) return false;
                 
                 const key = `${(c.company_name || '').toLowerCase()}|${(c.email || c.name || '')}|${title}`;
                 if (seen.has(key)) return false;
@@ -2115,6 +2130,9 @@
             // Get search settings
             const designationInput = document.getElementById('designationInput');
             const designation = (designationInput?.value || '').trim();
+            
+            // Store user's designation for filtering contacts later
+            userDesignation = designation;
             
             // Get multiple employee range selections
             const employeeRangeCheckboxes = document.querySelectorAll('.employee-range-checkbox:checked');

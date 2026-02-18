@@ -11,7 +11,7 @@ class GooglePlacesClient:
     def search_by_pin_and_industry(self, pin_code: str, industry: str = None, max_results: int = 20) -> List[Dict]:
         """
         Search for places by PIN code (India) - PIN code is unique, no state needed
-        Returns list of company data
+        Returns list of company data with pagination support to fetch all requested results
         """
         results = []
         
@@ -43,44 +43,73 @@ class GooglePlacesClient:
             else:
                 query = f"businesses in {pin_code}, India"
             
-            # Search for places near this location
+            # Search for places near this location with pagination support
             places_url = f"{self.base_url}/textsearch/json"
+            next_page_token = None
+            page_number = 1
             
-            places_params = {
-                'query': query,
-                'location': f"{lat},{lng}",
-                'radius': 10000,  # 10km radius
-                'key': self.api_key
-            }
+            while len(results) < max_results:
+                places_params = {
+                    'query': query,
+                    'location': f"{lat},{lng}",
+                    'radius': 10000,  # 10km radius
+                    'key': self.api_key
+                }
+                
+                # Add pagination token if we have one
+                if next_page_token:
+                    places_params['pagetoken'] = next_page_token
+                    print(f"📄 Fetching page {page_number} with pagination token...")
+                    # Google requires a delay between pagination requests
+                    time.sleep(2)
+                
+                places_response = requests.get(places_url, params=places_params)
+                places_data = places_response.json()
+                
+                print(f"🏢 Places search response status (page {page_number}): {places_data.get('status')}")
+                if places_data['status'] != 'OK':
+                    error_msg = places_data.get('error_message', 'Unknown error')
+                    print(f"❌ Places search error: {places_data['status']} - {error_msg}")
+                    if places_data['status'] == 'ZERO_RESULTS':
+                        print(f"   No businesses found for query: {query}")
+                        break
+                    elif places_data['status'] == 'OVER_QUERY_LIMIT':
+                        print(f"   ⚠️  Google Places API quota exceeded!")
+                        break
+                    elif places_data['status'] == 'INVALID_REQUEST' and next_page_token:
+                        # Token expired or invalid, stop pagination
+                        print(f"   ⚠️  Pagination token expired or invalid, stopping pagination")
+                        break
+                    else:
+                        break
+                
+                places_list = places_data.get('results', [])
+                print(f"✅ Found {len(places_list)} places from Google Places API (page {page_number})")
+                
+                # Process each place until we reach max_results
+                for place in places_list:
+                    if len(results) >= max_results:
+                        break
+                    
+                    place_id = place.get('place_id')
+                    if place_id:
+                        details = self.get_place_details(place_id)
+                        if details:
+                            # Preserve the user's search industry so Level 2 never mixes sessions/industries.
+                            # Keep Google's detected type separately in details['place_type'].
+                            details['place_type'] = details.get('industry', '')
+                            details['industry'] = industry.strip() if industry else details.get('industry', '')
+                            results.append(details)
+                        time.sleep(0.1)  # Rate limiting
+                
+                # Check if there's a next page token
+                next_page_token = places_data.get('next_page_token')
+                if not next_page_token or len(results) >= max_results:
+                    break
+                
+                page_number += 1
             
-            places_response = requests.get(places_url, params=places_params)
-            places_data = places_response.json()
-            
-            print(f"🏢 Places search response status: {places_data.get('status')}")
-            if places_data['status'] != 'OK':
-                error_msg = places_data.get('error_message', 'Unknown error')
-                print(f"❌ Places search error: {places_data['status']} - {error_msg}")
-                if places_data['status'] == 'ZERO_RESULTS':
-                    print(f"   No businesses found for query: {query}")
-                elif places_data['status'] == 'OVER_QUERY_LIMIT':
-                    print(f"   ⚠️  Google Places API quota exceeded!")
-                return results
-            
-            print(f"✅ Found {len(places_data.get('results', []))} places from Google Places API")
-            
-            # Process each place
-            for place in places_data.get('results', [])[:max_results]:
-                place_id = place.get('place_id')
-                if place_id:
-                    details = self.get_place_details(place_id)
-                    if details:
-                        # Preserve the user's search industry so Level 2 never mixes sessions/industries.
-                        # Keep Google's detected type separately in details['place_type'].
-                        details['place_type'] = details.get('industry', '')
-                        details['industry'] = industry.strip() if industry else details.get('industry', '')
-                        results.append(details)
-                    time.sleep(0.1)  # Rate limiting
-            
+            print(f"✅ Total companies fetched: {len(results)} out of {max_results} requested")
             return results
             
         except Exception as e:
@@ -138,7 +167,7 @@ class GooglePlacesClient:
     def search_by_place_and_industry(self, place_name: str, industry: str = None, max_results: int = 20) -> List[Dict]:
         """
         Search for places by place name (e.g., Mumbai, Pune, Bangalore)
-        Returns list of company data
+        Returns list of company data with pagination support to fetch all requested results
         """
         results = []
         
@@ -170,45 +199,74 @@ class GooglePlacesClient:
             else:
                 query = f"businesses in {place_name}, India"
             
-            # Search for places near this location
+            # Search for places near this location with pagination support
             places_url = f"{self.base_url}/textsearch/json"
+            next_page_token = None
+            page_number = 1
             
-            places_params = {
-                'query': query,
-                'location': f"{lat},{lng}",
-                'radius': 50000,  # 50km radius for cities (larger than PIN codes)
-                'key': self.api_key
-            }
+            while len(results) < max_results:
+                places_params = {
+                    'query': query,
+                    'location': f"{lat},{lng}",
+                    'radius': 50000,  # 50km radius for cities (larger than PIN codes)
+                    'key': self.api_key
+                }
+                
+                # Add pagination token if we have one
+                if next_page_token:
+                    places_params['pagetoken'] = next_page_token
+                    print(f"📄 Fetching page {page_number} with pagination token...")
+                    # Google requires a delay between pagination requests
+                    time.sleep(2)
+                
+                places_response = requests.get(places_url, params=places_params)
+                places_data = places_response.json()
+                
+                print(f"🏢 Places search response status (page {page_number}): {places_data.get('status')}")
+                if places_data['status'] != 'OK':
+                    error_msg = places_data.get('error_message', 'Unknown error')
+                    print(f"❌ Places search error: {places_data['status']} - {error_msg}")
+                    if places_data['status'] == 'ZERO_RESULTS':
+                        print(f"   No businesses found for query: {query}")
+                        break
+                    elif places_data['status'] == 'OVER_QUERY_LIMIT':
+                        print(f"   ⚠️  Google Places API quota exceeded!")
+                        break
+                    elif places_data['status'] == 'INVALID_REQUEST' and next_page_token:
+                        # Token expired or invalid, stop pagination
+                        print(f"   ⚠️  Pagination token expired or invalid, stopping pagination")
+                        break
+                    else:
+                        break
+                
+                places_list = places_data.get('results', [])
+                print(f"✅ Found {len(places_list)} places from Google Places API (page {page_number})")
+                
+                # Process each place until we reach max_results
+                for place in places_list:
+                    if len(results) >= max_results:
+                        break
+                    
+                    place_id = place.get('place_id')
+                    if place_id:
+                        details = self.get_place_details(place_id)
+                        if details:
+                            # Preserve the user's search industry
+                            details['place_type'] = details.get('industry', '')
+                            details['industry'] = industry.strip() if industry else details.get('industry', '')
+                            # Add place name for tracking
+                            details['search_location'] = place_name
+                            results.append(details)
+                        time.sleep(0.1)  # Rate limiting
+                
+                # Check if there's a next page token
+                next_page_token = places_data.get('next_page_token')
+                if not next_page_token or len(results) >= max_results:
+                    break
+                
+                page_number += 1
             
-            places_response = requests.get(places_url, params=places_params)
-            places_data = places_response.json()
-            
-            print(f"🏢 Places search response status: {places_data.get('status')}")
-            if places_data['status'] != 'OK':
-                error_msg = places_data.get('error_message', 'Unknown error')
-                print(f"❌ Places search error: {places_data['status']} - {error_msg}")
-                if places_data['status'] == 'ZERO_RESULTS':
-                    print(f"   No businesses found for query: {query}")
-                elif places_data['status'] == 'OVER_QUERY_LIMIT':
-                    print(f"   ⚠️  Google Places API quota exceeded!")
-                return results
-            
-            print(f"✅ Found {len(places_data.get('results', []))} places from Google Places API")
-            
-            # Process each place
-            for place in places_data.get('results', [])[:max_results]:
-                place_id = place.get('place_id')
-                if place_id:
-                    details = self.get_place_details(place_id)
-                    if details:
-                        # Preserve the user's search industry
-                        details['place_type'] = details.get('industry', '')
-                        details['industry'] = industry.strip() if industry else details.get('industry', '')
-                        # Add place name for tracking
-                        details['search_location'] = place_name
-                        results.append(details)
-                    time.sleep(0.1)  # Rate limiting
-            
+            print(f"✅ Total companies fetched: {len(results)} out of {max_results} requested")
             return results
             
         except Exception as e:
