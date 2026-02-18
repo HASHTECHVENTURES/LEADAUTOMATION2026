@@ -1063,8 +1063,8 @@ class SupabaseClient:
                     if batch_name.startswith(self.saved_batch_prefix):
                         display_name = batch_name[len(self.saved_batch_prefix):]
                     
-                # Remove any "(XX contacts)" or "(XX contacts • project)" pattern from batch name
-                display_name = re.sub(r'\s*\(\d+\s+contacts?[^)]*\)', '', display_name, flags=re.IGNORECASE).strip()
+                    # Remove any "(XX contacts)" or "(XX contacts • project)" pattern from batch name
+                    display_name = re.sub(r'\s*\(\d+\s+contacts?[^)]*\)', '', display_name, flags=re.IGNORECASE).strip()
                     
                     if batch_name not in batches_dict:
                         batches_dict[batch_name] = {
