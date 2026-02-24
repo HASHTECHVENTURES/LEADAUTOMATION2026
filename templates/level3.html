@@ -500,6 +500,9 @@
                         <div class="stat-label">Failed</div>
                     </div>
                 </div>
+                <div id="transferTagDisplay" style="display: none; margin-top: 12px; padding: 12px 16px; background: var(--gray-100); border-radius: 10px; font-weight: 600; color: var(--gray-800); border-left: 4px solid var(--primary);">
+                    <i class="fas fa-tag" style="margin-right: 8px; color: var(--primary);"></i> Industry tag used: <span id="transferTagValue"></span>
+                </div>
                 
                 <!-- Preview -->
                 <div class="preview-section" id="previewSection">
@@ -687,6 +690,7 @@
                 progressSection.style.display = 'none';
                 logSection.style.display = 'none';
                 successBox.style.display = 'none';
+                document.getElementById('transferTagDisplay').style.display = 'none';
                 actionButtons.style.display = 'block';
                 document.getElementById('exportBtn').style.display = contacts.length > 0 ? 'flex' : 'none';
                 retrySection.style.display = 'none';
@@ -932,6 +936,8 @@
                 const tagEl = document.getElementById('successTagUsed');
                 tagEl.textContent = `Industry tag used: ${industryTag}`;
                 tagEl.style.display = 'block';
+                document.getElementById('transferTagValue').textContent = industryTag;
+                document.getElementById('transferTagDisplay').style.display = 'block';
             }
             
             if (failedContacts.length > 0) {
@@ -984,6 +990,10 @@
                     const tagEl = document.getElementById('successTagUsed');
                     tagEl.textContent = retryIndustryTag ? `Industry tag used: ${retryIndustryTag}` : '';
                     tagEl.style.display = retryIndustryTag ? 'block' : 'none';
+                    if (retryIndustryTag) {
+                        document.getElementById('transferTagValue').textContent = retryIndustryTag;
+                        document.getElementById('transferTagDisplay').style.display = 'block';
+                    }
                 }
             }
             
