@@ -39,7 +39,14 @@ class ApolloClient:
             'title': contact.get('title', '')
         }
 
+        # Trial: send industry via Apollo custom field so client can filter by industry in People
+        industry = (contact.get('industry') or '').strip()
+        field_id = getattr(Config, 'APOLLO_INDUSTRY_CUSTOM_FIELD_ID', None) or None
+        if industry and field_id:
+            payload['typed_custom_fields'] = {field_id: industry}
+
         endpoints = [
+            (f"{self.api_search_base}/contacts", payload),  # Official: api/v1/contacts
             (f"{self.base_url}/contacts", payload),
             (f"{self.base_url}/people/add", payload),
         ]
@@ -65,6 +72,30 @@ class ApolloClient:
                 continue
 
         return {'success': False, 'error': last_error or 'Apollo contact creation failed'}
+
+    def get_contact_custom_fields(self) -> List[Dict]:
+        """
+        Fetch custom fields for contacts (used to find Industry field ID for APOLLO_INDUSTRY_CUSTOM_FIELD_ID).
+        Requires master API key. Returns list of {id, name, type, modality}.
+        """
+        out = []
+        try:
+            url = f"{self.api_search_base}/typed_custom_fields"
+            resp = requests.get(url, headers=self.headers, timeout=10)
+            if resp.status_code != 200:
+                return out
+            data = resp.json() or {}
+            for f in (data.get('typed_custom_fields') or []):
+                if (f.get('modality') or '').lower() == 'contact':
+                    out.append({
+                        'id': f.get('id'),
+                        'name': f.get('name'),
+                        'type': f.get('type', ''),
+                        'modality': f.get('modality', '')
+                    })
+        except Exception as e:
+            print(f"get_contact_custom_fields error: {e}")
+        return out
 
     def find_contact_by_email(self, email: str) -> Dict:
         """
@@ -136,7 +167,37 @@ class ApolloClient:
             except Exception as e:
                 last_error = str(e)
         return {'success': False, 'error': last_error or 'Failed to add contact to list'}
-    
+
+    def create_account(self, name: str, domain: str = '', phone: str = '', raw_address: str = '') -> Dict:
+        """
+        Create a company (account) in Apollo.io Companies section.
+        Requires at least name or domain. Returns {success: bool, account_id?: str, error?: str}.
+        """
+        name = (name or '').strip()
+        domain = (domain or '').strip().replace('www.', '').split('/')[0].split('?')[0]
+        if not name and not domain:
+            return {'success': False, 'error': 'At least name or domain is required'}
+        payload = {}
+        if name:
+            payload['name'] = name
+        if domain:
+            payload['domain'] = domain
+        if phone:
+            payload['phone'] = phone
+        if raw_address:
+            payload['raw_address'] = raw_address
+        try:
+            url = f"{self.api_search_base}/accounts"
+            resp = requests.post(url, json=payload, headers=self.headers, timeout=15)
+            if resp.status_code in (200, 201):
+                data = resp.json() if resp.content else {}
+                acc = (data.get('account') or data) if isinstance(data, dict) else {}
+                aid = acc.get('id') if isinstance(acc, dict) else None
+                return {'success': True, 'account_id': aid, 'response': data}
+            return {'success': False, 'error': f"{resp.status_code}: {(resp.text or '')[:200]}"}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
     def extract_domain(self, website: str) -> str:
         """Extract domain from website URL"""
         if not website:

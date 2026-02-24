@@ -10,6 +10,9 @@ class Config:
     
     # Apollo API (Master Key)
     APOLLO_API_KEY = os.getenv('APOLLO_API_KEY', 'lpLP_qGLdPOXeHgp6yNBKg')
+    # Optional: Apollo custom field ID for "Industry" (set after creating the field in Apollo Settings → Custom fields)
+    # When set, we send contact industry when pushing to Apollo so you can filter by industry in People.
+    APOLLO_INDUSTRY_CUSTOM_FIELD_ID = os.getenv('APOLLO_INDUSTRY_CUSTOM_FIELD_ID', '').strip() or None
     
     # Flask settings
     SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')

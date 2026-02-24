@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <title>Send Campaign - Business Outreach</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -541,16 +542,16 @@
                         <i class="fas fa-file-excel"></i>
                         Export to Excel
                     </button>
-                    <!-- Category/List Name Input -->
+                    <!-- Industry tag: sent to Apollo for filtering (no contact filtering here) -->
                     <div style="margin-bottom: 16px; padding: 16px; background: var(--gray-50); border-radius: 12px;">
                         <label class="form-label" style="display: block; margin-bottom: 8px; font-weight: 500; color: var(--gray-700);">
-                            <i class="fas fa-folder" style="margin-right: 6px; color: var(--primary);"></i>
-                            Category / List Name (Optional)
+                            <i class="fas fa-industry" style="margin-right: 6px; color: var(--primary);"></i>
+                            Industry tag <span style="color: var(--danger, #dc3545);">*</span>
                         </label>
-                        <input type="text" class="form-input" id="categoryListName" placeholder="e.g., IT Companies Mumbai, Healthcare Leads, etc." style="width: 100%;">
+                        <input type="text" class="form-input" id="industryKeywords" placeholder="e.g. IT MUMBAI, Manufacturing, Medical" style="width: 100%;" required>
                         <div class="form-hint" style="margin-top: 4px; font-size: 0.85em; color: var(--gray-500);">
                             <i class="fas fa-info-circle"></i>
-                            Contacts will be organized into this category/list in Apollo.io dashboard. Leave empty to transfer without category.
+                            All contacts will be tagged with this value in Apollo. In Apollo: People → <strong>More Filters</strong> → select your custom field <strong>Industry</strong> (not "Industry & Keywords") → enter this same value to see them and run your campaign.
                         </div>
                     </div>
                     <button class="btn btn-primary btn-block" id="transferBtn" style="flex: 1;">
@@ -826,28 +827,32 @@
             this.disabled = true;
             this.innerHTML = '<i class="fas fa-spinner spinner"></i> Transferring...';
             
-            // Get category/list name
-            const categoryListName = document.getElementById('categoryListName')?.value.trim() || '';
-            let listId = null;
+            // Industry tag (required): sent to Apollo so client can filter by industry and run email campaign
+            const industryTag = document.getElementById('industryKeywords')?.value.trim() || '';
+            if (!industryTag) {
+                showUserFriendlyError('Please enter an industry tag (e.g. IT MUMBAI, Manufacturing) so you can filter by it in Apollo.');
+                this.disabled = false;
+                this.innerHTML = '<i class="fas fa-paper-plane"></i> Transfer to Outreach Platform';
+                return;
+            }
+            // Transfer ALL contacts; tag each with industry_tag in Apollo
+            const contactsToTransfer = contacts;
             
-            // Create list if category name provided
-            if (categoryListName) {
+            // Create companies in Apollo Companies for this batch (so data shows under Companies too)
+            const currentBatchName = batchSelect.value;
+            if (currentBatchName) {
                 try {
-                    const createListRes = await fetch('/api/level3/create-list', {
+                    const ensureRes = await fetch('/api/level3/ensure-companies', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ list_name: categoryListName })
+                        body: JSON.stringify({ batch_name: currentBatchName })
                     });
-                    const createListData = await createListRes.json();
-                    if (createListData.success && createListData.list_id) {
-                        listId = createListData.list_id;
-                        console.log(`✅ Created/Found list: ${categoryListName} (ID: ${listId})`);
-                    } else {
-                        console.warn(`⚠️  Could not create list: ${createListData.error || 'Unknown error'}`);
+                    const ensureData = await ensureRes.json();
+                    if (ensureData.success && ensureData.companies_created > 0) {
+                        console.log(`✅ Created ${ensureData.companies_created} companies in Apollo Companies`);
                     }
                 } catch (e) {
-                    console.error(`❌ Error creating list: ${e.message}`);
-                    // Continue without list - contacts will still be transferred
+                    console.warn('⚠️ Ensure companies failed (continuing with contact transfer):', e.message);
                 }
             }
             
@@ -860,17 +865,14 @@
             let transferred = 0;
             let failed = 0;
             
-            for (let i = 0; i < contacts.length; i++) {
-                const contact = contacts[i];
+            for (let i = 0; i < contactsToTransfer.length; i++) {
+                const contact = contactsToTransfer[i];
                 
                 try {
                     const res = await fetch('/api/level3/transfer-one', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            contact_id: contact.id,
-                            list_id: listId  // Include list_id if category was specified
-                        })
+                        body: JSON.stringify({ contact_id: contact.id, industry_tag: industryTag })
                     });
                     
                     const data = await res.json();
@@ -916,10 +918,10 @@
                 document.getElementById('transferredCount').textContent = transferred;
                 document.getElementById('failedCount').textContent = failed;
                 
-                const pct = Math.round(((i + 1) / contacts.length) * 100);
+                const pct = Math.round(((i + 1) / contactsToTransfer.length) * 100);
                 document.getElementById('progressFill').style.width = pct + '%';
                 document.getElementById('progressPercent').textContent = pct + '%';
-                document.getElementById('progressText').textContent = `${i + 1} of ${contacts.length} contacts processed`;
+                document.getElementById('progressText').textContent = `${i + 1} of ${contactsToTransfer.length} contacts processed`;
                 
                 transferLog.scrollTop = transferLog.scrollHeight;
             }
@@ -929,11 +931,7 @@
             
             if (transferred > 0) {
                 successBox.style.display = 'block';
-                let successMsg = `${transferred} contacts successfully sent to outreach platform`;
-                if (categoryListName && listId) {
-                    successMsg += ` and organized into category: "${categoryListName}"`;
-                }
-                document.getElementById('successMessage').textContent = successMsg;
+                document.getElementById('successMessage').textContent = `${transferred} contacts successfully sent to outreach platform`;
             }
             
             if (failedContacts.length > 0) {
@@ -951,40 +949,17 @@
             this.disabled = true;
             this.innerHTML = '<i class="fas fa-spinner spinner"></i> Retrying...';
             
-            // Get category/list name (same as original transfer)
-            const categoryListName = document.getElementById('categoryListName')?.value.trim() || '';
-            let listId = null;
-            
-            // Create/get list if category name provided
-            if (categoryListName) {
-                try {
-                    const createListRes = await fetch('/api/level3/create-list', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ list_name: categoryListName })
-                    });
-                    const createListData = await createListRes.json();
-                    if (createListData.success && createListData.list_id) {
-                        listId = createListData.list_id;
-                    }
-                } catch (e) {
-                    console.error(`❌ Error creating list for retry: ${e.message}`);
-                }
-            }
-            
             const toRetry = [...failedContacts];
             failedContacts = [];
             let transferred = parseInt(document.getElementById('transferredCount').textContent);
+            const retryIndustryTag = document.getElementById('industryKeywords')?.value.trim() || '';
             
             for (const contact of toRetry) {
                 try {
                     const res = await fetch('/api/level3/transfer-one', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            contact_id: contact.id,
-                            list_id: listId  // Include list_id if category was specified
-                        })
+                        body: JSON.stringify({ contact_id: contact.id, industry_tag: retryIndustryTag })
                     });
                     
                     const data = await res.json();

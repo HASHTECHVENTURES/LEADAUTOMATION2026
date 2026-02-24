@@ -1,0 +1,22 @@
+Hi,
+
+Quick update on the Lead Automation system:
+
+ WHY THE DELAY
+We took time to fix the issues you reported (0 contacts, wrong counts, credit waste) so the system works correctly and doesn’t waste credits. Everything below is now in place.
+
+WHY CREDITS ARE USED
+• Apollo charges 1 credit per contact when we fetch their email. So the credits you see = number of contact emails we enriched (e.g. today was around 576 credits = ~576 contact emails fetched). We’ve now reduced waste by filtering by job title first and only enriching matching contacts.
+
+WHAT WE FIXED
+• 50 companies → 29/38 contacts: We improved search and added a fallback so you get more contacts per company when Apollo has them.
+• Level 2 & Level 3 count mismatch: We now save and show only contacts that match your chosen titles (CEO, HR, Director, etc.), so the numbers match in both levels.
+• Level 3 now auto-loads your batch when you open Send Campaign—no need to select from the dropdown.
+• Removed the contact count from the batch dropdown to avoid confusion.
+
+Please also update your Apollo billing details—the “Payment Failure” message is from Apollo and needs to be fixed in their billing settings to keep your account active.
+
+HOW TO SEE YOUR CONTACTS IN APOLLO (e.g. ITMUMBAI)
+We tag each contact with the industry you enter. That value is in a custom field. In Apollo People use "More Filters" → your custom field "Industry" → set to your tag (e.g. ITMUMBAI). Do NOT use "Industry & Keywords" or "Company Keywords" — those show 0 for our tags. If you have not created the Industry custom field yet, see APOLLO_INDUSTRY_TRIAL.md.
+
+Let me know if you have any questions.

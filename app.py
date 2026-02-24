@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, Response, stream_with_context, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, Response, stream_with_context, session, redirect, url_for, make_response
 from functools import wraps
 from google_places_client import GooglePlacesClient
 from apollo_client import ApolloClient
@@ -474,7 +474,11 @@ def level2():
 @login_required
 def level3():
     """Level 3: Transfer to Outreach Platform"""
-    return render_template('level3.html')
+    resp = make_response(render_template('level3.html'))
+    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    resp.headers['Pragma'] = 'no-cache'
+    resp.headers['Expires'] = '0'
+    return resp
 
 @app.route('/api/level1/search', methods=['POST'])
 def level1_search():
@@ -2177,7 +2181,8 @@ def level3_contacts():
                 'email': c.get('email', ''),
                 'company_name': c.get('company_name', ''),
                 'title': display_title,
-                'contact_type': c.get('contact_type', '')  # Include for debugging
+                'contact_type': c.get('contact_type', ''),
+                'industry': (c.get('industry') or '').strip()
             })
         
         excluded_count = len(contacts) - len(minimal)
@@ -2188,6 +2193,60 @@ def level3_contacts():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/level3/ensure-companies', methods=['POST'])
+def level3_ensure_companies():
+    """Create unique companies (accounts) in Apollo Companies for the current batch before transfer."""
+    try:
+        data = request.json or {}
+        batch_name = data.get('batch_name') or request.args.get('batch_name')
+        if not batch_name:
+            return jsonify({'error': 'batch_name is required'}), 400
+
+        contacts = get_supabase_client().get_contacts_for_level3(batch_name=batch_name, designation=None)
+        if not contacts:
+            return jsonify({'success': True, 'companies_created': 0, 'message': 'No contacts in batch'}), 200
+
+        # Unique companies by (name, domain)
+        seen = set()
+        companies = []
+        for c in contacts:
+            name = (c.get('company_name') or '').strip()
+            website = (c.get('company_website') or '').strip()
+            domain = apollo_client.extract_domain(website) if website else ''
+            key = (name or '', domain or '')
+            if key in seen or (not name and not domain):
+                continue
+            seen.add(key)
+            companies.append({
+                'name': name or domain or 'Unknown',
+                'domain': domain,
+                'phone': (c.get('company_phone') or '').strip(),
+                'raw_address': (c.get('company_address') or '').strip()
+            })
+
+        created = 0
+        errors = []
+        for co in companies:
+            r = apollo_client.create_account(
+                name=co['name'],
+                domain=co['domain'],
+                phone=co['phone'],
+                raw_address=co['raw_address']
+            )
+            if r.get('success'):
+                created += 1
+            else:
+                errors.append(f"{co['name']}: {r.get('error', '')}")
+
+        return jsonify({
+            'success': True,
+            'companies_created': created,
+            'companies_total': len(companies),
+            'errors': errors[:10] if errors else None
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/level3/transfer-one', methods=['POST'])
 def level3_transfer_one():
     """Transfer a single contact to Outreach Platform with dedupe + list add"""
@@ -2195,6 +2254,7 @@ def level3_transfer_one():
         data = request.json or {}
         contact_id = data.get('contact_id')
         list_id = data.get('list_id')
+        industry_tag = (data.get('industry_tag') or data.get('industry') or '').strip()  # Tag for Apollo filter (e.g. "IT MUMBAI")
         if not contact_id:
             return jsonify({'error': 'contact_id is required'}), 400
 
@@ -2206,6 +2266,8 @@ def level3_transfer_one():
 
         contact_name = contact.get('contact_name', '') or contact.get('name', '')
         name_parts = contact_name.split() if contact_name else []
+        # Use industry_tag from Level 3 so in Apollo they can filter by industry and run email campaign
+        industry_for_apollo = industry_tag or (contact.get('industry') or '').strip()
         contact_data = {
             'first_name': name_parts[0] if len(name_parts) > 0 else '',
             'last_name': ' '.join(name_parts[1:]) if len(name_parts) > 1 else '',
@@ -2213,7 +2275,8 @@ def level3_transfer_one():
             'phone': contact.get('phone_number', ''),
             'linkedin_url': contact.get('linkedin_url', ''),
             'organization_name': contact.get('company_name', ''),
-            'title': contact.get('contact_type', '') or contact.get('title', '')
+            'title': contact.get('contact_type', '') or contact.get('title', ''),
+            'industry': industry_for_apollo  # Sent to Apollo custom field so client can filter by industry in People
         }
 
         # Create contact in Outreach Platform
