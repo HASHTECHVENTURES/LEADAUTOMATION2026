@@ -19,6 +19,39 @@ class ApolloClient:
         # Web scraper removed
         self._list_cache = {}
 
+    def _normalize_domain(self, d: str) -> str:
+        if not d:
+            return ''
+        d = (d or '').strip().lower().replace('www.', '').split('/')[0].split('?')[0]
+        return d
+
+    def _person_org_matches_domain(self, person: Dict, domain: str) -> bool:
+        """Return True only if the person's organization primary_domain matches the search domain."""
+        if not domain:
+            return True
+        org = person.get('organization') or {}
+        org_domain = (org.get('primary_domain') or '').strip().lower()
+        return self._normalize_domain(org_domain) == self._normalize_domain(domain)
+
+    def _person_org_matches_company_name(self, person: Dict, company_name: str) -> bool:
+        """Return True only if the person's organization name matches the search company (flexible match)."""
+        if not company_name:
+            return True
+        org = person.get('organization') or {}
+        org_name = (org.get('name') or '').strip().lower()
+        # Normalize: remove common suffixes for comparison
+        def key_part(name):
+            s = (name or '').lower().strip()
+            for suf in [' pvt.', ' pvt', ' ltd.', ' ltd', ' limited', ' private', ' (india)', ' india']:
+                s = re.sub(re.escape(suf) + r'\b', '', s, flags=re.IGNORECASE)
+            return re.sub(r'\s+', ' ', s).strip()
+        want = key_part(company_name)
+        got = key_part(org_name)
+        if not want or not got:
+            return bool(want == got)
+        # Match if either contains the other (e.g. "natech solutions" in "natech solutions (india) pvt ltd")
+        return want in got or got in want or want[:15] in got or got[:15] in want
+
     def create_contact(self, contact: Dict) -> Dict:
         """
         Create a contact in Apollo.io.
@@ -415,6 +448,11 @@ class ApolloClient:
                 data = response.json()
                 persons = data.get('people', [])
                 print(f"    📊 Apollo api_search found {len(persons)} people (before filtering and enrichment)")
+                # CRITICAL: Keep only people whose organization actually matches this domain (fix wrong data mix-up)
+                before_org = len(persons)
+                persons = [p for p in persons if self._person_org_matches_domain(p, domain)]
+                if before_org != len(persons):
+                    print(f"    ✅ Org validation: kept {len(persons)} contacts that match domain {domain} (removed {before_org - len(persons)} from other orgs)")
                 
                 # DEBUG: Show sample titles from Apollo to understand what we're getting
                 if persons and len(persons) > 0:
@@ -601,6 +639,11 @@ class ApolloClient:
             data = response.json() or {}
             persons = data.get('people', []) or []
             print(f"    📊 Apollo api_search(org_name) found {len(persons)} people (before filtering and enrichment)")
+            # CRITICAL: Keep only people whose organization actually matches this company (fix wrong data mix-up)
+            before_org = len(persons)
+            persons = [p for p in persons if self._person_org_matches_company_name(p, company_name)]
+            if before_org != len(persons):
+                print(f"    ✅ Org validation: kept {len(persons)} contacts that match company (removed {before_org - len(persons)} from other orgs)")
 
             # Apply the exact same local filtering + enrichment behavior as the domain-based function
             # by reusing its core logic with a minimal adaptation (we don't have a domain string here).
