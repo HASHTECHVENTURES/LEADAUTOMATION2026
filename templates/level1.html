@@ -1903,7 +1903,11 @@
                                         }
                                         
                                         if (message && !saveFailed) {
-                                            showUserFriendlySuccess(message);
+                                            if (companies.length === 0 || (evt.data && (evt.data.total_companies || 0) === 0)) {
+                                                showUserFriendlyError(message);
+                                            } else {
+                                                showUserFriendlySuccess(message);
+                                            }
                                         }
                                     } catch (completeErr) {
                                         console.error('Error handling complete event:', completeErr);
