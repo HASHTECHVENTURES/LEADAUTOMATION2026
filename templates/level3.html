@@ -530,6 +530,7 @@
                     <div class="success-icon"><i class="fas fa-check"></i></div>
                     <h3>Transfer Complete!</h3>
                     <p id="successMessage">Contacts have been sent to outreach platform</p>
+                    <p id="successTagUsed" style="margin-top: 8px; font-weight: 600; color: var(--gray-700); display: none;"></p>
                     <a href="#" target="_blank" class="btn btn-success">
                         <i class="fas fa-external-link-alt"></i>
                         Open Outreach Dashboard
@@ -928,6 +929,9 @@
             if (transferred > 0) {
                 successBox.style.display = 'block';
                 document.getElementById('successMessage').textContent = `${transferred} contacts successfully sent to outreach platform`;
+                const tagEl = document.getElementById('successTagUsed');
+                tagEl.textContent = `Industry tag used: ${industryTag}`;
+                tagEl.style.display = 'block';
             }
             
             if (failedContacts.length > 0) {
@@ -977,6 +981,9 @@
                 if (!successBox.style.display || successBox.style.display === 'none') {
                     successBox.style.display = 'block';
                     document.getElementById('successMessage').textContent = `${transferred} contacts sent to outreach platform`;
+                    const tagEl = document.getElementById('successTagUsed');
+                    tagEl.textContent = retryIndustryTag ? `Industry tag used: ${retryIndustryTag}` : '';
+                    tagEl.style.display = retryIndustryTag ? 'block' : 'none';
                 }
             }
             
