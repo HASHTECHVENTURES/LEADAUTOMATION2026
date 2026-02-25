@@ -23,7 +23,7 @@ def test_api_key():
     test_pin = "400001"  # Mumbai
     geocode_url = "https://maps.googleapis.com/maps/api/geocode/json"
     geocode_params = {
-        'address': f"{test_pin}, India",
+        'address': test_pin,
         'key': CLIENT_API_KEY
     }
     

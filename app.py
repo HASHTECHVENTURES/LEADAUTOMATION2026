@@ -35,75 +35,29 @@ apollo_client = ApolloClient()
 # Initialize lazily to avoid Vercel cold start issues
 supabase_client = None
 
-INDUSTRY_SEARCH_TERMS = {
-    'bfsi': 'banking financial services insurance',
-    'it': 'IT software technology company',
-    'ites': 'IT software services BPO',
-    'fmcg': 'FMCG consumer goods',
-    'pharma': 'pharmaceutical company',
-    'edtech': 'education technology company',
-    'fintech': 'financial technology company',
-    'ecommerce': 'ecommerce online retail',
-    'e-commerce': 'ecommerce online retail',
-    'automobile': 'automobile automotive car dealer',
-    'auto': 'automobile automotive',
-    'realestate': 'real estate property developer',
-    'real estate': 'real estate property developer',
-}
-
-def expand_industry_for_google(industry: str) -> str:
-    """Expand short/acronym industry terms so Google Places can understand them."""
-    if not industry:
-        return industry
-    key = industry.strip().lower()
-    return INDUSTRY_SEARCH_TERMS.get(key, industry)
-
 def search_places_progressively(place_name: str, industry: str, max_results: int, place_idx: int = 1, total_places: int = 1):
     """
     Search for places with progressive pagination - yields companies as they're found
     This allows lazy loading - results appear immediately without waiting for all pages
     """
     import requests
-    industry_for_search = expand_industry_for_google(industry)
-    
-    # First, get location from place name using Geocoding API
-    geocode_url = "https://maps.googleapis.com/maps/api/geocode/json"
-    geocode_params = {
-        'address': f"{place_name}, India",
-        'key': google_client.api_key
-    }
-    
+
     try:
-        geocode_response = requests.get(geocode_url, params=geocode_params)
-        geocode_data = geocode_response.json()
-        
-        if geocode_data['status'] != 'OK':
-            error_msg = geocode_data.get('error_message', 'Unknown error')
-            print(f"❌ Geocoding error: {geocode_data['status']} - {error_msg}")
-            return
-        
-        location = geocode_data['results'][0]['geometry']['location']
-        lat, lng = location['lat'], location['lng']
-        
-        # Build search query (use expanded industry so Google understands acronyms like BFSI)
-        if industry_for_search:
-            query = f"{industry_for_search} in {place_name}, India"
-            if industry_for_search != industry:
-                print(f"  🔄 Expanded industry '{industry}' → '{industry_for_search}' for Google Places search")
+        # Build search query — industry + place name in text (same as Google Maps web search)
+        if industry:
+            query = f"{industry} in {place_name}"
         else:
-            query = f"businesses in {place_name}, India"
-        
-        # Search for places with pagination support
+            query = f"businesses in {place_name}"
+
+        # Search for places with pagination support (pure text search, no coord bias)
         places_url = f"{google_client.base_url}/textsearch/json"
         next_page_token = None
         page_number = 1
         companies_found = 0
-        
+
         while companies_found < max_results:
             places_params = {
                 'query': query,
-                'location': f"{lat},{lng}",
-                'radius': 50000,  # 50km radius for cities
                 'key': google_client.api_key
             }
             
@@ -116,7 +70,8 @@ def search_places_progressively(place_name: str, industry: str, max_results: int
             
             places_response = requests.get(places_url, params=places_params)
             places_data = places_response.json()
-            
+            print(f"🔎 Google Places API raw status: {places_data.get('status')} | query: {query} | error: {places_data.get('error_message','none')}")
+
             if places_data['status'] != 'OK':
                 error_msg = places_data.get('error_message', 'Unknown error')
                 print(f"❌ Places search error (page {page_number}): {places_data['status']} - {error_msg}")
@@ -128,7 +83,7 @@ def search_places_progressively(place_name: str, industry: str, max_results: int
                     break  # Token expired
                 else:
                     break
-            
+
             places_list = places_data.get('results', [])
             print(f"✅ Found {len(places_list)} places from Google Places API (page {page_number})")
             logger.info(f"📄 Page {page_number}: Found {len(places_list)} places, currently have {companies_found}/{max_results} companies")
@@ -181,46 +136,23 @@ def search_pins_progressively(pin_code: str, industry: str, max_results: int, pi
     This allows lazy loading - results appear immediately without waiting for all pages
     """
     import requests
-    industry_for_search = expand_industry_for_google(industry)
-    
-    # First, get location from PIN code using Geocoding API
-    geocode_url = "https://maps.googleapis.com/maps/api/geocode/json"
-    geocode_params = {
-        'address': f"{pin_code}, India",
-        'key': google_client.api_key
-    }
-    
+
     try:
-        geocode_response = requests.get(geocode_url, params=geocode_params)
-        geocode_data = geocode_response.json()
-        
-        if geocode_data['status'] != 'OK':
-            error_msg = geocode_data.get('error_message', 'Unknown error')
-            print(f"❌ Geocoding error: {geocode_data['status']} - {error_msg}")
-            return
-        
-        location = geocode_data['results'][0]['geometry']['location']
-        lat, lng = location['lat'], location['lng']
-        
-        # Build search query (use expanded industry so Google understands acronyms like BFSI)
-        if industry_for_search:
-            query = f"{industry_for_search} in {pin_code}, India"
-            if industry_for_search != industry:
-                print(f"  🔄 Expanded industry '{industry}' → '{industry_for_search}' for Google Places search")
+        # Build search query — industry + PIN code in text (same as Google Maps web search)
+        if industry:
+            query = f"{industry} in {pin_code}"
         else:
-            query = f"businesses in {pin_code}, India"
-        
-        # Search for places with pagination support
+            query = f"businesses in {pin_code}"
+
+        # Search for places with pagination support (pure text search, no coord bias)
         places_url = f"{google_client.base_url}/textsearch/json"
         next_page_token = None
         page_number = 1
         companies_found = 0
-        
+
         while companies_found < max_results:
             places_params = {
                 'query': query,
-                'location': f"{lat},{lng}",
-                'radius': 10000,  # 10km radius for PIN codes
                 'key': google_client.api_key
             }
             

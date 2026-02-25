@@ -10,15 +10,15 @@ class GooglePlacesClient:
         
     def search_by_pin_and_industry(self, pin_code: str, industry: str = None, max_results: int = 20) -> List[Dict]:
         """
-        Search for places by PIN code (India) - PIN code is unique, no state needed
+        Search for places by PIN/postal code - uses geocoding for the given input (any region)
         Returns list of company data with pagination support to fetch all requested results
         """
         results = []
         
-        # First, get location from PIN code using Geocoding API
+        # First, get location from PIN code using Geocoding API (use input as-is for any region)
         geocode_url = "https://maps.googleapis.com/maps/api/geocode/json"
         geocode_params = {
-            'address': f"{pin_code}, India",
+            'address': pin_code,
             'key': self.api_key
         }
         
@@ -31,17 +31,17 @@ class GooglePlacesClient:
                 error_msg = geocode_data.get('error_message', 'Unknown error')
                 print(f"❌ Geocoding error: {geocode_data['status']} - {error_msg}")
                 if geocode_data['status'] == 'ZERO_RESULTS':
-                    print(f"   No location found for PIN: {pin_code}, India")
+                    print(f"   No location found for: {pin_code}")
                 return results
             
             location = geocode_data['results'][0]['geometry']['location']
             lat, lng = location['lat'], location['lng']
             
-            # Build search query
+            # Build search query (use input as-is so any location/country works)
             if industry:
-                query = f"{industry} in {pin_code}, India"
+                query = f"{industry} in {pin_code}"
             else:
-                query = f"businesses in {pin_code}, India"
+                query = f"businesses in {pin_code}"
             
             # Search for places near this location with pagination support
             places_url = f"{self.base_url}/textsearch/json"
@@ -171,10 +171,10 @@ class GooglePlacesClient:
         """
         results = []
         
-        # First, get location from place name using Geocoding API
+        # First, get location from place name using Geocoding API (use input as-is for any region)
         geocode_url = "https://maps.googleapis.com/maps/api/geocode/json"
         geocode_params = {
-            'address': f"{place_name}, India",
+            'address': place_name,
             'key': self.api_key
         }
         
@@ -187,17 +187,17 @@ class GooglePlacesClient:
                 error_msg = geocode_data.get('error_message', 'Unknown error')
                 print(f"❌ Geocoding error: {geocode_data['status']} - {error_msg}")
                 if geocode_data['status'] == 'ZERO_RESULTS':
-                    print(f"   No location found for place: {place_name}, India")
+                    print(f"   No location found for: {place_name}")
                 return results
             
             location = geocode_data['results'][0]['geometry']['location']
             lat, lng = location['lat'], location['lng']
             
-            # Build search query
+            # Build search query (use input as-is so any location/country works)
             if industry:
-                query = f"{industry} in {place_name}, India"
+                query = f"{industry} in {place_name}"
             else:
-                query = f"businesses in {place_name}, India"
+                query = f"businesses in {place_name}"
             
             # Search for places near this location with pagination support
             places_url = f"{self.base_url}/textsearch/json"
