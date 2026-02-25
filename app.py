@@ -35,12 +35,36 @@ apollo_client = ApolloClient()
 # Initialize lazily to avoid Vercel cold start issues
 supabase_client = None
 
+INDUSTRY_SEARCH_TERMS = {
+    'bfsi': 'banking financial services insurance',
+    'it': 'IT software technology company',
+    'ites': 'IT software services BPO',
+    'fmcg': 'FMCG consumer goods',
+    'pharma': 'pharmaceutical company',
+    'edtech': 'education technology company',
+    'fintech': 'financial technology company',
+    'ecommerce': 'ecommerce online retail',
+    'e-commerce': 'ecommerce online retail',
+    'automobile': 'automobile automotive car dealer',
+    'auto': 'automobile automotive',
+    'realestate': 'real estate property developer',
+    'real estate': 'real estate property developer',
+}
+
+def expand_industry_for_google(industry: str) -> str:
+    """Expand short/acronym industry terms so Google Places can understand them."""
+    if not industry:
+        return industry
+    key = industry.strip().lower()
+    return INDUSTRY_SEARCH_TERMS.get(key, industry)
+
 def search_places_progressively(place_name: str, industry: str, max_results: int, place_idx: int = 1, total_places: int = 1):
     """
     Search for places with progressive pagination - yields companies as they're found
     This allows lazy loading - results appear immediately without waiting for all pages
     """
     import requests
+    industry_for_search = expand_industry_for_google(industry)
     
     # First, get location from place name using Geocoding API
     geocode_url = "https://maps.googleapis.com/maps/api/geocode/json"
@@ -61,9 +85,11 @@ def search_places_progressively(place_name: str, industry: str, max_results: int
         location = geocode_data['results'][0]['geometry']['location']
         lat, lng = location['lat'], location['lng']
         
-        # Build search query
-        if industry:
-            query = f"{industry} in {place_name}, India"
+        # Build search query (use expanded industry so Google understands acronyms like BFSI)
+        if industry_for_search:
+            query = f"{industry_for_search} in {place_name}, India"
+            if industry_for_search != industry:
+                print(f"  🔄 Expanded industry '{industry}' → '{industry_for_search}' for Google Places search")
         else:
             query = f"businesses in {place_name}, India"
         
@@ -155,6 +181,7 @@ def search_pins_progressively(pin_code: str, industry: str, max_results: int, pi
     This allows lazy loading - results appear immediately without waiting for all pages
     """
     import requests
+    industry_for_search = expand_industry_for_google(industry)
     
     # First, get location from PIN code using Geocoding API
     geocode_url = "https://maps.googleapis.com/maps/api/geocode/json"
@@ -175,9 +202,11 @@ def search_pins_progressively(pin_code: str, industry: str, max_results: int, pi
         location = geocode_data['results'][0]['geometry']['location']
         lat, lng = location['lat'], location['lng']
         
-        # Build search query
-        if industry:
-            query = f"{industry} in {pin_code}, India"
+        # Build search query (use expanded industry so Google understands acronyms like BFSI)
+        if industry_for_search:
+            query = f"{industry_for_search} in {pin_code}, India"
+            if industry_for_search != industry:
+                print(f"  🔄 Expanded industry '{industry}' → '{industry_for_search}' for Google Places search")
         else:
             query = f"businesses in {pin_code}, India"
         
