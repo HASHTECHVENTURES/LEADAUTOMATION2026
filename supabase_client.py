@@ -1226,6 +1226,27 @@ class SupabaseClient:
             logger.error(f"❌ Error updating batch_name in Supabase: {str(e)}")
             return {'success': False, 'error': str(e)}
     
+    def rename_batch(self, old_batch_name: str, new_batch_name: str) -> Dict:
+        """
+        Rename a batch: update all contacts with old_batch_name to new_batch_name.
+        """
+        try:
+            if not old_batch_name or not new_batch_name or not new_batch_name.strip():
+                return {'success': False, 'error': 'old_batch_name and new_batch_name are required'}
+            new_batch_name = new_batch_name.strip()
+            response = (
+                self.client.table('level2_contacts')
+                .update({'batch_name': new_batch_name})
+                .eq('batch_name', old_batch_name)
+                .execute()
+            )
+            updated_count = len(response.data) if response.data else 0
+            logger.info(f"✅ Renamed batch '{old_batch_name}' to '{new_batch_name}': {updated_count} contacts updated")
+            return {'success': True, 'count': updated_count, 'batch_name': new_batch_name}
+        except Exception as e:
+            logger.error(f"❌ Error renaming batch in Supabase: {str(e)}")
+            return {'success': False, 'error': str(e)}
+    
     def merge_duplicate_batches(self, project_name: str, target_batch_name: str) -> Dict:
         """
         Merge all batches for a project into a single batch (removes duplicates).
@@ -1313,7 +1334,8 @@ class SupabaseClient:
                 
                 if batch_name not in batches_dict:
                     batches_dict[batch_name] = {
-                        'batch_name': display_name,
+                        'batch_name': batch_name,  # actual DB value (for loading contacts)
+                        'display_name': display_name,  # for dropdown label
                         'project_name': proj_name,
                         'contact_count': 0,
                         'created_at': contact.get('created_at', '')
@@ -1359,7 +1381,8 @@ class SupabaseClient:
                     
                     if batch_name not in batches_dict:
                         batches_dict[batch_name] = {
-                            'batch_name': display_name,
+                            'batch_name': batch_name,
+                            'display_name': display_name,
                             'project_name': contact.get('project_name', ''),
                             'contact_count': 0,
                             'created_at': contact.get('created_at', '')

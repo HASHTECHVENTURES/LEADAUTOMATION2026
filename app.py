@@ -1314,9 +1314,15 @@ def level2_process():
                     batch_name=default_batch_name
                 )
                 
-                logger.info(f"Level 2 complete: {total_companies} companies, {total_contacts} contacts saved")
-                # Send completion
-                yield f"data: {json.dumps({'type': 'complete', 'data': {'total_companies': total_companies, 'total_contacts': total_contacts, 'message': f'Found {total_contacts} contacts from {total_companies} companies'}})}\n\n"
+                if not save_result.get('success'):
+                    err = save_result.get('error', 'Unknown error saving to database')
+                    logger.error(f"Level 2 save failed: {err}")
+                    yield f"data: {json.dumps({'type': 'error', 'data': {'error': f'Could not save to database: {err}'}})}\n\n"
+                    return
+                
+                logger.info(f"Level 2 complete: {total_companies} companies, {total_contacts} contacts saved to batch '{default_batch_name}'")
+                # Send completion (only after save succeeded)
+                yield f"data: {json.dumps({'type': 'complete', 'data': {'total_companies': total_companies, 'total_contacts': total_contacts, 'message': f'Found {total_contacts} contacts from {total_companies} companies', 'batch_name': default_batch_name}})}\n\n"
                 
             except (BrokenPipeError, ConnectionResetError, GeneratorExit):
                 logger.info("Level 2: Client disconnected during stream")
@@ -1840,6 +1846,27 @@ def level2_save_batch():
         }), 200
     except Exception as e:
         print(f"Error saving batch: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/level2/rename-batch', methods=['POST'])
+def level2_rename_batch():
+    """Rename a batch (update all contacts from old name to new name)"""
+    try:
+        data = request.json or {}
+        old_name = (data.get('old_batch_name') or '').strip()
+        new_name = (data.get('new_batch_name') or '').strip()
+        if not old_name or not new_name:
+            return jsonify({'error': 'old_batch_name and new_batch_name are required'}), 400
+        result = get_supabase_client().rename_batch(old_name, new_name)
+        if not result.get('success'):
+            return jsonify({'error': result.get('error', 'Rename failed')}), 500
+        return jsonify({
+            'success': True,
+            'message': f'Batch renamed to "{new_name}"',
+            'batch_name': result.get('batch_name', new_name),
+            'count': result.get('count', 0)
+        }), 200
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/level2/batches', methods=['GET'])

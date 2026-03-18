@@ -592,6 +592,28 @@
             background: var(--danger-light);
             color: var(--danger);
         }
+        .batch-name-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            background: var(--gray-50);
+            border-radius: 8px;
+            margin-bottom: 16px;
+            border: 1px solid var(--gray-200);
+        }
+        .batch-name-bar .batch-label { font-weight: 600; color: var(--gray-600); }
+        .batch-name-bar .batch-name-text { color: var(--gray-800); flex: 1; }
+        .batch-name-bar .edit-batch-btn {
+            padding: 4px 8px;
+            font-size: 0.9em;
+            color: var(--primary);
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .batch-name-bar .edit-batch-btn:hover { background: var(--gray-200); color: var(--primary-dark, #5b21b6); }
         
         .contact-card:hover {
             border-color: var(--primary-light);
@@ -1078,6 +1100,13 @@
                         <div class="stat-label">With Email</div>
                     </div>
                     <!-- Total Employees stat removed - calculation was incorrect -->
+                </div>
+                
+                <!-- Current batch name (above contacts); user can edit -->
+                <div class="batch-name-bar" id="batchNameBar" style="display: none;">
+                    <span class="batch-label">Batch:</span>
+                    <span class="batch-name-text" id="currentBatchNameDisplay"></span>
+                    <button type="button" class="btn btn-ghost edit-batch-btn" id="editBatchNameBtn" title="Edit batch name"><i class="fas fa-pencil-alt"></i></button>
                 </div>
                 
                 <div class="contacts-container" id="contactsList"></div>
@@ -1641,10 +1670,11 @@
                 batchSelect.innerHTML = '<option value="">Load a saved batch...</option>';
                 (data.batches || []).forEach(b => {
                     const opt = document.createElement('option');
-                    opt.value = b.batch_name;
-                    // Remove any "(XX contacts)" or "(XX contacts • project)" pattern from batch name
-                    let cleanBatchName = b.batch_name.replace(/\s*\(\d+\s+contacts?[^)]*\)/gi, '').trim();
-                    opt.textContent = `${cleanBatchName}`;
+                    opt.value = b.batch_name;  // actual DB batch_name (for loading contacts)
+                    const label = (b.display_name != null ? b.display_name : b.batch_name) || b.batch_name;
+                    const cleanLabel = String(label).replace(/\s*\(\d+\s+contacts?[^)]*\)/gi, '').trim();
+                    const count = b.contact_count != null ? b.contact_count : 0;
+                    opt.textContent = count > 0 ? `${cleanLabel} (${count} contacts)` : cleanLabel;
                     batchSelect.appendChild(opt);
                 });
             } catch (e) {
@@ -2030,6 +2060,20 @@
                 </div>
             `;
             }).join('');
+            updateBatchNameDisplay();
+        }
+        
+        function updateBatchNameDisplay() {
+            const bar = document.getElementById('batchNameBar');
+            const displayEl = document.getElementById('currentBatchNameDisplay');
+            if (!bar || !displayEl) return;
+            if (currentBatchName && contacts.length > 0) {
+                bar.style.display = 'flex';
+                const friendly = currentBatchName.replace(/_Main_Batch$/, ' (auto-saved)');
+                displayEl.textContent = friendly;
+            } else {
+                bar.style.display = 'none';
+            }
         }
         
         // Delete contact: confirm then remove from database and refresh list
@@ -2039,7 +2083,7 @@
                 if (!btn) return;
                 const contactId = btn.getAttribute('data-contact-id');
                 if (!contactId) return;
-                if (!confirm('Remove this contact from the database?\n\nThis will delete it permanently. You can re-run "Find Contacts" to fetch again.')) return;
+                if (!confirm('Remove this contact from the batch?\n\nThis will update your saved batch. The contact will be removed from the database.')) return;
                 btn.disabled = true;
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
                 try {
@@ -2050,7 +2094,7 @@
                     });
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok) throw new Error(data.error || 'Failed to remove contact');
-                    showUserFriendlySuccess('Contact removed from database.');
+                    showUserFriendlySuccess('Contact removed. Batch updated.');
                     // Re-fetch current view so list stays in sync with DB
                     const designationParam = userDesignation ? `&designation=${encodeURIComponent(userDesignation)}` : '';
                     if (currentBatchName) {
@@ -2461,7 +2505,8 @@
                                     const data = evt.data || {};
                                     processingModal.classList.remove('open');
                                     if (data.message) {
-                                        showUserFriendlySuccess(data.message + ' Saved to database.');
+                                        const batchName = data.batch_name || (currentProject ? currentProject + '_Main_Batch' : '');
+                                        showUserFriendlySuccess(data.message + ' Saved to database. Load anytime from "Load a saved batch" dropdown.');
                                     }
                                     break;
                                 }
@@ -2493,6 +2538,7 @@
                 const res = await fetch(url);
                 const data = await res.json();
                 contacts = data.contacts || [];
+                currentBatchName = currentProject ? (currentProject + '_Main_Batch') : '';
                 
                 processingModal.classList.remove('open');
                 companiesCard.style.display = 'none';
@@ -2594,9 +2640,21 @@
             }
         });
         
-        // Save batch
+        // Name batch (opens modal with default or current name)
         (document.getElementById('saveBatchBtn'))?.addEventListener('click', () => {
-            document.getElementById('batchName').value = `${currentProject} - ${new Date().toLocaleDateString('en-IN')}`;
+            const batchNameInput = document.getElementById('batchName');
+            if (currentBatchName) {
+                batchNameInput.value = currentBatchName.replace(/_Main_Batch$/, ' (auto-saved)');
+            } else {
+                batchNameInput.value = currentProject ? `${currentProject} - ${new Date().toLocaleDateString('en-IN')}` : '';
+            }
+            saveModal.classList.add('open');
+        });
+        
+        // Edit batch name (same modal, pre-fill current name)
+        (document.getElementById('editBatchNameBtn'))?.addEventListener('click', () => {
+            const batchNameInput = document.getElementById('batchName');
+            batchNameInput.value = currentBatchName ? currentBatchName.replace(/_Main_Batch$/, '') : (currentProject || '');
             saveModal.classList.add('open');
         });
         
@@ -2615,31 +2673,31 @@
             this.innerHTML = '<i class="fas fa-spinner spinner"></i> Saving...';
             
             try {
-                await fetch('/api/level2/save-batch', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        project_name: currentProject,
-                        batch_name: name
-                    })
-                });
-                
-                currentBatchName = name;
+                if (currentBatchName && currentBatchName !== name) {
+                    const res = await fetch('/api/level2/rename-batch', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ old_batch_name: currentBatchName, new_batch_name: name })
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(data.error || 'Rename failed');
+                    currentBatchName = data.batch_name || name;
+                } else if (currentProject && !currentBatchName) {
+                    await fetch('/api/level2/save-batch', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ project_name: currentProject, batch_name: name })
+                    });
+                    currentBatchName = name;
+                } else {
+                    currentBatchName = name;
+                }
                 saveModal.classList.remove('open');
+                updateBatchNameDisplay();
                 loadBatches();
-                
-                // Show success feedback
-                const btn = document.getElementById('saveBatchBtn');
-                btn.innerHTML = '<i class="fas fa-check"></i> Saved!';
-                btn.classList.remove('btn-secondary');
-                btn.classList.add('btn-success');
-                setTimeout(() => {
-                    btn.innerHTML = '<i class="fas fa-tag"></i> Name batch';
-                    btn.classList.remove('btn-success');
-                    btn.classList.add('btn-secondary');
-                }, 2000);
+                showUserFriendlySuccess('Batch name saved.');
             } catch (e) {
-                showUserFriendlyError('Error saving batch: ' + e.message);
+                showUserFriendlyError('Error saving batch name: ' + (e.message || e));
             } finally {
                 this.disabled = false;
                 this.innerHTML = '<i class="fas fa-check"></i> Name batch';

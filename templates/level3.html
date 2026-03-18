@@ -608,9 +608,9 @@
                 batchSelect.innerHTML = '<option value="">Choose a batch...</option>';
                 (data.batches || []).forEach(b => {
                     const opt = document.createElement('option');
-                    opt.value = b.batch_name;
-                    // Remove any "(XX contacts)" or "(XX contacts • project)" pattern from batch name
-                    let cleanBatchName = b.batch_name.replace(/\s*\(\d+\s+contacts?[^)]*\)/gi, '').trim();
+                    opt.value = b.batch_name;  // actual DB batch_name
+                    const label = (b.display_name != null ? b.display_name : b.batch_name) || b.batch_name;
+                    let cleanBatchName = String(label).replace(/\s*\(\d+\s+contacts?[^)]*\)/gi, '').trim();
                     const projectLabel = b.project_name ? ` • ${b.project_name}` : '';
                     opt.textContent = `${cleanBatchName}${projectLabel}`;
                     opt.dataset.project = b.project_name || '';
