@@ -2228,7 +2228,22 @@
             }
         });
         
-        // Toggle Companies Table (preview button removed for simplicity)
+        // Preview Level 1 Companies: toggle companies table visibility
+        const toggleCompaniesBtn = document.getElementById('toggleCompaniesBtn');
+        const companiesTableContainer = document.getElementById('companiesTableContainer');
+        const toggleCompaniesText = document.getElementById('toggleCompaniesText');
+        const toggleCompaniesIcon = document.getElementById('toggleCompaniesIcon');
+        if (toggleCompaniesBtn && companiesTableContainer) {
+            toggleCompaniesBtn.addEventListener('click', function() {
+                const isHidden = companiesTableContainer.style.display === 'none' || !companiesTableContainer.style.display;
+                companiesTableContainer.style.display = isHidden ? 'block' : 'none';
+                if (toggleCompaniesText) toggleCompaniesText.textContent = isHidden ? 'Hide Level 1 Companies' : 'Preview Level 1 Companies';
+                if (toggleCompaniesIcon) {
+                    toggleCompaniesIcon.classList.toggle('fa-chevron-down', !isHidden);
+                    toggleCompaniesIcon.classList.toggle('fa-chevron-up', isHidden);
+                }
+            });
+        }
         
         // View Not Found: show companies card first, then noApollo section, scroll and expand
         const viewNoDataBtn = document.getElementById('viewNoDataBtn');
@@ -2486,6 +2501,17 @@
                 
                 renderContacts();
                 loadBatches();
+                // Refresh companies list so "View Not Found" shows companies with no Apollo data
+                if (currentProject) {
+                    try {
+                        const cr = await fetch(`/api/level2/companies?project_name=${encodeURIComponent(currentProject)}&limit=500`);
+                        const cData = await cr.json();
+                        noApolloDataCompanies = cData.no_apollo_data_companies || [];
+                        renderNoApolloSection();
+                    } catch (err) {
+                        console.error('Failed to refresh no-apollo list:', err);
+                    }
+                }
             } catch (e) {
                 processingModal.classList.remove('open');
                 showUserFriendlyError('Error loading contacts: ' + e.message);
