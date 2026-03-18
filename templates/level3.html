@@ -208,6 +208,9 @@
             box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
         }
         
+        .btn-danger { background: var(--danger, #ef4444); color: white; border: none; }
+        .btn-danger:hover { background: #dc2626; }
+        
         .btn-block { width: 100%; }
         
         .selector-row { display: flex; gap: 12px; align-items: center; }
@@ -612,10 +615,6 @@
                     opt.textContent = `${cleanBatchName}${projectLabel}`;
                     opt.dataset.project = b.project_name || '';
                     batchSelect.appendChild(opt);
-                    // Debug: Log to verify cleaning is working
-                    if (b.batch_name !== cleanBatchName) {
-                        console.log(`Cleaned batch name: "${b.batch_name}" → "${cleanBatchName}"`);
-                    }
                 });
                 
                 // Store project name from first batch if available
@@ -677,7 +676,6 @@
                                     <div class="preview-meta">
                                         ${escapeHtml((c.title || '').trim() || (c.contact_type || 'No Title'))} · ${escapeHtml(c.company_name || '')}
                                         ${c.email ? `<span style="margin-left: 12px; color: var(--gray-500);"><i class="fas fa-envelope"></i> ${escapeHtml(c.email)}</span>` : ''}
-                                        ${c.title && c.contact_type === 'Employee' ? `<span style="margin-left: 8px; color: orange; font-size: 0.85em;" title="Debug: title='${escapeHtml(c.title)}', contact_type='${escapeHtml(c.contact_type)}'">⚠️</span>` : ''}
                                     </div>
                                 </div>
                             </div>
@@ -707,7 +705,7 @@
         }
         
         // Event listeners
-        batchSelect.addEventListener('change', () => {
+        batchSelect && batchSelect.addEventListener('change', () => {
             if (batchSelect.value) {
                 document.getElementById('deleteBatchBtn').style.display = 'inline-flex';
                 loadBatch(batchSelect.value);
@@ -717,14 +715,14 @@
             }
         });
         
-        document.getElementById('refreshBtn').addEventListener('click', function() {
+        (document.getElementById('refreshBtn'))?.addEventListener('click', function() {
             this.querySelector('i').classList.add('spinner');
             loadBatches();
             setTimeout(() => this.querySelector('i').classList.remove('spinner'), 1000);
         });
         
         // Delete batch
-        document.getElementById('deleteBatchBtn').addEventListener('click', async function() {
+        (document.getElementById('deleteBatchBtn'))?.addEventListener('click', async function() {
             const batchName = batchSelect.value;
             if (!batchName) return;
             
@@ -765,14 +763,14 @@
                     btn.disabled = false;
                 }, 2000);
             } catch (e) {
-                alert('Error deleting batch: ' + e.message);
+                showUserFriendlyError('Error deleting batch: ' + e.message);
                 this.disabled = false;
                 this.innerHTML = '<i class="fas fa-trash"></i>';
             }
         });
         
         // Export to Excel
-        document.getElementById('exportBtn').addEventListener('click', async function() {
+        (document.getElementById('exportBtn'))?.addEventListener('click', async function() {
             if (!contacts.length) {
                 showUserFriendlyError('No contacts to export');
                 return;
@@ -822,7 +820,7 @@
         });
         
         // Transfer
-        document.getElementById('transferBtn').addEventListener('click', async function() {
+        (document.getElementById('transferBtn'))?.addEventListener('click', async function() {
             if (!contacts.length) return;
             
             this.disabled = true;
@@ -865,64 +863,68 @@
             
             let transferred = 0;
             let failed = 0;
+            let processed = 0;
             
-            for (let i = 0; i < contactsToTransfer.length; i++) {
-                const contact = contactsToTransfer[i];
-                
-                try {
-                    const res = await fetch('/api/level3/transfer-one', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ contact_id: contact.id, industry_tag: industryTag })
-                    });
-                    
-                    const data = await res.json();
-                    const status = data.status || (data.success ? 'transferred' : 'failed');
-                    const name = contact.name || contact.contact_name || 'Unknown';
-                    
-                    if (status === 'transferred' || status === 'skipped') {
-                        transferred++;
-                        const statusClass = status === 'skipped' ? 'skipped' : 'success';
-                        const icon = status === 'skipped' ? 'minus' : 'check';
-                        const statusText = status === 'skipped' ? 'Already exists' : 'Transferred';
-                        transferLog.innerHTML += `
-                            <div class="log-item ${statusClass}">
-                                <div class="log-icon"><i class="fas fa-${icon}"></i></div>
-                                <span class="log-name">${escapeHtml(name)}</span>
-                                <span class="log-status">${statusText}</span>
-                            </div>
-                        `;
-                    } else {
+            const CONCURRENT = 3;
+            for (let i = 0; i < contactsToTransfer.length; i += CONCURRENT) {
+                const batch = contactsToTransfer.slice(i, i + CONCURRENT);
+                const results = await Promise.allSettled(batch.map(async (contact) => {
+                    try {
+                        const res = await fetch('/api/level3/transfer-one', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ contact_id: contact.id, industry_tag: industryTag })
+                        });
+                        
+                        const data = await res.json();
+                        const status = data.status || (data.success ? 'transferred' : 'failed');
+                        const name = contact.name || contact.contact_name || 'Unknown';
+                        
+                        if (status === 'transferred' || status === 'skipped') {
+                            transferred++;
+                            const statusClass = status === 'skipped' ? 'skipped' : 'success';
+                            const icon = status === 'skipped' ? 'minus' : 'check';
+                            const statusText = status === 'skipped' ? 'Already exists' : 'Transferred';
+                            transferLog.insertAdjacentHTML('beforeend', `
+                                <div class="log-item ${statusClass}">
+                                    <div class="log-icon"><i class="fas fa-${icon}"></i></div>
+                                    <span class="log-name">${escapeHtml(name)}</span>
+                                    <span class="log-status">${statusText}</span>
+                                </div>
+                            `);
+                        } else {
+                            failed++;
+                            failedContacts.push(contact);
+                            transferLog.insertAdjacentHTML('beforeend', `
+                                <div class="log-item error">
+                                    <div class="log-icon"><i class="fas fa-times"></i></div>
+                                    <span class="log-name">${escapeHtml(name)}</span>
+                                    <span class="log-status">${data.reason || 'Failed'}</span>
+                                </div>
+                            `);
+                        }
+                    } catch (e) {
                         failed++;
                         failedContacts.push(contact);
-                        transferLog.innerHTML += `
+                        transferLog.insertAdjacentHTML('beforeend', `
                             <div class="log-item error">
                                 <div class="log-icon"><i class="fas fa-times"></i></div>
-                                <span class="log-name">${escapeHtml(name)}</span>
-                                <span class="log-status">${data.reason || 'Failed'}</span>
+                                <span class="log-name">${escapeHtml(contact.name || 'Unknown')}</span>
+                                <span class="log-status">Network Error</span>
                             </div>
-                        `;
+                        `);
                     }
-                } catch (e) {
-                    failed++;
-                    failedContacts.push(contact);
-                    transferLog.innerHTML += `
-                        <div class="log-item error">
-                            <div class="log-icon"><i class="fas fa-times"></i></div>
-                            <span class="log-name">${escapeHtml(contact.name || 'Unknown')}</span>
-                            <span class="log-status">Network Error</span>
-                        </div>
-                    `;
-                }
+                }));
                 
-                // Update progress
+                processed = Math.min(i + CONCURRENT, contactsToTransfer.length);
+                
                 document.getElementById('transferredCount').textContent = transferred;
                 document.getElementById('failedCount').textContent = failed;
                 
-                const pct = Math.round(((i + 1) / contactsToTransfer.length) * 100);
+                const pct = Math.round((processed / contactsToTransfer.length) * 100);
                 document.getElementById('progressFill').style.width = pct + '%';
                 document.getElementById('progressPercent').textContent = pct + '%';
-                document.getElementById('progressText').textContent = `${i + 1} of ${contactsToTransfer.length} contacts processed`;
+                document.getElementById('progressText').textContent = `${processed} of ${contactsToTransfer.length} contacts processed`;
                 
                 transferLog.scrollTop = transferLog.scrollHeight;
             }
@@ -949,7 +951,7 @@
         });
         
         // Retry failed
-        document.getElementById('retryBtn').addEventListener('click', async function() {
+        (document.getElementById('retryBtn'))?.addEventListener('click', async function() {
             if (!failedContacts.length) return;
             
             this.disabled = true;

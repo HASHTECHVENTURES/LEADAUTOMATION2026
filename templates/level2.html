@@ -561,6 +561,7 @@
         }
         
         .contact-card {
+            position: relative;
             background: white;
             border: 1px solid var(--gray-200);
             border-radius: 12px;
@@ -569,6 +570,27 @@
             align-items: center;
             gap: 16px;
             transition: all 0.2s ease;
+        }
+        
+        .contact-delete-btn {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 32px;
+            height: 32px;
+            border: none;
+            border-radius: 8px;
+            background: var(--gray-100);
+            color: var(--gray-500);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s, color 0.2s;
+        }
+        .contact-delete-btn:hover {
+            background: var(--danger-light);
+            color: var(--danger);
         }
         
         .contact-card:hover {
@@ -925,6 +947,29 @@
                     </table>
                 </div>
                 </div>
+                <!-- Excluded companies section removed for simpler Level 2 view -->
+                <!-- No data from Apollo -->
+                <div id="noApolloSection" class="card-body" style="border-top: 1px solid var(--gray-200); display: none;">
+                    <button type="button" class="btn btn-secondary" id="toggleNoApolloBtn" style="width: 100%; margin-bottom: 8px;">
+                        <i class="fas fa-info-circle"></i> No data from Apollo <span id="noApolloCount" class="badge badge-gray">0</span>
+                        <i class="fas fa-chevron-down" id="noApolloChevron" style="margin-left: 8px;"></i>
+                    </button>
+                    <div id="noApolloListContainer" style="display: none;">
+                        <p class="form-hint" style="margin-bottom: 8px;">Companies we ran through Apollo but no contacts were found.</p>
+                        <div class="table-container"><table class="company-table"><thead><tr><th>Company</th><th>Website</th><th>Address</th></tr></thead><tbody id="noApolloTableBody"></tbody></table></div>
+                    </div>
+                </div>
+                <!-- Deleted / Excluded companies (moved from main list) -->
+                <div id="excludedSection" class="card-body" style="border-top: 1px solid var(--gray-200); display: none;">
+                    <button type="button" class="btn btn-secondary" id="toggleExcludedBtn" style="width: 100%; margin-bottom: 8px;">
+                        <i class="fas fa-archive"></i> Deleted Companies <span id="excludedCount" class="badge badge-gray">0</span>
+                        <i class="fas fa-chevron-down" id="excludedChevron" style="margin-left: 8px;"></i>
+                    </button>
+                    <div id="excludedListContainer" style="display: none;">
+                        <p class="form-hint" style="margin-bottom: 8px;">Companies you moved to the excluded list (deleted from main list).</p>
+                        <div class="table-container"><table class="company-table"><thead><tr><th>Company</th><th>Website</th><th>Address</th></tr></thead><tbody id="excludedTableBody"></tbody></table></div>
+                    </div>
+                </div>
             </div>
             <div class="card-body" style="border-top: 1px solid var(--gray-100);">
                 <!-- Search Settings (Always Visible) -->
@@ -1006,6 +1051,14 @@
         <div class="card" id="contactsCard" style="display: none;">
             <div class="card-header">
                 <span class="card-title"><i class="fas fa-users"></i> Contacts Found</span>
+                <div class="results-actions" style="display: flex; gap: 8px; margin-left: auto;">
+                    <button class="btn btn-secondary" id="viewExcludedCompaniesBtn" type="button">
+                        <i class="fas fa-archive"></i> View Deleted Companies
+                    </button>
+                    <button class="btn btn-secondary" id="viewNoDataBtn" type="button">
+                        <i class="fas fa-info-circle"></i> View Not Found
+                    </button>
+                </div>
             </div>
             <div class="card-body">
                 <div class="stats-grid">
@@ -1030,9 +1083,9 @@
                 <div class="contacts-container" id="contactsList"></div>
                 
                 <div class="action-bar">
-                    <button class="btn btn-secondary" id="saveBatchBtn">
-                        <i class="fas fa-save"></i>
-                        Save Batch
+                    <button class="btn btn-secondary" id="saveBatchBtn" title="Contacts are already saved. Optionally name this batch to find it in Saved Batches.">
+                        <i class="fas fa-tag"></i>
+                        Name batch
                     </button>
                     <button class="btn btn-success" id="nextStepBtn">
                         Next: Send Campaign <i class="fas fa-arrow-right"></i>
@@ -1085,24 +1138,27 @@
         </div>
     </div>
     
-    <!-- Save Batch Modal -->
+    <!-- Name batch modal (contacts are already auto-saved) -->
     <div class="modal" id="saveModal">
         <div class="modal-content">
             <div class="modal-header">
-                <i class="fas fa-save"></i>
-                <span class="modal-title">Save Batch</span>
+                <i class="fas fa-tag"></i>
+                <span class="modal-title">Name batch</span>
             </div>
             <div class="modal-body">
-                <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--gray-700);">Batch Name</label>
+                <p style="margin-bottom: 12px; font-size: 0.9em; color: var(--success);">
+                    <i class="fas fa-check-circle"></i> Contacts are already saved to the database.
+                </p>
+                <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--gray-700);">Batch name (optional)</label>
                 <input type="text" class="form-input" id="batchName" placeholder="e.g., IT Mumbai - Jan 2026">
                 <p style="margin-top: 12px; font-size: 0.85em; color: var(--gray-500);">
-                    <i class="fas fa-info-circle"></i> This batch will be available in Level 3 for email campaigns.
+                    <i class="fas fa-info-circle"></i> Give this batch a name to find it in Saved Batches and use in Level 3.
                 </p>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" id="cancelSave">Cancel</button>
                 <button class="btn btn-primary" id="confirmSave">
-                    <i class="fas fa-check"></i> Save Batch
+                    <i class="fas fa-check"></i> Name batch
                 </button>
             </div>
         </div>
@@ -1467,6 +1523,8 @@
         
         let currentProject = '';
         let companies = [];
+        let excludedCompanies = [];
+        let noApolloDataCompanies = [];
         let selectedCompanyIds = new Set();
         let contacts = [];
         let currentBatchName = '';
@@ -1480,6 +1538,7 @@
         
         // Show skeleton loading
         function showTableSkeleton() {
+            if (!companiesTable) return;
             companiesTable.innerHTML = Array(5).fill(0).map(() => `
                 <tr>
                     <td><div class="skeleton skeleton-checkbox"></div></td>
@@ -1490,6 +1549,31 @@
             `).join('');
         }
         
+        // #region agent log helper
+        function agentDebugLog(hypothesisId, location, message, data) {
+            try {
+                fetch('http://127.0.0.1:7648/ingest/7f5e780b-e5c4-48e7-b2ea-706945372876', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Debug-Session-Id': 'b341be'
+                    },
+                    body: JSON.stringify({
+                        sessionId: 'b341be',
+                        runId: 'level2_ui',
+                        hypothesisId,
+                        location,
+                        message,
+                        data: data || {},
+                        timestamp: Date.now()
+                    })
+                }).catch(() => {});
+            } catch (e) {
+                // Never let debug logging break the UI
+            }
+        }
+        // #endregion
+
         // Load projects
         async function loadProjects() {
             try {
@@ -1512,6 +1596,21 @@
                     projectSelect.value = projectParam;
                     showProjectInfo(projectParam);
                     loadCompanies(projectParam);
+                }
+                const viewParam = urlParams.get('view');
+                if (viewParam === 'excluded') {
+                    const excludedSection = document.getElementById('excludedSection');
+                    if (excludedSection) {
+                        excludedSection.scrollIntoView({ behavior: 'smooth' });
+                        const toggleBtn = document.getElementById('toggleExcludedBtn');
+                        const container = document.getElementById('excludedListContainer');
+                        const chevron = document.getElementById('excludedChevron');
+                        if (toggleBtn && container && chevron && container.style.display === 'none') {
+                            container.style.display = 'block';
+                            chevron.classList.remove('fa-chevron-down');
+                            chevron.classList.add('fa-chevron-up');
+                        }
+                    }
                 }
             } catch (e) {
                 console.error('Failed to load projects:', e);
@@ -1565,22 +1664,61 @@
             showTableSkeleton();
             
             try {
-                const res = await fetch(`/api/level2/companies?project_name=${encodeURIComponent(projectName)}&limit=50`);
+                const res = await fetch(`/api/level2/companies?project_name=${encodeURIComponent(projectName)}&limit=500`);
                 const data = await res.json();
                 
                 companies = data.companies || [];
+                excludedCompanies = data.excluded_companies || [];
+                noApolloDataCompanies = data.no_apollo_data_companies || [];
                 selectedCompanyIds = new Set(companies.map(c => c.place_id));
                 
                 renderCompanies();
+                renderExcludedSection();
+                renderNoApolloSection();
                 contactsCard.style.display = 'none';
             } catch (e) {
                 console.error('Failed to load companies:', e);
-                companiesTable.innerHTML = `<tr><td colspan="7" class="empty-state"><p>Error loading companies</p></td></tr>`;
+                if (companiesTable) companiesTable.innerHTML = `<tr><td colspan="7" class="empty-state"><p>Error loading companies</p></td></tr>`;
             }
+        }
+        
+        function renderExcludedSection() {
+            const section = document.getElementById('excludedSection');
+            const countEl = document.getElementById('excludedCount');
+            const tbody = document.getElementById('excludedTableBody');
+            if (!section || !countEl || !tbody) return;
+            if (excludedCompanies.length === 0) {
+                section.style.display = 'none';
+                return;
+            }
+            section.style.display = 'block';
+            countEl.textContent = excludedCompanies.length;
+            countEl.className = 'badge badge-gray';
+            tbody.innerHTML = excludedCompanies.map(c => `
+                <tr><td>${escapeHtml(c.company_name)}</td><td>${c.website ? escapeHtml(c.website) : '-'}</td><td>${escapeHtml(c.address || '-')}</td></tr>
+            `).join('');
+        }
+        
+        function renderNoApolloSection() {
+            const section = document.getElementById('noApolloSection');
+            const countEl = document.getElementById('noApolloCount');
+            const tbody = document.getElementById('noApolloTableBody');
+            if (!section || !countEl || !tbody) return;
+            if (noApolloDataCompanies.length === 0) {
+                section.style.display = 'none';
+                return;
+            }
+            section.style.display = 'block';
+            countEl.textContent = noApolloDataCompanies.length;
+            countEl.className = 'badge badge-gray';
+            tbody.innerHTML = noApolloDataCompanies.map(c => `
+                <tr><td>${escapeHtml(c.company_name)}</td><td>${c.website ? escapeHtml(c.website) : '-'}</td><td>${escapeHtml(c.address || '-')}</td></tr>
+            `).join('');
         }
         
         // Render companies
         function renderCompanies() {
+            if (!companiesTable) return;
             if (!companies.length) {
                 companiesTable.innerHTML = `
                     <tr>
@@ -1648,11 +1786,13 @@
         
         function updateCompaniesCount() {
             const countEl = document.getElementById('companiesCount');
-            countEl.textContent = `${selectedCompanyIds.size} selected`;
-            countEl.className = selectedCompanyIds.size > 0 ? 'badge badge-success' : 'badge badge-gray';
+            if (countEl) {
+                countEl.textContent = `${selectedCompanyIds.size} selected`;
+                countEl.className = selectedCompanyIds.size > 0 ? 'badge badge-success' : 'badge badge-gray';
+            }
             
-            // Show/hide delete unselected button
             const deleteUnselectedBtn = document.getElementById('deleteUnselectedBtn');
+            if (!deleteUnselectedBtn) return;
             const totalCompanies = companies.length;
             const selectedCount = selectedCompanyIds.size;
             
@@ -1702,12 +1842,7 @@
             });
         }
         
-        // Run immediately and on DOM ready
-        removeTotalEmployeesCard();
         document.addEventListener('DOMContentLoaded', removeTotalEmployeesCard);
-        // Also run after a short delay to catch dynamically loaded content
-        setTimeout(removeTotalEmployeesCard, 500);
-        setTimeout(removeTotalEmployeesCard, 1000);
         
         // Get contact avatar class
         function getAvatarClass(title) {
@@ -1723,7 +1858,6 @@
             // Dedupe only - backend already filters by designation before saving
             const seen = new Set();
             
-            console.log(`ℹ️  Displaying ${contacts.length} contacts (already filtered by backend)`);
             
             const filtered = contacts.filter(c => {
                 const title = (c.title || c.contact_type || '').toLowerCase();
@@ -1736,7 +1870,7 @@
             });
             
             if (!filtered.length) {
-                contactsList.innerHTML = `
+                if (contactsList) contactsList.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-state-icon">
                             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1841,12 +1975,15 @@
             
             // Total employees calculation REMOVED - was showing incorrect totals
             
-            document.getElementById('totalContacts').textContent = filtered.length;
-            document.getElementById('totalCompanies').textContent = Object.keys(groups).length;
-            document.getElementById('totalEmails').textContent = emailCount;
+            const totalContactsEl = document.getElementById('totalContacts');
+            if (totalContactsEl) totalContactsEl.textContent = filtered.length;
+            const totalCompaniesEl = document.getElementById('totalCompanies');
+            if (totalCompaniesEl) totalCompaniesEl.textContent = Object.keys(groups).length;
+            const totalEmailsEl = document.getElementById('totalEmails');
+            if (totalEmailsEl) totalEmailsEl.textContent = emailCount;
             // Total employees stat removed
             
-            contactsList.innerHTML = Object.entries(groups).map(([company, contactList], idx) => {
+            if (contactsList) contactsList.innerHTML = Object.entries(groups).map(([company, contactList], idx) => {
                 const companyEmpCount = companyEmployees[company] || 0;
                 const empDisplay = companyEmpCount > 0 ? ` • ${companyEmpCount.toLocaleString()} employees` : '';
                 return `
@@ -1866,8 +2003,9 @@
                             const badgeClass = title.toLowerCase().includes('founder') || title.toLowerCase().includes('owner') || title.toLowerCase().includes('ceo') 
                                 ? 'badge-warning' 
                                 : title.toLowerCase().includes('hr') ? 'badge-primary' : 'badge-gray';
+                            const contactId = c.id != null ? c.id : '';
                             return `
-                            <div class="contact-card">
+                            <div class="contact-card" data-contact-id="${contactId}">
                                 <div class="contact-avatar ${avatarClass}">
                                     <i class="fas fa-user"></i>
                                 </div>
@@ -1884,6 +2022,7 @@
                                         ${c.linkedin_url ? `<a href="${c.linkedin_url}" target="_blank"><i class="fab fa-linkedin"></i> LinkedIn</a>` : ''}
                                     </div>
                                 </div>
+                                ${contactId ? `<button type="button" class="contact-delete-btn" title="Remove from database" data-contact-id="${contactId}"><i class="fas fa-trash-alt"></i></button>` : ''}
                             </div>
                         `;
                         }).join('')}
@@ -1893,6 +2032,46 @@
             }).join('');
         }
         
+        // Delete contact: confirm then remove from database and refresh list
+        if (contactsList) {
+            contactsList.addEventListener('click', async function(e) {
+                const btn = e.target.closest('.contact-delete-btn');
+                if (!btn) return;
+                const contactId = btn.getAttribute('data-contact-id');
+                if (!contactId) return;
+                if (!confirm('Remove this contact from the database?\n\nThis will delete it permanently. You can re-run "Find Contacts" to fetch again.')) return;
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                try {
+                    const res = await fetch('/api/level2/delete-contact', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contact_id: contactId })
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(data.error || 'Failed to remove contact');
+                    showUserFriendlySuccess('Contact removed from database.');
+                    // Re-fetch current view so list stays in sync with DB
+                    const designationParam = userDesignation ? `&designation=${encodeURIComponent(userDesignation)}` : '';
+                    if (currentBatchName) {
+                        const r = await fetch(`/api/level2/contacts?batch_name=${encodeURIComponent(currentBatchName)}${designationParam}`);
+                        const d = await r.json();
+                        contacts = d.contacts || [];
+                    } else {
+                        const r = await fetch(`/api/level2/contacts?project_name=${encodeURIComponent(currentProject)}${designationParam}`);
+                        const d = await r.json();
+                        contacts = d.contacts || [];
+                    }
+                    renderContacts();
+                } catch (err) {
+                    showUserFriendlyError('Could not remove contact: ' + (err.message || err));
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-trash-alt"></i>';
+                }
+            });
+        }
+        
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text || '';
@@ -1900,7 +2079,7 @@
         }
         
         // Event listeners
-        projectSelect.addEventListener('change', () => {
+        projectSelect && projectSelect.addEventListener('change', () => {
             if (projectSelect.value) {
                 showProjectInfo(projectSelect.value);
                 loadCompanies(projectSelect.value);
@@ -1911,7 +2090,7 @@
             }
         });
         
-        document.getElementById('refreshBtn').addEventListener('click', function() {
+        (document.getElementById('refreshBtn'))?.addEventListener('click', function() {
             this.querySelector('i').style.animation = 'spin 1s linear';
             loadProjects();
             loadBatches();
@@ -1920,7 +2099,7 @@
             }, 1000);
         });
         
-        document.getElementById('selectAllCompanies').addEventListener('change', function() {
+        (document.getElementById('selectAllCompanies'))?.addEventListener('change', function() {
             if (this.checked) {
                 companies.forEach(c => selectedCompanyIds.add(c.place_id));
             } else {
@@ -1950,25 +2129,24 @@
         });
         
         // Delete unselected companies
-        document.getElementById('deleteUnselectedBtn').addEventListener('click', async function() {
+        (document.getElementById('deleteUnselectedBtn'))?.addEventListener('click', async function() {
             const totalCompanies = companies.length;
             const selectedCount = selectedCompanyIds.size;
             const unselectedCount = totalCompanies - selectedCount;
             
             if (unselectedCount === 0) {
-                alert('No unselected companies to delete');
+                showUserFriendlyError('No unselected companies to delete');
                 return;
             }
             
-            if (!confirm(`Delete ${unselectedCount} unselected company/companies?\n\nThis will permanently remove them from the project.\n\nThis action cannot be undone.`)) {
+            if (!confirm(`Move ${unselectedCount} unselected company/companies to the Excluded list?\n\nThey will be removed from the main list but their data will be kept and shown in the "Excluded companies" section below.`)) {
                 return;
             }
             
             this.disabled = true;
-            this.innerHTML = '<i class="fas fa-spinner spinner"></i> Deleting...';
+            this.innerHTML = '<i class="fas fa-spinner spinner"></i> Moving...';
             
             try {
-                // Get unselected company IDs
                 const unselectedIds = companies
                     .filter(c => !selectedCompanyIds.has(c.place_id))
                     .map(c => c.place_id);
@@ -1983,18 +2161,12 @@
                 });
                 
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'Failed to delete companies');
+                if (!res.ok) throw new Error(data.error || 'Failed to move companies');
                 
-                // Remove deleted companies from local array
-                companies = companies.filter(c => selectedCompanyIds.has(c.place_id));
-                
-                // Refresh display
-                renderCompanies();
-                updateCompaniesCount();
-                
-                alert(`✅ Successfully deleted ${unselectedCount} company/companies!`);
+                await loadCompanies(currentProject);
+                showUserFriendlySuccess(`Moved ${data.excluded != null ? data.excluded : unselectedCount} company/companies to the Excluded list.`);
             } catch (e) {
-                alert('❌ Error deleting companies: ' + e.message);
+                showUserFriendlyError('Error: ' + e.message);
             } finally {
                 this.disabled = false;
                 this.innerHTML = '<i class="fas fa-trash"></i> Delete Unselected';
@@ -2002,7 +2174,7 @@
         });
         
         // Export to Excel
-        document.getElementById('exportBtn').addEventListener('click', async function() {
+        (document.getElementById('exportBtn'))?.addEventListener('click', async function() {
             if (!companies.length) {
                 showUserFriendlyError('No companies to export');
                 return;
@@ -2056,24 +2228,65 @@
             }
         });
         
-        // Toggle Companies Table
-        document.getElementById('toggleCompaniesBtn').addEventListener('click', function() {
-            const companiesTableContainer = document.getElementById('companiesTableContainer');
-            const toggleText = document.getElementById('toggleCompaniesText');
-            const toggleIcon = document.getElementById('toggleCompaniesIcon');
-            
-            if (companiesTableContainer.style.display === 'none') {
-                companiesTableContainer.style.display = 'block';
-                toggleText.textContent = 'Hide Level 1 Companies';
-                toggleIcon.classList.remove('fa-chevron-down');
-                toggleIcon.classList.add('fa-chevron-up');
-            } else {
-                companiesTableContainer.style.display = 'none';
-                toggleText.textContent = 'Preview Level 1 Companies';
-                toggleIcon.classList.remove('fa-chevron-up');
-                toggleIcon.classList.add('fa-chevron-down');
-            }
-        });
+        // Toggle Companies Table (preview button removed for simplicity)
+        
+        // View Not Found: show companies card first, then noApollo section, scroll and expand
+        const viewNoDataBtn = document.getElementById('viewNoDataBtn');
+        if (viewNoDataBtn) {
+            viewNoDataBtn.addEventListener('click', () => {
+                if (companiesCard) companiesCard.style.display = 'block';
+                const section = document.getElementById('noApolloSection');
+                const container = document.getElementById('noApolloListContainer');
+                const chevron = document.getElementById('noApolloChevron');
+                if (!section) return;
+                section.style.display = 'block';
+                setTimeout(() => section.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+                if (container && chevron && container.style.display === 'none') {
+                    container.style.display = 'block';
+                    chevron.classList.remove('fa-chevron-down');
+                    chevron.classList.add('fa-chevron-up');
+                }
+            });
+        }
+        // View Deleted Companies: show companies card first, then excluded section, scroll and expand
+        const viewExcludedCompaniesBtn = document.getElementById('viewExcludedCompaniesBtn');
+        if (viewExcludedCompaniesBtn) {
+            viewExcludedCompaniesBtn.addEventListener('click', () => {
+                if (companiesCard) companiesCard.style.display = 'block';
+                const section = document.getElementById('excludedSection');
+                const container = document.getElementById('excludedListContainer');
+                const chevron = document.getElementById('excludedChevron');
+                if (!section) return;
+                section.style.display = 'block';
+                setTimeout(() => section.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+                if (container && chevron && container.style.display === 'none') {
+                    container.style.display = 'block';
+                    chevron.classList.remove('fa-chevron-down');
+                    chevron.classList.add('fa-chevron-up');
+                }
+            });
+        }
+        
+        const toggleNoApolloBtn = document.getElementById('toggleNoApolloBtn');
+        if (toggleNoApolloBtn) {
+            toggleNoApolloBtn.addEventListener('click', function() {
+                const container = document.getElementById('noApolloListContainer');
+                const chevron = document.getElementById('noApolloChevron');
+                if (!container || !chevron) {
+                    agentDebugLog('L2', 'level2.html:toggleNoApollo', 'noApollo_elements_missing', {});
+                    return;
+                }
+                if (container.style.display === 'none') {
+                    container.style.display = 'block';
+                    chevron.classList.remove('fa-chevron-down'); chevron.classList.add('fa-chevron-up');
+                } else {
+                    container.style.display = 'none';
+                    chevron.classList.remove('fa-chevron-up'); chevron.classList.add('fa-chevron-down');
+                }
+            });
+        } else {
+            agentDebugLog('L2', 'level2.html:toggleNoApollo', 'toggleNoApolloBtn_missing', {});
+        }
         
         // Handle employee range checkbox logic
         const employeeRangeCheckboxes = document.querySelectorAll('.employee-range-checkbox');
@@ -2102,12 +2315,16 @@
         });
         
         // Process companies
-        document.getElementById('processBtn').addEventListener('click', async function() {
-            if (!selectedCompanyIds.size) {
-                showUserFriendlyError('Please select at least one company');
-                return;
+        (document.getElementById('processBtn'))?.addEventListener('click', async function() {
+            // If user hasn't manually selected, default to all companies (soft behavior, no blocking error)
+            if (!selectedCompanyIds.size && companies && companies.length) {
+                companies.forEach(c => {
+                    if (c.place_id) selectedCompanyIds.add(c.place_id);
+                });
+                if (typeof updateSelectionCount === 'function') {
+                    updateSelectionCount();
+                }
             }
-            
             // Check if online (with fallback)
             if (typeof isOnline === 'function' && !isOnline()) {
                 showUserFriendlyError('You are offline. Please check your internet connection.');
@@ -2123,7 +2340,6 @@
             
             // Store user's designation for filtering contacts later
             userDesignation = designation;
-            console.log(`💾 Stored user designation: "${userDesignation}"`);
             
             // Get multiple employee range selections
             const employeeRangeCheckboxes = document.querySelectorAll('.employee-range-checkbox:checked');
@@ -2135,7 +2351,6 @@
             }
             
             // Save selection first
-            console.log(`💾 Saving selection: ${selectedCompanyIds.size} companies selected`);
             const selectionRes = await fetch('/api/level2/selection', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -2145,13 +2360,16 @@
                 })
             });
             const selectionData = await selectionRes.json();
-            console.log('✅ Selection saved:', selectionData);
             
             processingModal.classList.add('open');
-            document.getElementById('progressFill').style.width = '0%';
-            document.getElementById('progressPercent').textContent = '0%';
-            document.getElementById('progressText').textContent = 'Initializing...';
-            document.getElementById('progressStatus').textContent = 'Connecting to contact database...';
+            const pFill = document.getElementById('progressFill');
+            const pPercent = document.getElementById('progressPercent');
+            const pText = document.getElementById('progressText');
+            const pStatus = document.getElementById('progressStatus');
+            if (pFill) pFill.style.width = '0%';
+            if (pPercent) pPercent.textContent = '0%';
+            if (pText) pText.textContent = 'Initializing...';
+            if (pStatus) pStatus.textContent = 'Connecting to contact database...';
             
             // Use SSE streaming like Level 1 for real-time progress
             try {
@@ -2177,7 +2395,6 @@
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) {
-                        console.log('✅ Stream completed');
                         setTimeout(() => {
                             if (processingModal.classList.contains('open')) {
                                 processingModal.classList.remove('open');
@@ -2201,28 +2418,35 @@
                                 if (evt.type === 'progress') {
                                     const p = evt.data || {};
                                     const pct = p.total > 0 ? Math.round((p.current / p.total) * 100) : 0;
-                                    document.getElementById('progressFill').style.width = pct + '%';
-                                    document.getElementById('progressPercent').textContent = pct + '%';
-                                    document.getElementById('progressText').textContent = p.message || 'Processing...';
-                                    document.getElementById('progressStatus').textContent = `Found ${p.contacts_found || 0} contacts`;
+                                    const eFill = document.getElementById('progressFill');
+                                    const ePct = document.getElementById('progressPercent');
+                                    const eTxt = document.getElementById('progressText');
+                                    const eStat = document.getElementById('progressStatus');
+                                    if (eFill) eFill.style.width = pct + '%';
+                                    if (ePct) ePct.textContent = pct + '%';
+                                    if (eTxt) eTxt.textContent = p.message || 'Processing...';
+                                    if (eStat) eStat.textContent = `Found ${p.contacts_found || 0} contacts`;
                                 }
                                 
                                 if (evt.type === 'company_update') {
                                     const company = evt.data;
                                     const progress = evt.progress || {};
                                     const pct = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
-                                    document.getElementById('progressFill').style.width = pct + '%';
-                                    document.getElementById('progressPercent').textContent = pct + '%';
-                                    document.getElementById('progressText').textContent = `Processing: ${company.company_name || ''}... (${progress.current || 0}/${progress.total || 0})`;
-                                    document.getElementById('progressStatus').textContent = `Found ${progress.contacts_found || 0} contacts so far...`;
+                                    const cFill = document.getElementById('progressFill');
+                                    const cPct = document.getElementById('progressPercent');
+                                    const cTxt = document.getElementById('progressText');
+                                    const cStat = document.getElementById('progressStatus');
+                                    if (cFill) cFill.style.width = pct + '%';
+                                    if (cPct) cPct.textContent = pct + '%';
+                                    if (cTxt) cTxt.textContent = `Processing: ${company.company_name || ''}... (${progress.current || 0}/${progress.total || 0})`;
+                                    if (cStat) cStat.textContent = `Found ${progress.contacts_found || 0} contacts so far...`;
                                 }
                                 
                                 if (evt.type === 'complete') {
                                     const data = evt.data || {};
-                                    console.log('✅ Processing complete:', data);
                                     processingModal.classList.remove('open');
                                     if (data.message) {
-                                        showUserFriendlySuccess(data.message);
+                                        showUserFriendlySuccess(data.message + ' Saved to database.');
                                     }
                                     break;
                                 }
@@ -2247,39 +2471,36 @@
                 return;
             }
             
-            // Load contacts immediately
+            // Load contacts immediately from database (data already auto-saved)
             try {
-                // Pass user's designation to backend for filtering
                 const designationParam = userDesignation ? `&designation=${encodeURIComponent(userDesignation)}` : '';
                 const url = `/api/level2/contacts?project_name=${encodeURIComponent(currentProject)}${designationParam}`;
-                console.log(`🔍 Fetching contacts with designation: "${userDesignation}"`);
-                console.log(`📡 URL: ${url}`);
                 const res = await fetch(url);
                 const data = await res.json();
                 contacts = data.contacts || [];
-                console.log(`✅ Received ${contacts.length} contacts from backend`);
                 
                 processingModal.classList.remove('open');
                 companiesCard.style.display = 'none';
                 contactsCard.style.display = 'block';
                 contactsCard.scrollIntoView({ behavior: 'smooth' });
                 
-                // Render contacts immediately (backend already filtered by designation)
                 renderContacts();
+                loadBatches();
             } catch (e) {
                 processingModal.classList.remove('open');
-                alert('Error loading contacts: ' + e.message);
+                showUserFriendlyError('Error loading contacts: ' + e.message);
             }
         });
         
         // Load batch
-        batchSelect.addEventListener('change', async function() {
+        batchSelect && batchSelect.addEventListener('change', async function() {
+            const deleteBatchBtnEl = document.getElementById('deleteBatchBtn');
             if (!this.value) {
-                document.getElementById('deleteBatchBtn').style.display = 'none';
+                if (deleteBatchBtnEl) deleteBatchBtnEl.style.display = 'none';
                 return;
             }
             
-            document.getElementById('deleteBatchBtn').style.display = 'inline-flex';
+            if (deleteBatchBtnEl) deleteBatchBtnEl.style.display = 'inline-flex';
             
             try {
                 // Pass user's designation to backend for filtering when loading batch
@@ -2294,12 +2515,12 @@
                 // Render contacts (backend already filtered by designation)
                 renderContacts();
             } catch (e) {
-                alert('Error loading batch: ' + e.message);
+                showUserFriendlyError('Error loading batch: ' + e.message);
             }
         });
         
         // Delete batch
-        document.getElementById('deleteBatchBtn').addEventListener('click', async function() {
+        (document.getElementById('deleteBatchBtn'))?.addEventListener('click', async function() {
             const batchName = batchSelect.value;
             if (!batchName) return;
             
@@ -2341,26 +2562,26 @@
                     btn.disabled = false;
                 }, 2000);
             } catch (e) {
-                alert('Error deleting batch: ' + e.message);
+                showUserFriendlyError('Error deleting batch: ' + e.message);
                 this.disabled = false;
                 this.innerHTML = '<i class="fas fa-trash"></i>';
             }
         });
         
         // Save batch
-        document.getElementById('saveBatchBtn').addEventListener('click', () => {
+        (document.getElementById('saveBatchBtn'))?.addEventListener('click', () => {
             document.getElementById('batchName').value = `${currentProject} - ${new Date().toLocaleDateString('en-IN')}`;
             saveModal.classList.add('open');
         });
         
-        document.getElementById('cancelSave').addEventListener('click', () => {
+        (document.getElementById('cancelSave'))?.addEventListener('click', () => {
             saveModal.classList.remove('open');
         });
         
-        document.getElementById('confirmSave').addEventListener('click', async function() {
+        (document.getElementById('confirmSave'))?.addEventListener('click', async function() {
             const name = document.getElementById('batchName').value.trim();
             if (!name) {
-                alert('Please enter a batch name');
+                showUserFriendlyError('Please enter a batch name');
                 return;
             }
             
@@ -2387,20 +2608,20 @@
                 btn.classList.remove('btn-secondary');
                 btn.classList.add('btn-success');
                 setTimeout(() => {
-                    btn.innerHTML = '<i class="fas fa-save"></i> Save Batch';
+                    btn.innerHTML = '<i class="fas fa-tag"></i> Name batch';
                     btn.classList.remove('btn-success');
                     btn.classList.add('btn-secondary');
                 }, 2000);
             } catch (e) {
-                alert('Error saving batch: ' + e.message);
+                showUserFriendlyError('Error saving batch: ' + e.message);
             } finally {
                 this.disabled = false;
-                this.innerHTML = '<i class="fas fa-check"></i> Save Batch';
+                this.innerHTML = '<i class="fas fa-check"></i> Name batch';
             }
         });
         
         // Next step
-        document.getElementById('nextStepBtn').addEventListener('click', async function() {
+        (document.getElementById('nextStepBtn'))?.addEventListener('click', async function() {
             if (!currentBatchName) {
                 // Auto-save
                 currentBatchName = `${currentProject} - ${new Date().toISOString().split('T')[0]}`;

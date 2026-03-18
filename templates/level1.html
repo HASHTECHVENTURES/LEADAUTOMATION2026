@@ -763,10 +763,6 @@
                             <i class="fas fa-search"></i>
                             Search Companies
                         </button>
-                        <button type="button" class="btn btn-success" id="saveProjectBtn" style="display: none;">
-                            <i class="fas fa-save"></i>
-                            Save Campaign
-                        </button>
                     </div>
                 </form>
             </div>
@@ -776,10 +772,13 @@
         <div class="card" id="resultsCard" style="display: none;">
             <div class="card-header">
                 <div class="results-header">
-                    <span class="results-count"><strong id="companyCount">0</strong> companies found</span>
+                    <span class="results-count"><strong id="companyCount">0</strong><span id="companyCountSuffix"> companies found</span></span>
                     <div class="results-actions">
                         <button class="btn btn-secondary" id="selectAllBtn">
                             <i class="fas fa-check-double"></i> Select All
+                        </button>
+                        <button class="btn btn-secondary" id="viewDeletedBtn">
+                            <i class="fas fa-archive"></i> View Deleted
                         </button>
                         <button class="btn btn-secondary" id="exportBtn">
                             <i class="fas fa-file-excel"></i> Export
@@ -802,6 +801,17 @@
                             <div class="skeleton skeleton-text"></div>
                             <div class="skeleton skeleton-text-sm"></div>
                         </div>
+                    </div>
+                </div>
+                <!-- Not selected for Level 2 (data kept, visible here) -->
+                <div id="notSelectedSection" class="card-body" style="border-top: 1px solid var(--gray-200); display: none;">
+                    <button type="button" class="btn btn-secondary" id="toggleNotSelectedBtn" style="width: 100%; margin-bottom: 8px;">
+                        <i class="fas fa-list"></i> Not selected for Level 2 <span id="notSelectedCount" class="badge badge-gray">0</span>
+                        <i class="fas fa-chevron-down" id="notSelectedChevron" style="margin-left: 8px;"></i>
+                    </button>
+                    <div id="notSelectedListContainer" style="display: none;">
+                        <p class="form-hint" style="margin-bottom: 8px;">Companies from this campaign that are not selected for Get Contacts. Data is kept and visible here.</p>
+                        <div class="company-list" id="notSelectedList"></div>
                     </div>
                 </div>
             </div>
@@ -833,6 +843,34 @@
                 <button class="btn btn-primary" id="createProject">
                     <i class="fas fa-check"></i> Create Campaign
                 </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- View Deleted Modal -->
+    <div class="modal" id="viewDeletedModal">
+        <div class="modal-content" style="max-width: 640px;">
+            <div class="modal-header">
+                <span class="modal-title">
+                    <span class="modal-header-icon"><i class="fas fa-archive"></i></span>
+                    Deleted Companies
+                </span>
+                <button class="modal-close" id="closeViewDeletedModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="form-hint" style="margin-bottom: 12px;">Companies you removed from this campaign. They are kept here and can be restored.</p>
+                <div id="viewDeletedList" class="company-list" style="max-height: 60vh; overflow-y: auto;">
+                    <!-- Filled by JS -->
+                </div>
+                <div id="viewDeletedEmpty" style="display: none; text-align: center; padding: 24px; color: var(--gray-500);">
+                    No deleted companies for this campaign.
+                </div>
+                <div style="margin-top: 12px; display: flex; gap: 8px;">
+                    <button type="button" class="btn btn-secondary" id="restoreAllDeletedBtn" style="display: none;">
+                        <i class="fas fa-undo"></i> Restore all to list
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="closeViewDeletedBtn">Close</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1035,59 +1073,6 @@
         }
         
         /**
-         * Success notification
-         */
-        function showSuccess(message, duration = 3000) {
-            const existing = document.querySelector('.success-notification');
-            if (existing) {
-                existing.remove();
-            }
-            
-            const successDiv = document.createElement('div');
-            successDiv.className = 'success-notification';
-            successDiv.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                background: #10b981;
-                color: white;
-                padding: 16px 24px;
-                border-radius: 12px;
-                box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-                z-index: 10000;
-                max-width: 400px;
-                animation: slideInRight 0.3s ease-out;
-                display: flex;
-                align-items: center;
-                gap: 12px;
-            `;
-            
-            successDiv.innerHTML = `
-                <i class="fas fa-check-circle" style="font-size: 1.2em;"></i>
-                <div>
-                    <strong>Success</strong>
-                    <div style="margin-top: 4px; font-size: 0.9em;">${escapeHtml(message)}</div>
-                </div>
-                <button onclick="this.parentElement.remove()" style="
-                    background: none;
-                    border: none;
-                    color: white;
-                    cursor: pointer;
-                    padding: 4px 8px;
-                    margin-left: auto;
-                    opacity: 0.8;
-                ">×</button>
-            `;
-            
-            document.body.appendChild(successDiv);
-            
-            setTimeout(() => {
-                successDiv.style.animation = 'slideOutRight 0.3s ease-out';
-                setTimeout(() => successDiv.remove(), 300);
-            }, duration);
-        }
-        
-        /**
          * Loading state manager
          */
         function setLoadingState(element, isLoading, loadingText = 'Loading...') {
@@ -1122,8 +1107,8 @@
                 return { valid: false, error: 'Project name must be less than 100 characters' };
             }
             
-            if (!/^[a-zA-Z0-9\s\-_/]+$/.test(name)) {
-                return { valid: false, error: 'Project name can only contain letters, numbers, spaces, hyphens, underscores, and forward slashes' };
+            if (!/^[a-zA-Z0-9\s\-_/()]+$/.test(name)) {
+                return { valid: false, error: 'Project name can only contain letters, numbers, spaces, hyphens, underscores, forward slashes, and parentheses' };
             }
             
             return { valid: true };
@@ -1187,33 +1172,27 @@
         }
         
         /**
-         * Debounce function for performance
-         */
-        function debounce(func, wait) {
-            let timeout;
-            return function executedFunction(...args) {
-                const later = () => {
-                    clearTimeout(timeout);
-                    func(...args);
-                };
-                clearTimeout(timeout);
-                timeout = setTimeout(later, wait);
-            };
-        }
-        
-        /**
          * Check if user is online
          */
         function isOnline() {
             return navigator.onLine;
         }
         
+        function getMaxCompanies() {
+            return parseInt(document.getElementById('maxCompanies')?.value || '50', 10) || 50;
+        }
+        
+        function isDuplicateCompany(company, existingList) {
+            const id = company.place_id || ((company.company_name || '').trim() + '_' + (company.address || '').trim());
+            return existingList.some(c => (c.place_id || ((c.company_name || '').trim() + '_' + (c.address || '').trim())) === id);
+        }
+        
         /**
          * Network status monitor
          */
         window.addEventListener('online', function() {
-            if (typeof showSuccess === 'function') {
-                showSuccess('Connection restored', 2000);
+            if (typeof showUserFriendlySuccess === 'function') {
+                showUserFriendlySuccess('Connection restored', 2000);
             }
         });
         
@@ -1313,6 +1292,12 @@
         let companies = [];
         let selectedIds = new Set();
         
+        let renderDebounceTimer = null;
+        function debouncedRenderCompanies() {
+            if (renderDebounceTimer) clearTimeout(renderDebounceTimer);
+            renderDebounceTimer = setTimeout(() => renderCompanies(), 300);
+        }
+        
         // Toggle between PIN Code and Place Name search
         const searchTypeRadios = document.querySelectorAll('input[name="searchType"]');
         const pinCodeGroup = document.getElementById('pinCodeGroup');
@@ -1365,7 +1350,6 @@
                 const data = await res.json();
                 const projects = data.projects || [];
                 
-                console.log(`📋 Loaded ${projects.length} projects:`, projects.map(p => p.project_name));
                 
                 projectSelect.innerHTML = '<option value="">Choose existing campaign...</option>';
                 projects.forEach(p => {
@@ -1398,14 +1382,12 @@
             if (!name) {
                 searchCard.style.display = 'none';
                 resultsCard.style.display = 'none';
-                document.getElementById('saveProjectBtn').style.display = 'none';
                 return;
             }
             
             currentProject = name;
             document.getElementById('currentProject').textContent = name;
             searchCard.style.display = 'block';
-            document.getElementById('saveProjectBtn').style.display = 'inline-flex';
             
             // Load project data
             try {
@@ -1440,10 +1422,27 @@
                     </div>
                 `;
                 document.getElementById('companyCount').textContent = '0';
+                const suffixEl = document.getElementById('companyCountSuffix');
+                if (suffixEl) suffixEl.textContent = ' companies found';
                 return;
             }
             
+            // De-duplicate companies by place_id (or name + address fallback)
+            const seen = new Set();
+            companies = companies.filter(c => {
+                const keyBase = (c.place_id || '').trim() || `${(c.company_name || '').trim()}|${(c.address || '').trim()}`;
+                const key = keyBase || Math.random().toString(36);
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+            
+            const maxRequested = parseInt(document.getElementById('maxCompanies')?.value || '50', 10) || 50;
             document.getElementById('companyCount').textContent = companies.length;
+            const suffixEl = document.getElementById('companyCountSuffix');
+            if (suffixEl) suffixEl.textContent = companies.length < maxRequested
+                ? ` of up to ${maxRequested} companies found`
+                : ' companies found';
             companyList.innerHTML = companies.map((c, idx) => {
                 const id = c.place_id || c.company_name;
                 const checked = selectedIds.has(id) ? 'checked' : '';
@@ -1474,25 +1473,128 @@
             });
         }
         
+        function renderNotSelectedSection() {
+            const notSelected = (companies || []).filter(c => !c.selected_for_level2);
+            const section = document.getElementById('notSelectedSection');
+            const countEl = document.getElementById('notSelectedCount');
+            const listEl = document.getElementById('notSelectedList');
+            if (!section || !countEl || !listEl) return;
+            if (notSelected.length === 0) {
+                section.style.display = 'none';
+                return;
+            }
+            section.style.display = 'block';
+            countEl.textContent = notSelected.length;
+            listEl.innerHTML = notSelected.map((c, idx) => `
+                <div class="company-item fade-in" style="animation-delay: ${idx * 20}ms; opacity: 0.9;">
+                    <div class="company-info" style="margin-left: 0;">
+                        <div class="company-name">${escapeHtml(c.company_name || 'N/A')}</div>
+                        <div class="company-meta">
+                            ${c.industry ? `<span><i class="fas fa-industry"></i> ${escapeHtml(c.industry)}</span>` : ''}
+                            ${c.address ? `<span><i class="fas fa-map-marker-alt"></i> ${escapeHtml((c.address || '').substring(0, 60))}${(c.address || '').length > 60 ? '...' : ''}</span>` : ''}
+                            ${c.website ? `<a href="${c.website}" target="_blank"><i class="fas fa-globe"></i> Website</a>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
         function updateDeleteBtn() {
             const deleteBtn = document.getElementById('deleteBtn');
             deleteBtn.style.display = selectedIds.size > 0 ? 'inline-flex' : 'none';
             deleteBtn.innerHTML = `<i class="fas fa-trash"></i> Delete (${selectedIds.size})`;
         }
         
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text || '';
-            return div.innerHTML;
-        }
-        
         // Event listeners
-        projectSelect.addEventListener('change', () => {
+        projectSelect?.addEventListener('change', () => {
             selectProject(projectSelect.value);
             document.getElementById('deleteProjectBtn').style.display = projectSelect.value ? 'inline-flex' : 'none';
         });
         
-        document.getElementById('refreshBtn').addEventListener('click', function() {
+        // View deleted / excluded companies - show list in modal on Level 1
+        let excludedCompanies = [];
+        const viewDeletedModal = document.getElementById('viewDeletedModal');
+        const viewDeletedList = document.getElementById('viewDeletedList');
+        const viewDeletedEmpty = document.getElementById('viewDeletedEmpty');
+        const restoreAllDeletedBtn = document.getElementById('restoreAllDeletedBtn');
+        
+        (document.getElementById('viewDeletedBtn'))?.addEventListener('click', async () => {
+            if (!currentProject) {
+                showUserFriendlyError('Please select a campaign first.');
+                return;
+            }
+            viewDeletedModal.classList.add('open');
+            viewDeletedList.innerHTML = '<div class="skeleton-item"><div class="skeleton skeleton-text"></div></div>';
+            viewDeletedEmpty.style.display = 'none';
+            restoreAllDeletedBtn.style.display = 'none';
+            try {
+                const res = await fetch('/api/level1/excluded-companies?project_name=' + encodeURIComponent(currentProject));
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to load');
+                excludedCompanies = data.companies || [];
+                if (excludedCompanies.length === 0) {
+                    viewDeletedList.innerHTML = '';
+                    viewDeletedEmpty.style.display = 'block';
+                } else {
+                    viewDeletedEmpty.style.display = 'none';
+                    viewDeletedList.innerHTML = excludedCompanies.map(c => `
+                        <div class="company-item" style="opacity: 0.9;">
+                            <div class="company-info" style="margin-left: 0;">
+                                <div class="company-name">${escapeHtml(c.company_name || 'N/A')}</div>
+                                <div class="company-meta">
+                                    ${c.industry ? `<span><i class="fas fa-industry"></i> ${escapeHtml(c.industry)}</span>` : ''}
+                                    ${c.address ? `<span><i class="fas fa-map-marker-alt"></i> ${escapeHtml((c.address || '').substring(0, 80))}${(c.address || '').length > 80 ? '...' : ''}</span>` : ''}
+                                    ${c.website ? `<a href="${c.website}" target="_blank"><i class="fas fa-globe"></i> Website</a>` : ''}
+                                    ${c.phone ? `<a href="tel:${c.phone}"><i class="fas fa-phone"></i> ${escapeHtml(c.phone)}</a>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+                    restoreAllDeletedBtn.style.display = 'inline-flex';
+                }
+            } catch (e) {
+                viewDeletedList.innerHTML = '';
+                viewDeletedEmpty.style.display = 'block';
+                viewDeletedEmpty.textContent = 'Error loading list: ' + (e.message || 'Unknown error');
+            }
+        });
+        
+        function closeViewDeletedModal() {
+            viewDeletedModal.classList.remove('open');
+        }
+        (document.getElementById('closeViewDeletedModal'))?.addEventListener('click', closeViewDeletedModal);
+        (document.getElementById('closeViewDeletedBtn'))?.addEventListener('click', closeViewDeletedModal);
+        viewDeletedModal?.addEventListener('click', function(e) {
+            if (e.target === viewDeletedModal) closeViewDeletedModal();
+        });
+        
+        restoreAllDeletedBtn?.addEventListener('click', async function() {
+            if (!excludedCompanies.length || !currentProject) return;
+            if (!confirm('Restore all ' + excludedCompanies.length + ' companies back to the main list?')) return;
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner spinner"></i> Restoring...';
+            try {
+                const placeIds = excludedCompanies.map(c => c.place_id).filter(Boolean);
+                if (!placeIds.length) { showUserFriendlyError('No place IDs to restore.'); return; }
+                const res = await fetch('/api/level2/restore-companies', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ project_name: currentProject, place_ids: placeIds })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Restore failed');
+                closeViewDeletedModal();
+                await selectProject(currentProject);
+                showUserFriendlySuccess('Restored ' + (data.restored != null ? data.restored : placeIds.length) + ' companies to the list.');
+            } catch (e) {
+                showUserFriendlyError('Error: ' + e.message);
+            } finally {
+                this.disabled = false;
+                this.innerHTML = '<i class="fas fa-undo"></i> Restore all to list';
+            }
+        });
+        
+        (document.getElementById('refreshBtn'))?.addEventListener('click', function() {
             this.querySelector('i').classList.add('spinner');
             loadProjects();
             setTimeout(() => {
@@ -1500,8 +1602,24 @@
             }, 1000);
         });
         
+        const toggleNotSelectedBtn = document.getElementById('toggleNotSelectedBtn');
+        if (toggleNotSelectedBtn) {
+            toggleNotSelectedBtn.addEventListener('click', function() {
+                const container = document.getElementById('notSelectedListContainer');
+                const chevron = document.getElementById('notSelectedChevron');
+                if (!container || !chevron) return;
+                if (container.style.display === 'none') {
+                    container.style.display = 'block';
+                    chevron.classList.remove('fa-chevron-down'); chevron.classList.add('fa-chevron-up');
+                } else {
+                    container.style.display = 'none';
+                    chevron.classList.remove('fa-chevron-up'); chevron.classList.add('fa-chevron-down');
+                }
+            });
+        }
+        
         // Delete project
-        document.getElementById('deleteProjectBtn').addEventListener('click', async function() {
+        (document.getElementById('deleteProjectBtn'))?.addEventListener('click', async function() {
             if (!currentProject) return;
             if (!confirm(`Delete campaign "${currentProject}" and all its companies and contacts?\n\n⚠️ This will permanently delete:\n• All companies in this campaign\n• All contacts from Level 2\n• All saved batches\n\nThis action cannot be undone.`)) return;
             
@@ -1534,37 +1652,37 @@
                 loadProjects();
                 
                 // Show success message
-                alert(`✅ Project deleted successfully!\n\nDeleted:\n• ${deletedLevel1} companies\n• ${deletedLevel2} contacts`);
+                showUserFriendlySuccess(`Project deleted successfully! Deleted ${deletedLevel1} companies, ${deletedLevel2} contacts.`);
             } catch (e) {
-                alert('❌ Error deleting project: ' + e.message);
+                showUserFriendlyError('Error deleting project: ' + e.message);
             } finally {
                 this.disabled = false;
                 this.innerHTML = '<i class="fas fa-trash"></i>';
             }
         });
         
-        document.getElementById('newProjectBtn').addEventListener('click', () => {
+        (document.getElementById('newProjectBtn'))?.addEventListener('click', () => {
             projectModal.classList.add('open');
             document.getElementById('projectName').value = '';
             setTimeout(() => document.getElementById('projectName').focus(), 100);
         });
         
-        document.getElementById('closeModal').addEventListener('click', () => {
+        (document.getElementById('closeModal'))?.addEventListener('click', () => {
             projectModal.classList.remove('open');
         });
         
-        document.getElementById('cancelProject').addEventListener('click', () => {
+        (document.getElementById('cancelProject'))?.addEventListener('click', () => {
             projectModal.classList.remove('open');
         });
         
-        document.getElementById('createProject').addEventListener('click', () => {
+        (document.getElementById('createProject'))?.addEventListener('click', () => {
             const name = document.getElementById('projectName').value.trim();
             if (!name) {
-                alert('Please enter a campaign name');
+                showUserFriendlyError('Please enter a campaign name');
                 return;
             }
             if (name.length < 3) {
-                alert('Campaign name must be at least 3 characters');
+                showUserFriendlyError('Campaign name must be at least 3 characters');
                 return;
             }
             
@@ -1577,7 +1695,6 @@
             selectedIds.clear();
             document.getElementById('pinCode').value = '';
             document.getElementById('industry').value = '';
-            document.getElementById('saveProjectBtn').style.display = 'inline-flex';
             
             const opt = document.createElement('option');
             opt.value = name;
@@ -1587,77 +1704,8 @@
             document.getElementById('deleteProjectBtn').style.display = 'inline-flex';
         });
         
-        // Save Project button
-        document.getElementById('saveProjectBtn').addEventListener('click', async function() {
-            if (!currentProject) {
-                alert('Please select or create a campaign first');
-                return;
-            }
-            
-            const pinCode = document.getElementById('pinCode').value.trim();
-            const industry = document.getElementById('industry').value.trim();
-            
-            if (!pinCode && companies.length === 0) {
-                alert('Please enter PIN codes and search for companies first, or load an existing project');
-                return;
-            }
-            
-            this.disabled = true;
-            this.innerHTML = '<i class="fas fa-spinner spinner"></i> Saving...';
-            
-            try {
-                // If we have companies, try to save them (in case save failed during search)
-                if (companies.length > 0) {
-                    console.log(`💾 Attempting to save ${companies.length} companies for project: ${currentProject}`);
-                    
-                    // Call manual save API
-                    const response = await fetch('/api/level1/save', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            project_name: currentProject,
-                            companies: companies,
-                            pin_codes: pinCode,
-                            industry: industry
-                        })
-                    });
-                    
-                    const result = await response.json();
-                    
-                    if (result.success) {
-                        console.log(`✅ Save successful: ${result.count} companies saved`);
-                        // Refresh project list
-                        await loadProjects();
-                        this.innerHTML = '<i class="fas fa-check"></i> Saved!';
-                        this.classList.remove('btn-success');
-                        this.classList.add('btn-primary');
-                        setTimeout(() => {
-                            this.innerHTML = '<i class="fas fa-save"></i> Save Campaign';
-                            this.classList.remove('btn-primary');
-                            this.classList.add('btn-success');
-                            this.disabled = false;
-                        }, 2000);
-                        showUserFriendlySuccess(`Successfully saved ${result.count} companies to database!`);
-                    } else {
-                        throw new Error(result.error || 'Save failed');
-                    }
-                } else {
-                    // No companies yet, but project name exists - it will be saved when search is done
-                    alert('Project will be saved automatically when you search for companies.');
-                    this.disabled = false;
-                    this.innerHTML = '<i class="fas fa-save"></i> Save Project';
-                }
-            } catch (e) {
-                const errorMsg = formatErrorMessage(e);
-                console.error('❌ Save error:', errorMsg);
-                showUserFriendlyError('Failed to save campaign: ' + errorMsg);
-                this.disabled = false;
-                this.innerHTML = '<i class="fas fa-save"></i> Save Project';
-            }
-        });
-        
         // Search
-        searchForm.addEventListener('submit', async function(e) {
+        searchForm?.addEventListener('submit', async function(e) {
             e.preventDefault();
             
             // Clear previous results immediately (lazy loading - start fresh)
@@ -1698,7 +1746,9 @@
                 return;
             }
             
-            console.log('🔍 Starting search with project:', currentProject);
+            const searchBtn = document.getElementById('searchBtn');
+            if (searchBtn) searchBtn.disabled = true;
+            
             progressModal.classList.add('open');
             document.getElementById('progressFill').style.width = '0%';
             document.getElementById('progressPercent').textContent = '0%';
@@ -1740,14 +1790,7 @@
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) {
-                        console.log('✅ Stream completed');
-                        // Make sure modal is closed when stream ends
-                        setTimeout(() => {
-                            if (progressModal.classList.contains('open')) {
-                                console.warn('⚠️ Modal still open after stream ended, forcing close');
-                                progressModal.classList.remove('open');
-                            }
-                        }, 1000);
+                        setTimeout(() => progressModal.classList.remove('open'), 1000);
                         break;
                     }
                     
@@ -1765,100 +1808,39 @@
                                 
                                 if (evt.type === 'progress') {
                                     const p = evt.data || {};
-                                    // Use actual max requested, not per-location total
-                                    const maxRequested = parseInt(document.getElementById('maxCompanies')?.value || '50') || 50;
-                                    const companiesFound = p.companies_found || companies.length || 0;
-                                    const actualPct = maxRequested > 0 ? Math.round((companiesFound / maxRequested) * 100) : 0;
-                                    const pct = Math.min(actualPct, 100); // Cap at 100%
+                                    const maxRequested = getMaxCompanies();
+                                    const companiesFound = p.companies_found ?? companies.length;
+                                    const pct = Math.min(maxRequested > 0 ? Math.round((companiesFound / maxRequested) * 100) : 0, 100);
                                     document.getElementById('progressFill').style.width = pct + '%';
                                     document.getElementById('progressPercent').textContent = pct + '%';
                                     document.getElementById('progressText').textContent = p.message || 'Searching...';
                                     document.getElementById('progressStatus').textContent = `Found ${companiesFound} companies`;
                                 }
                                 
-                                // Handle company updates immediately (lazy loading - no waiting!)
                                 if (evt.type === 'company_update') {
                                     const company = evt.data;
-                                    const progress = evt.progress || {};
+                                    if (isDuplicateCompany(company, companies)) continue;
                                     
-                                    // Check for duplicates before adding (robust duplicate detection)
-                                    const companyId = company.place_id || `${(company.company_name || '').trim()}_${(company.address || '').trim()}`;
-                                    const isDuplicate = companies.some(c => {
-                                        const cId = c.place_id || `${(c.company_name || '').trim()}_${(c.address || '').trim()}`;
-                                        // Also check if company names are very similar (fuzzy match)
-                                        if (cId === companyId) return true;
-                                        // Check if same name and similar address
-                                        if (company.company_name && c.company_name) {
-                                            const name1 = (company.company_name || '').trim().toLowerCase();
-                                            const name2 = (c.company_name || '').trim().toLowerCase();
-                                            if (name1 === name2 && company.address && c.address) {
-                                                const addr1 = (company.address || '').trim().toLowerCase();
-                                                const addr2 = (c.address || '').trim().toLowerCase();
-                                                // If names match and addresses are very similar, consider duplicate
-                                                if (addr1 === addr2 || addr1.includes(addr2.substring(0, 20)) || addr2.includes(addr1.substring(0, 20))) {
-                                                    return true;
-                                                }
-                                            }
-                                        }
-                                        return false;
-                                    });
+                                    companies.push(company);
+                                    if (resultsCard && resultsCard.style.display === 'none') resultsCard.style.display = 'block';
+                                    debouncedRenderCompanies();
                                     
-                                    if (!isDuplicate) {
-                                        // Add company to array immediately
-                                        companies.push(company);
-                                        
-                                        console.log(`✅ Company ${companies.length} received: ${company.company_name || 'Unknown'}`);
-                                        
-                                        // Show results card if hidden
-                                        if (resultsCard && resultsCard.style.display === 'none') {
-                                            resultsCard.style.display = 'block';
-                                        }
-                                        
-                                        // Render companies immediately (lazy loading)
-                                        renderCompanies();
-                                        
-                                        // Update progress - use actual companies found vs requested max
-                                        // Don't use progress.total from backend (it's per-location, not total)
-                                        const maxRequested = parseInt(document.getElementById('maxCompanies')?.value || '50') || 50;
-                                        const actualPct = maxRequested > 0 ? Math.round((companies.length / maxRequested) * 100) : 0;
-                                        // Cap at 100% if we got more than requested
-                                        const pct = Math.min(actualPct, 100);
-                                        document.getElementById('progressFill').style.width = pct + '%';
-                                        document.getElementById('progressPercent').textContent = pct + '%';
-                                        document.getElementById('progressText').textContent = `Found: ${company.company_name || 'Company'}... (${companies.length}/${maxRequested})`;
-                                        document.getElementById('progressStatus').textContent = `Found ${companies.length} companies`;
-                                        
-                                        // Scroll to show new company (only for first few)
-                                        if (companies.length <= 3) {
-                                            setTimeout(() => {
-                                                resultsCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                            }, 100);
-                                        }
-                                    } else {
-                                        console.log(`⚠️ Duplicate company skipped: ${company.company_name || 'Unknown'} (ID: ${companyId})`);
-                                    }
+                                    const maxRequested = getMaxCompanies();
+                                    const pct = Math.min(maxRequested > 0 ? Math.round((companies.length / maxRequested) * 100) : 0, 100);
+                                    document.getElementById('progressFill').style.width = pct + '%';
+                                    document.getElementById('progressPercent').textContent = pct + '%';
+                                    document.getElementById('progressText').textContent = `Found: ${(company.company_name || 'Company').slice(0, 30)}... (${companies.length}/${maxRequested})`;
+                                    document.getElementById('progressStatus').textContent = `Found ${companies.length} companies`;
+                                    if (companies.length <= 3) setTimeout(() => resultsCard?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
                                 }
                                 
                                 if (evt.type === 'complete') {
                                     try {
-                                        // Companies were already added progressively, but limit to max requested
-                                        const maxRequested = parseInt(document.getElementById('maxCompanies')?.value || '50') || 50;
-                                        
-                                        // Limit companies to max requested (remove excess)
-                                        if (companies.length > maxRequested) {
-                                            console.log(`⚠️ Limiting companies from ${companies.length} to ${maxRequested}`);
-                                            companies = companies.slice(0, maxRequested);
-                                        }
+                                        const maxRequested = getMaxCompanies();
+                                        if (companies.length > maxRequested) companies = companies.slice(0, maxRequested);
                                         
                                         const saveFailed = evt.data?.save_failed || false;
                                         const message = evt.data?.message || '';
-                                        
-                                        console.log('✅ Search complete:', {
-                                            companiesFound: companies.length,
-                                            maxRequested: maxRequested,
-                                            saveFailed: saveFailed,
-                                            message: message
-                                        });
                                         
                                         // Always close the modal first
                                         progressModal.classList.remove('open');
@@ -1875,31 +1857,10 @@
                                             loadProjects();
                                         }, 500);
                                         
-                                        // Update save button based on save status
-                                        const saveBtn = document.getElementById('saveProjectBtn');
-                                        if (saveBtn) {
-                                            if (saveFailed) {
-                                                // Save failed - show error and enable save button
-                                                saveBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Save Failed - Click to Retry';
-                                                saveBtn.classList.remove('btn-success', 'btn-primary');
-                                                saveBtn.classList.add('btn-danger');
-                                                saveBtn.disabled = false;
-                                                if (message) {
-                                                    showUserFriendlyError(message);
-                                                } else {
-                                                    showUserFriendlyError('Save failed. Please click Save button to retry.');
-                                                }
-                                            } else {
-                                                // Save succeeded
-                                                saveBtn.innerHTML = '<i class="fas fa-check"></i> Saved!';
-                                                saveBtn.classList.remove('btn-success', 'btn-danger');
-                                                saveBtn.classList.add('btn-primary');
-                                                setTimeout(() => {
-                                                    saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Campaign';
-                                                    saveBtn.classList.remove('btn-primary');
-                                                    saveBtn.classList.add('btn-success');
-                                                }, 3000);
-                                            }
+                                        if (saveFailed && message) {
+                                            showUserFriendlyError(message);
+                                        } else if (saveFailed) {
+                                            showUserFriendlyError('Save failed. Please try the search again.');
                                         }
                                         
                                         if (message && !saveFailed) {
@@ -1910,41 +1871,33 @@
                                             }
                                         }
                                     } catch (completeErr) {
-                                        console.error('Error handling complete event:', completeErr);
-                                        // Force close modal even if there's an error
                                         progressModal.classList.remove('open');
                                         showUserFriendlyError('Error processing results. Please refresh and try again.');
                                     }
                                 }
                                 
                                 if (evt.type === 'error') {
-                                    const errorMsg = evt.data?.error || 'Search failed';
-                                    console.error('❌ Search error received:', errorMsg);
                                     progressModal.classList.remove('open');
-                                    showUserFriendlyError(errorMsg);
-                                    throw new Error(errorMsg);
+                                    showUserFriendlyError(evt.data?.error || 'Search failed');
+                                    throw new Error(evt.data?.error || 'Search failed');
                                 }
                             } catch (parseErr) {
-                                console.error('Parse error:', parseErr);
-                                // Make sure modal closes even on parse error
                                 progressModal.classList.remove('open');
-                                if (parseErr.message && !parseErr.message.includes('logger')) {
-                                    showUserFriendlyError('Error parsing response: ' + parseErr.message);
-                                }
+                                if (parseErr.message && !parseErr.message.includes('logger')) showUserFriendlyError('Error parsing response.');
                             }
                         }
                     }
                 }
             } catch (err) {
                 progressModal.classList.remove('open');
-                const errorMsg = formatErrorMessage(err);
-                showUserFriendlyError(errorMsg);
-                console.error('Search error:', err);
+                showUserFriendlyError(formatErrorMessage(err));
+            } finally {
+                if (searchBtn) searchBtn.disabled = false;
             }
         });
         
         // Select All
-        document.getElementById('selectAllBtn').addEventListener('click', function() {
+        (document.getElementById('selectAllBtn'))?.addEventListener('click', function() {
             const allSelected = selectedIds.size === companies.length;
             selectedIds.clear();
             
@@ -1960,7 +1913,7 @@
         });
         
         // Export
-        document.getElementById('exportBtn').addEventListener('click', async function() {
+        (document.getElementById('exportBtn'))?.addEventListener('click', async function() {
             if (!companies.length) return;
             
             this.disabled = true;
@@ -1981,7 +1934,7 @@
                 a.click();
                 URL.revokeObjectURL(url);
             } catch (e) {
-                alert('Export failed: ' + e.message);
+                showUserFriendlyError('Export failed: ' + e.message);
             } finally {
                 this.disabled = false;
                 this.innerHTML = '<i class="fas fa-file-excel"></i> Export';
@@ -1989,20 +1942,20 @@
         });
         
         // Delete
-        document.getElementById('deleteBtn').addEventListener('click', async function() {
+        (document.getElementById('deleteBtn'))?.addEventListener('click', async function() {
             if (!selectedIds.size) return;
-            if (!confirm(`Delete ${selectedIds.size} selected company(s)?`)) return;
+            if (!confirm(`Move ${selectedIds.size} selected company(s) out of this main list?\n\nThey will be kept in the database and treated as excluded for this campaign.`)) return;
             
             this.disabled = true;
             this.innerHTML = '<i class="fas fa-spinner spinner"></i> Deleting...';
             
             try {
-                await fetch('/api/level1/delete-companies', {
+                await fetch('/api/level2/delete-companies', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         project_name: currentProject,
-                        identifiers: Array.from(selectedIds)
+                        place_ids: Array.from(selectedIds)
                     })
                 });
                 
@@ -2011,14 +1964,14 @@
                 renderCompanies();
                 updateDeleteBtn();
             } catch (e) {
-                alert('Delete failed: ' + e.message);
+                showUserFriendlyError('Delete failed: ' + e.message);
             } finally {
                 this.disabled = false;
             }
         });
         
         // Next Step
-        document.getElementById('nextBtn').addEventListener('click', async function() {
+        (document.getElementById('nextBtn'))?.addEventListener('click', async function() {
             if (!selectedIds.size) {
                 companies.forEach(c => selectedIds.add(c.place_id || c.company_name));
             }
@@ -2038,7 +1991,7 @@
                 
                 window.location.href = '/level2?project=' + encodeURIComponent(currentProject);
             } catch (e) {
-                alert('Failed to save selection: ' + e.message);
+                showUserFriendlyError('Failed to save selection: ' + e.message);
                 this.disabled = false;
                 this.innerHTML = 'Next: Get Contacts <i class="fas fa-arrow-right"></i>';
             }

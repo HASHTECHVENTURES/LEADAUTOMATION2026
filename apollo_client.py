@@ -2,9 +2,34 @@ import requests
 import time
 import json
 import re
+import logging
 from typing import List, Dict, Optional
 from config import Config
-# Web scraper removed - using Apollo.io only
+
+logger = logging.getLogger(__name__)
+
+# region agent log helper
+def _agent_debug_log(hypothesis_id: str, location: str, message: str, data: Dict):
+    """
+    Lightweight NDJSON logger for debugging Apollo credit usage vs data returned.
+    Writes to the dedicated debug log file for this session.
+    """
+    try:
+        payload = {
+            "sessionId": "b341be",
+            "runId": "initial",
+            "hypothesisId": hypothesis_id,
+            "location": location,
+            "message": message,
+            "data": data or {},
+            "timestamp": int(time.time() * 1000),
+        }
+        with open("/Users/sujalpatel/Documents/lead Automation /.cursor/debug-b341be.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except Exception:
+        # Never let debug logging break the main flow
+        pass
+# endregion
 
 class ApolloClient:
     def __init__(self, api_key: str = None):
@@ -19,26 +44,56 @@ class ApolloClient:
         # Web scraper removed
         self._list_cache = {}
 
+        # region agent log
+        _agent_debug_log(
+            hypothesis_id="INIT",
+            location="apollo_client.py:__init__",
+            message="apollo_client_initialized",
+            data={
+                "has_api_key": bool(self.api_key),
+                "base_url": self.base_url,
+                "api_search_base": self.api_search_base,
+            },
+        )
+        # endregion
+
     def _normalize_domain(self, d: str) -> str:
         if not d:
             return ''
         d = (d or '').strip().lower().replace('www.', '').split('/')[0].split('?')[0]
         return d
 
+    def _email_domain_matches(self, email: str, company_domain: str) -> bool:
+        """Return True if email is at company_domain or a subdomain (e.g. mail.company.com)."""
+        if not email or '@' not in email or not company_domain:
+            return False
+        email_domain = email.split('@', 1)[1].strip().lower()
+        company_clean = self._normalize_domain(company_domain)
+        if not company_clean:
+            return False
+        return email_domain == company_clean or email_domain.endswith('.' + company_clean)
+
     def _person_org_matches_domain(self, person: Dict, domain: str) -> bool:
-        """Return True only if the person's organization primary_domain matches the search domain."""
+        """Return True if the person's organization primary_domain matches the search domain,
+        or if org data is missing (api_search free tier often omits it — trust Apollo's match)."""
         if not domain:
             return True
         org = person.get('organization') or {}
         org_domain = (org.get('primary_domain') or '').strip().lower()
+        if not org_domain:
+            return True
         return self._normalize_domain(org_domain) == self._normalize_domain(domain)
 
     def _person_org_matches_company_name(self, person: Dict, company_name: str) -> bool:
-        """Return True only if the person's organization name matches the search company (flexible match)."""
+        """Return True only if the person's organization name matches the search company (strict match).
+        Requires the first significant token of our company name to appear in Apollo's org name
+        so we don't match unrelated companies (e.g. 'Solutions India' for 'Natech Solutions')."""
         if not company_name:
             return True
         org = person.get('organization') or {}
         org_name = (org.get('name') or '').strip().lower()
+        if not org_name:
+            return False  # No org in response = cannot verify, reject to avoid wrong contacts
         # Normalize: remove common suffixes for comparison
         def key_part(name):
             s = (name or '').lower().strip()
@@ -47,10 +102,15 @@ class ApolloClient:
             return re.sub(r'\s+', ' ', s).strip()
         want = key_part(company_name)
         got = key_part(org_name)
-        if not want or not got:
-            return bool(want == got)
-        # Match if either contains the other (e.g. "natech solutions" in "natech solutions (india) pvt ltd")
-        return want in got or got in want or want[:15] in got or got[:15] in want
+        if not want:
+            return False
+        # Require first significant token of search company to appear in org name (e.g. "natech" for "Natech Solutions")
+        want_tokens = [t for t in want.split() if len(t) > 1]
+        first_token = want_tokens[0] if want_tokens else want.split()[0][:10]
+        if first_token and first_token not in got:
+            return False
+        # Then require meaningful overlap: either full want in got, or got in want (same company, different wording)
+        return want in got or got in want or (len(want) >= 6 and want[:15] in got) or (len(got) >= 6 and got[:15] in want)
 
     def create_contact(self, contact: Dict) -> Dict:
         """
@@ -127,7 +187,7 @@ class ApolloClient:
                         'modality': f.get('modality', '')
                     })
         except Exception as e:
-            print(f"get_contact_custom_fields error: {e}")
+            logger.error(f"get_contact_custom_fields error: {e}")
         return out
 
     def find_contact_by_email(self, email: str) -> Dict:
@@ -326,17 +386,17 @@ class ApolloClient:
             # Stop immediately after first successful response (even if no employee data found)
             for payload in payloads_to_try[:1]:  # ONLY TRY FIRST PAYLOAD - SAVES CREDITS!
                 try:
-                    print(f"🔍 Getting employee count for: {company_name} (1 API call only to save credits)")
+                    logger.info(f"Getting employee count for: {company_name} (1 API call only to save credits)")
                     resp = requests.post(org_url, json=payload, headers=self.headers, timeout=10)
-                    print(f"   Apollo response status: {resp.status_code}")
+                    logger.info(f"Apollo response status: {resp.status_code}")
                     
                     if resp.status_code != 200:
-                        print(f"   ❌ Failed with status {resp.status_code}")
+                        logger.error(f"Failed with status {resp.status_code}")
                         break  # Stop trying - don't waste more credits
                     
                     data = resp.json() or {}
                     orgs = data.get('organizations', []) or []
-                    print(f"   Found {len(orgs)} organization(s) in Apollo")
+                    logger.info(f"Found {len(orgs)} organization(s) in Apollo")
                     
                     if not orgs:
                         break  # No orgs found - stop trying
@@ -344,17 +404,17 @@ class ApolloClient:
                     org = orgs[0]
                     emp = self._extract_employee_count(org)
                     if emp:
-                        print(f"   ✅ Found employee count: {emp} (1 API call used)")
+                        logger.info(f"Found employee count: {emp} (1 API call used)")
                         return emp
                     else:
-                        print(f"   ⚠️ No employee count found in org data (1 API call used)")
+                        logger.warning(f"No employee count found in org data (1 API call used)")
                         break  # Stop - don't try more payloads
                 except Exception as e:
-                    print(f"   ❌ Exception: {str(e)}")
+                    logger.error(f"Exception: {str(e)}")
                     break  # Stop on error - don't waste more credits
 
         except Exception as e:
-            print(f"Error getting company total employees from Apollo: {str(e)}")
+            logger.error(f"Error getting company total employees from Apollo: {str(e)}")
 
         return ''
 
@@ -397,11 +457,10 @@ class ApolloClient:
                 # REMOVED: 'person_seniorities': seniorities,  # Too strict - filter locally instead
                 'include_similar_titles': True,  # Get more results from Apollo
                 'page': 1,
-                'per_page': 100  # Get MORE results
+                'per_page': getattr(Config, 'APOLLO_API_SEARCH_PER_PAGE', 100)
             }
             # DEBUG: Log what we're sending to Apollo
-            print(f"    🔍 DEBUG: Sending to Apollo (NO title/seniority filters) - domain: {domain}")
-            print(f"    🔍 DEBUG: Will filter locally for titles: {titles[:5] if titles else 'None'}")
+            logger.debug(f"api_search domain={domain}")
 
             # Retry logic: Try up to 3 times with exponential backoff
             max_retries = 3
@@ -417,48 +476,65 @@ class ApolloClient:
                     
                     if response.status_code == 200:
                         break  # Success, exit retry loop
+                    elif response.status_code in (400, 401, 403, 404):
+                        logger.error(f"Non-retryable error ({response.status_code}), stopping")
+                        break
                     elif response.status_code == 429:  # Rate limit
                         wait_time = (2 ** attempt) * 2  # Exponential backoff: 2s, 4s, 8s
-                        print(f"    ⚠️  Rate limited (429), waiting {wait_time}s before retry {attempt + 1}/{max_retries}...")
+                        logger.warning(f"Rate limited (429), waiting {wait_time}s before retry {attempt + 1}/{max_retries}...")
                         time.sleep(wait_time)
                         continue
-                    else:
+                    elif response.status_code >= 500:
                         if attempt < max_retries - 1:
                             wait_time = (2 ** attempt) * 1  # Exponential backoff: 1s, 2s, 4s
-                            print(f"    ⚠️  API error (status {response.status_code}), retrying in {wait_time}s...")
+                            logger.warning(f"Server error (status {response.status_code}), retrying in {wait_time}s...")
                             time.sleep(wait_time)
                             continue
+                    else:
+                        logger.warning(f"Unexpected status {response.status_code}, not retrying")
+                        break
                 except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
                     if attempt < max_retries - 1:
                         wait_time = (2 ** attempt) * 2  # Exponential backoff: 2s, 4s, 8s
-                        print(f"    ⚠️  Network error ({str(e)}), retrying in {wait_time}s...")
+                        logger.warning(f"Network error ({str(e)}), retrying in {wait_time}s...")
                         time.sleep(wait_time)
                         continue
                     else:
-                        print(f"    ❌ Network error after {max_retries} attempts: {str(e)}")
+                        logger.error(f"Network error after {max_retries} attempts: {str(e)}")
                         raise
             
             if not response:
-                print(f"    ❌ Apollo api_search failed: No response after {max_retries} attempts")
+                logger.error(f"Apollo api_search failed: No response after {max_retries} attempts")
+                # region agent log
+                _agent_debug_log(
+                    hypothesis_id="A",
+                    location="apollo_client.py:search_people_api_search",
+                    message="api_search_no_response",
+                    data={
+                        "domain": domain,
+                        "status": None,
+                        "attempts": max_retries,
+                    },
+                )
+                # endregion
                 return people
             
-            print(f"    Apollo api_search response status: {response.status_code}")
+            logger.debug(f"api_search status: {response.status_code}")
             
             if response.status_code == 200:
                 data = response.json()
                 persons = data.get('people', [])
-                print(f"    📊 Apollo api_search found {len(persons)} people (before filtering and enrichment)")
+                logger.debug(f"api_search found {len(persons)} people before filter")
                 # CRITICAL: Keep only people whose organization actually matches this domain (fix wrong data mix-up)
                 before_org = len(persons)
                 persons = [p for p in persons if self._person_org_matches_domain(p, domain)]
                 if before_org != len(persons):
-                    print(f"    ✅ Org validation: kept {len(persons)} contacts that match domain {domain} (removed {before_org - len(persons)} from other orgs)")
+                    logger.info(f"Org validation: kept {len(persons)} contacts that match domain {domain} (removed {before_org - len(persons)} from other orgs)")
                 
                 # DEBUG: Show sample titles from Apollo to understand what we're getting
                 if persons and len(persons) > 0:
                     sample_titles = [p.get('title', 'No Title') for p in persons[:5]]
-                    print(f"    🔍 Sample titles from Apollo: {sample_titles}")
-                    print(f"    🔍 User searching for titles: {titles[:5] if titles else 'None'}")
+                    logger.debug(f"Sample titles: {sample_titles}")
                 
                 # CRITICAL: Filter by titles BEFORE enrichment to save API credits!
                 # Use smart matching: user's exact input matches various title formats
@@ -469,22 +545,20 @@ class ApolloClient:
                     filtered_persons = []
                     for p in persons:
                         person_title = (p.get('title') or '').lower().strip()
-                        # Skip if title is empty or generic employee title
-                        if not person_title or person_title in excluded_titles:
+                        # KEEP people with empty/missing titles (api_search free tier often omits titles)
+                        if not person_title:
+                            filtered_persons.append(p)
                             continue
-                        # SIMPLE FLEXIBLE MATCHING: If person title contains ANY user title, it matches
-                        # This ensures we don't filter out valid contacts
+                        if person_title in excluded_titles:
+                            continue
                         matches = False
                         for user_title in user_titles_lower:
-                            # Simple check: Does person title contain user title anywhere?
                             if user_title in person_title:
                                 matches = True
                                 break
-                            # Also check as word boundary
                             if re.search(r'\b' + re.escape(user_title) + r'\b', person_title):
                                 matches = True
                                 break
-                            # Special cases for acronyms
                             if user_title == 'hr' and 'human resources' in person_title:
                                 matches = True
                                 break
@@ -504,60 +578,109 @@ class ApolloClient:
                                 matches = True
                                 break
                         
-                        # Only exclude if it's EXACTLY an excluded title (not if it contains it)
                         if matches and person_title not in excluded_titles:
                             filtered_persons.append(p)
                     
                     original_count = len(persons)
                     persons = filtered_persons
                     if original_count != len(persons):
-                        print(f"    💰 FILTERED: {original_count} → {len(persons)} contacts (saved {original_count - len(persons)} enrichment credits!)")
-                        # DEBUG: Show why contacts were filtered out
+                        logger.info(f"FILTERED: {original_count} -> {len(persons)} contacts (saved {original_count - len(persons)} enrichment credits!)")
                         if original_count > 0 and len(persons) == 0:
-                            print(f"    ⚠️  DEBUG: All {original_count} contacts were filtered out!")
-                            print(f"    ⚠️  DEBUG: User titles: {user_titles_lower}")
-                            print(f"    ⚠️  DEBUG: Sample filtered titles: {[(p.get('title', 'No Title'), p.get('name', 'No Name')) for p in data.get('people', [])[:3]]}")
+                            logger.warning(f"All {original_count} contacts were filtered out!")
+                            logger.warning(f"User titles: {user_titles_lower}")
+                            logger.warning(f"Sample filtered titles: {[(p.get('title', 'No Title'), p.get('name', 'No Name')) for p in data.get('people', [])[:3]]}")
                     elif original_count == 0:
-                        print(f"    ⚠️  DEBUG: Apollo returned 0 contacts - check if company exists in Apollo database")
+                        logger.warning(f"Apollo returned 0 contacts - check if company exists in Apollo database")
                 
                 # Check if phone numbers are in the search results directly (sometimes they are!)
                 for p in persons[:3]:  # Check first 3
                     if p.get('phone_numbers'):
-                        print(f"    📞 Found phone_numbers in search result for {p.get('first_name')}: {p.get('phone_numbers')}")
+                        logger.debug(f"Found phone_numbers in search result for {p.get('first_name')}: {p.get('phone_numbers')}")
                 
                 # CRITICAL: Only enrich if we have contacts after filtering (saves credits!)
                 # If filtering removed all contacts, skip enrichment completely
                 if not persons or len(persons) == 0:
-                    print(f"    ⚠️  No contacts found after filtering - SKIPPING enrichment (saved credits!)")
-                    print(f"    💰 CREDIT USAGE: 0 credits (no contacts to enrich)")
+                    logger.warning(f"No contacts found after filtering - SKIPPING enrichment (saved credits!)")
+                    logger.info(f"CREDIT USAGE: 0 credits (no contacts to enrich)")
+                    # region agent log
+                    _agent_debug_log(
+                        hypothesis_id="A",
+                        location="apollo_client.py:search_people_api_search",
+                        message="api_search_zero_after_filter",
+                        data={
+                            "domain": domain,
+                            "titles": titles or [],
+                            "initial_count": before_org,
+                            "final_count": 0,
+                        },
+                    )
+                    # endregion
                     return people
                 
                 # Extract person IDs AND organization domains for validation
                 # NOW only extracting IDs for filtered contacts (saves credits!)
                 person_data_list = [(p.get('id'), p.get('organization', {}).get('primary_domain', '')) 
                                    for p in persons if p.get('id')]
-                print(f"    📋 Extracted {len(person_data_list)} person IDs for enrichment (AFTER filtering)")
+                logger.info(f"Extracted {len(person_data_list)} person IDs for enrichment (AFTER filtering)")
                 
                 # CRITICAL: Only enrich if we have person IDs (prevents wasting credits on empty results)
                 if person_data_list and len(person_data_list) > 0:
-                    print(f"    🔄 Enriching {len(person_data_list)} people to get emails in parallel...")
-                    print(f"    💰 CREDIT USAGE: Will use ~{len(person_data_list)} credits for enrichment")
+                    logger.info(f"Enriching {len(person_data_list)} people to get emails in parallel...")
+                    logger.info(f"CREDIT USAGE: Will use ~{len(person_data_list)} credits for enrichment")
                     # Enrich to get emails only (costs credits) and validate company
                     # Phone numbers not requested - reveal in Apollo.io dashboard to save credits
                     # Use parallel enrichment for faster processing
                     enriched_people = self.enrich_people_with_validation_parallel([pid for pid, _ in person_data_list], domain)
-                    print(f"    ✅ Enrichment returned {len(enriched_people)} contacts with emails (validated for {domain})")
-                    print(f"    💰 CREDIT USAGE: Used ~{len(enriched_people)} credits (enriched {len(enriched_people)} contacts)")
+                    logger.info(f"Enrichment returned {len(enriched_people)} contacts with emails (validated for {domain})")
+                    logger.info(f"CREDIT USAGE: Used ~{len(enriched_people)} credits (enriched {len(enriched_people)} contacts)")
+                    
+                    # CRITICAL: Keep only contacts whose email domain matches this company (fix wrong contacts from Apollo)
+                    # Keep contacts with no email; only drop when email is from another domain
+                    before_email_filter = len(enriched_people)
+                    def _keep_domain(p):
+                        email = (p.get('email') or '').strip()
+                        if not email:
+                            return True
+                        return self._email_domain_matches(email, domain)
+                    enriched_people = [p for p in enriched_people if _keep_domain(p)]
+                    if before_email_filter != len(enriched_people):
+                        logger.info(f"Email-domain filter: kept {len(enriched_people)} contacts @ {domain} (removed {before_email_filter - len(enriched_people)} from other domains)")
                     
                     # CRITICAL: If enrichment returned fewer contacts than requested, log the waste
                     if len(enriched_people) < len(person_data_list):
                         wasted = len(person_data_list) - len(enriched_people)
-                        print(f"    ⚠️  WARNING: {wasted} contacts were enriched but not returned (possible validation failure)")
+                        logger.warning(f"{wasted} contacts were enriched but not returned (possible validation failure)")
                     
                     people.extend(enriched_people)
+                    # region agent log
+                    _agent_debug_log(
+                        hypothesis_id="A",
+                        location="apollo_client.py:search_people_api_search",
+                        message="api_search_enriched",
+                        data={
+                            "domain": domain,
+                            "titles": titles or [],
+                            "filtered_person_count": len(persons),
+                            "person_ids_count": len(person_data_list),
+                            "enriched_count": len(enriched_people),
+                        },
+                    )
+                    # endregion
                 else:
-                    print(f"    ⚠️  No person IDs found after filtering - SKIPPING enrichment (saved credits!)")
-                    print(f"    💰 CREDIT USAGE: 0 credits (no person IDs to enrich)")
+                    logger.warning(f"No person IDs found after filtering - SKIPPING enrichment (saved credits!)")
+                    logger.info(f"CREDIT USAGE: 0 credits (no person IDs to enrich)")
+                    # region agent log
+                    _agent_debug_log(
+                        hypothesis_id="A",
+                        location="apollo_client.py:search_people_api_search",
+                        message="api_search_no_person_ids",
+                        data={
+                            "domain": domain,
+                            "titles": titles or [],
+                            "filtered_person_count": len(persons),
+                        },
+                    )
+                    # endregion
                     # If no IDs and no filtered persons, return empty (don't waste credits)
                     if not persons:
                         return people
@@ -577,17 +700,27 @@ class ApolloClient:
                         if person_data['name']:
                             people.append(person_data)
             else:
-                print(f"    ❌ Apollo api_search failed: Status {response.status_code}")
-                print(f"    Response: {response.text[:300]}")
+                logger.error(f"Apollo api_search failed: Status {response.status_code}")
+                logger.error(f"Response: {response.text[:300]}")
+                # region agent log
+                _agent_debug_log(
+                    hypothesis_id="C",
+                    location="apollo_client.py:search_people_api_search",
+                    message="api_search_http_error",
+                    data={
+                        "domain": domain,
+                        "status": response.status_code,
+                    },
+                )
+                # endregion
             
             time.sleep(0.5)  # Rate limiting
             
         except Exception as e:
-            print(f"❌ Error in api_search for domain {domain}: {str(e)}")
+            logger.error(f"Error in api_search for domain {domain}: {str(e)}")
             if hasattr(e, 'response') and e.response:
-                print(f"Response: {e.response.text[:200]}")
-            import traceback
-            traceback.print_exc()
+                logger.error(f"Response: {e.response.text[:200]}")
+            logger.exception("api_search traceback")
         
         # Less restrictive filtering - keep more contacts
         # Only filter out obvious non-relevant titles
@@ -597,19 +730,20 @@ class ApolloClient:
             title = (person.get('title') or '').lower()
             # Skip only if it's a clearly blocked title
             if any(blocked in title for blocked in blocked_titles):
-                print(f"    ⚠️ Filtered out: {person.get('name')} - Title: {person.get('title')} (blocked)")
+                logger.warning(f"Filtered out: {person.get('name')} - Title: {person.get('title')} (blocked)")
                 continue
             # Keep everyone else (we'll filter by email later if needed)
             filtered_people.append(person)
         
-        print(f"    ✅ After filtering: {len(filtered_people)} contacts (from {len(people)})")
+        logger.info(f"After filtering: {len(filtered_people)} contacts (from {len(people)})")
         return filtered_people
 
-    def search_people_api_search_by_org_name(self, company_name: str, titles: List[str] = None, seniorities: List[str] = None) -> List[Dict]:
+    def search_people_api_search_by_org_name(self, company_name: str, titles: List[str] = None, seniorities: List[str] = None, domain_for_filter: Optional[str] = None) -> List[Dict]:
         """
         FREE fallback for api_search: search by organization name instead of domain.
         Some companies return 0 people by domain but return people by org name.
         We keep Apollo-side filters OFF (no titles/seniorities) and filter locally.
+        If domain_for_filter is provided, only keep enriched contacts whose email is @ that domain.
         """
         if not company_name:
             return []
@@ -626,24 +760,23 @@ class ApolloClient:
                 'q_organization_names': [company_name],
                 'include_similar_titles': True,
                 'page': 1,
-                'per_page': 100
+                'per_page': getattr(Config, 'APOLLO_API_SEARCH_PER_PAGE', 100)
             }
-            print(f"    🔍 DEBUG: Sending to Apollo (NO title/seniority filters) - org_name: {company_name}")
-            print(f"    🔍 DEBUG: Will filter locally for titles: {titles[:5] if titles else 'None'}")
+            logger.debug(f"api_search org_name={company_name}")
 
             response = requests.post(url, json=base_payload, headers=self.headers, timeout=30)
-            print(f"    Apollo api_search(org_name) response status: {response.status_code}")
+            logger.debug(f"api_search(org_name) status: {response.status_code}")
             if response.status_code != 200:
                 return []
 
             data = response.json() or {}
             persons = data.get('people', []) or []
-            print(f"    📊 Apollo api_search(org_name) found {len(persons)} people (before filtering and enrichment)")
+            logger.debug(f"api_search(org_name) found {len(persons)} people")
             # CRITICAL: Keep only people whose organization actually matches this company (fix wrong data mix-up)
             before_org = len(persons)
             persons = [p for p in persons if self._person_org_matches_company_name(p, company_name)]
             if before_org != len(persons):
-                print(f"    ✅ Org validation: kept {len(persons)} contacts that match company (removed {before_org - len(persons)} from other orgs)")
+                logger.info(f"Org validation: kept {len(persons)} contacts that match company (removed {before_org - len(persons)} from other orgs)")
 
             # Apply the exact same local filtering + enrichment behavior as the domain-based function
             # by reusing its core logic with a minimal adaptation (we don't have a domain string here).
@@ -655,7 +788,11 @@ class ApolloClient:
                 filtered_persons = []
                 for p in persons:
                     person_title = (p.get('title') or '').lower().strip()
-                    if not person_title or person_title in excluded_titles:
+                    # KEEP people with empty/missing titles (api_search free tier often omits titles)
+                    if not person_title:
+                        filtered_persons.append(p)
+                        continue
+                    if person_title in excluded_titles:
                         continue
                     matches = False
                     for user_title in user_titles_lower:
@@ -689,22 +826,34 @@ class ApolloClient:
                 original_count = len(persons)
                 persons = filtered_persons
                 if original_count != len(persons):
-                    print(f"    💰 FILTERED: {original_count} → {len(persons)} contacts (saved {original_count - len(persons)} enrichment credits!)")
+                    logger.info(f"FILTERED: {original_count} -> {len(persons)} contacts (saved {original_count - len(persons)} enrichment credits!)")
 
             if not persons:
-                print(f"    ⚠️  No contacts found after filtering - SKIPPING enrichment (saved credits!)")
-                print(f"    💰 CREDIT USAGE: 0 credits (no contacts to enrich)")
+                logger.warning(f"No contacts found after filtering - SKIPPING enrichment (saved credits!)")
+                logger.info(f"CREDIT USAGE: 0 credits (no contacts to enrich)")
                 return []
 
             person_ids = [p.get('id') for p in persons if p.get('id')]
             if not person_ids:
-                print(f"    ⚠️  No person IDs found after filtering - SKIPPING enrichment (saved credits!)")
-                print(f"    💰 CREDIT USAGE: 0 credits (no person IDs to enrich)")
+                logger.warning(f"No person IDs found after filtering - SKIPPING enrichment (saved credits!)")
+                logger.info(f"CREDIT USAGE: 0 credits (no person IDs to enrich)")
                 return []
 
-            print(f"    🔄 Enriching {len(person_ids)} people to get emails in parallel...")
-            print(f"    💰 CREDIT USAGE: Will use ~{len(person_ids)} credits for enrichment")
+            logger.info(f"Enriching {len(person_ids)} people to get emails in parallel...")
+            logger.info(f"CREDIT USAGE: Will use ~{len(person_ids)} credits for enrichment")
             enriched_people = self.enrich_people_with_validation_parallel(person_ids, company_name)
+            # If we have domain (e.g. from website), keep only contacts whose email is @ that domain
+            # Keep contacts with no email; only drop when email is from another domain
+            if domain_for_filter:
+                before_f = len(enriched_people)
+                def _keep_org(p):
+                    email = (p.get('email') or '').strip()
+                    if not email:
+                        return True
+                    return self._email_domain_matches(email, domain_for_filter)
+                enriched_people = [p for p in enriched_people if _keep_org(p)]
+                if before_f != len(enriched_people):
+                    logger.info(f"Email-domain filter (org-name path): kept {len(enriched_people)} @ {domain_for_filter} (removed {before_f - len(enriched_people)} from other domains)")
             people.extend(enriched_people)
 
             # Apply the same post-filtering as domain-based function
@@ -716,13 +865,12 @@ class ApolloClient:
                     continue
                 filtered_people.append(person)
 
-            print(f"    ✅ After filtering: {len(filtered_people)} contacts (from {len(people)})")
+            logger.info(f"After filtering: {len(filtered_people)} contacts (from {len(people)})")
             return filtered_people
 
         except Exception as e:
-            print(f"❌ Error in api_search(org_name) for {company_name}: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error in api_search(org_name) for {company_name}: {str(e)}")
+            logger.exception("api_search(org_name) traceback")
 
         return []
     
@@ -738,17 +886,17 @@ class ApolloClient:
             return enriched
         
         # Use individual enrichment (more reliable)
-        print(f"    Enriching {len(person_ids)} people individually...")
-        # CRITICAL FIX: Increase limit to get MORE contacts (was 50, now 100)
-        for idx, person_id in enumerate(person_ids[:100], 1):
+        max_enrich = getattr(Config, 'APOLLO_MAX_CONTACTS_TO_ENRICH', 100)
+        logger.info(f"Enriching {len(person_ids)} people individually...")
+        for idx, person_id in enumerate(person_ids[:max_enrich], 1):
             try:
                 enriched_person = self.enrich_single_person(person_id)
                 if enriched_person:
                     enriched.append(enriched_person)
-                    print(f"    [{idx}/{min(len(person_ids), 20)}] Enriched: {enriched_person.get('name')} - {enriched_person.get('email')}")
+                    logger.info(f"[{idx}/{min(len(person_ids), 20)}] Enriched: {enriched_person.get('name')} - {enriched_person.get('email')}")
                 time.sleep(0.3)  # Rate limiting
             except Exception as e2:
-                print(f"    Failed to enrich person {person_id}: {str(e2)}")
+                logger.error(f"Failed to enrich person {person_id}: {str(e2)}")
                 continue
         
         return enriched
@@ -763,9 +911,9 @@ class ApolloClient:
         if not person_ids:
             return enriched
         
-        print(f"    Enriching {len(person_ids)} people with company validation (target: {target_domain})...")
-        # CRITICAL FIX: Increase limit to get MORE contacts (was 50, now 100)
-        for idx, person_id in enumerate(person_ids[:100], 1):
+        max_enrich = getattr(Config, 'APOLLO_MAX_CONTACTS_TO_ENRICH', 100)
+        logger.info(f"Enriching {len(person_ids)} people with company validation (target: {target_domain})...")
+        for idx, person_id in enumerate(person_ids[:max_enrich], 1):
             try:
                 enriched_person = self.enrich_single_person(person_id)
                 if enriched_person:
@@ -780,18 +928,18 @@ class ApolloClient:
                         # Check if email domain matches target domain
                         if target_clean in email_domain or email_domain in target_clean:
                             enriched.append(enriched_person)
-                            print(f"    ✅ [{idx}/{min(len(person_ids), 20)}] {enriched_person.get('name')} - {person_email} (VERIFIED)")
+                            logger.info(f"[{idx}/{min(len(person_ids), 20)}] {enriched_person.get('name')} - {person_email} (VERIFIED)")
                         else:
                             # Still include if email exists (domain might be different but person works there)
                             enriched.append(enriched_person)
-                            print(f"    ✅ [{idx}/{min(len(person_ids), 20)}] {enriched_person.get('name')} - {person_email} (domain mismatch but including)")
+                            logger.info(f"[{idx}/{min(len(person_ids), 20)}] {enriched_person.get('name')} - {person_email} (domain mismatch but including)")
                     else:
                         # No email - still include (might have LinkedIn)
                         enriched.append(enriched_person)
-                        print(f"    ⚠️  [{idx}/{min(len(person_ids), 20)}] {enriched_person.get('name')} - No email but including")
+                        logger.warning(f"[{idx}/{min(len(person_ids), 20)}] {enriched_person.get('name')} - No email but including")
                 time.sleep(0.3)
             except Exception as e2:
-                print(f"    Failed to enrich person {person_id}: {str(e2)}")
+                logger.error(f"Failed to enrich person {person_id}: {str(e2)}")
                 continue
         
         return enriched
@@ -806,16 +954,30 @@ class ApolloClient:
         
         # CRITICAL: Don't enrich if no person IDs provided (saves credits!)
         if not person_ids or len(person_ids) == 0:
-            print(f"    ⚠️  No person IDs provided - SKIPPING enrichment (saved credits!)")
+            logger.warning(f"No person IDs provided - SKIPPING enrichment (saved credits!)")
+            # region agent log
+            _agent_debug_log(
+                hypothesis_id="A",
+                location="apollo_client.py:enrich_people_with_validation_parallel",
+                message="no_person_ids_provided",
+                data={
+                    "target_domain": target_domain,
+                    "person_ids_count": 0,
+                },
+            )
+            # endregion
             return enriched
         
-        print(f"    Enriching {len(person_ids)} people in PARALLEL with company validation (target: {target_domain})...")
+        max_enrich = getattr(Config, 'APOLLO_MAX_CONTACTS_TO_ENRICH', 100)
+        max_workers = getattr(Config, 'APOLLO_ENRICH_PARALLEL_WORKERS', 5)
+        logger.info(f"Enriching {len(person_ids)} people in PARALLEL with company validation (target: {target_domain})...")
         
         import concurrent.futures
         
         def enrich_and_validate(person_id):
             """Enrich single person and validate - runs in parallel"""
             try:
+                time.sleep(0.1)
                 enriched_person = self.enrich_single_person(person_id)
                 if not enriched_person:
                     return None
@@ -827,26 +989,37 @@ class ApolloClient:
                 # We want MORE contacts, not fewer!
                 return enriched_person
             except Exception as e:
-                print(f"    Error enriching person {person_id}: {str(e)}")
+                logger.error(f"Error enriching person {person_id}: {str(e)}")
                 return None
         
-        # Process in parallel (5 workers to avoid rate limits)
-        # CRITICAL FIX: Increase limit to get MORE contacts (was 50, now 100)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            future_to_id = {executor.submit(enrich_and_validate, pid): pid for pid in person_ids[:100]}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_id = {executor.submit(enrich_and_validate, pid): pid for pid in person_ids[:max_enrich]}
             
             for future in concurrent.futures.as_completed(future_to_id):
                 result = future.result()
                 if result:
                     enriched.append(result)
         
-        print(f"    ✅ Parallel enrichment completed: {len(enriched)} contacts with emails")
-        print(f"    💰 CREDIT USAGE: Enriched {len(enriched)} contacts (used ~{len(enriched)} credits)")
+        logger.info(f"Parallel enrichment completed: {len(enriched)} contacts with emails")
+        logger.info(f"CREDIT USAGE: Enriched {len(enriched)} contacts (used ~{len(enriched)} credits)")
         
         # CRITICAL: Warn if we enriched but got fewer results (wasted credits)
         if len(enriched) < len(person_ids):
             wasted = len(person_ids) - len(enriched)
-            print(f"    ⚠️  WARNING: {wasted} contacts were enriched but not returned (wasted ~{wasted} credits)")
+            logger.warning(f"{wasted} contacts were enriched but not returned (wasted ~{wasted} credits)")
+        
+        # region agent log
+        _agent_debug_log(
+            hypothesis_id="A",
+            location="apollo_client.py:enrich_people_with_validation_parallel",
+            message="parallel_enrichment_completed",
+            data={
+                "target_domain": target_domain,
+                "person_ids_count": len(person_ids),
+                "enriched_count": len(enriched),
+            },
+        )
+        # endregion
         
         return enriched
     
@@ -868,17 +1041,40 @@ class ApolloClient:
             try:
                 response = requests.post(url, json=payload, headers=self.headers, timeout=10)
             except Exception as e:
-                print(f"    ⚠️  people/match request exception: {str(e)}")
+                logger.warning(f"people/match request exception: {str(e)}")
+                # region agent log
+                _agent_debug_log(
+                    hypothesis_id="E",
+                    location="apollo_client.py:enrich_single_person",
+                    message="people_match_network_exception",
+                    data={
+                        "person_id": person_id,
+                        "error": str(e),
+                    },
+                )
+                # endregion
             
             if response and response.status_code == 200:
                 data = response.json()
                 person = data.get('person', {})
+                email_val = person.get('email', '')
+                # region agent log
+                _agent_debug_log(
+                    hypothesis_id="E",
+                    location="apollo_client.py:enrich_single_person",
+                    message="people_match_success",
+                    data={
+                        "person_id": person_id,
+                        "has_email": bool(email_val),
+                    },
+                )
+                # endregion
                 if person:
                     return {
                         'name': f"{person.get('first_name', '')} {person.get('last_name', '')}".strip(),
                         'first_name': person.get('first_name', ''),
                         'last_name': person.get('last_name', ''),
-                        'email': person.get('email', ''),
+                        'email': email_val,
                         'phone': '',  # Phone numbers not requested - reveal in Apollo.io dashboard
                         'title': person.get('title', ''),
                         'linkedin_url': person.get('linkedin_url', ''),
@@ -890,32 +1086,44 @@ class ApolloClient:
                 error_status = response.status_code if response else None
                 error_text = response.text[:200] if response else "No response"
                 
+                # region agent log
+                _agent_debug_log(
+                    hypothesis_id="E",
+                    location="apollo_client.py:enrich_single_person",
+                    message="people_match_http_error",
+                    data={
+                        "person_id": person_id,
+                        "status": error_status,
+                    },
+                )
+                # endregion
+                
                 # Don't retry on authentication/authorization errors (waste credits)
                 if error_status in (401, 403):
-                    print(f"    ❌ Authentication/Authorization error (status {error_status}): {error_text}")
-                    print(f"    ⚠️  Check your Apollo.io API key - it may be invalid or expired")
+                    logger.error(f"Authentication/Authorization error (status {error_status}): {error_text}")
+                    logger.warning(f"Check your Apollo.io API key - it may be invalid or expired")
                     return None
                 
                 # Don't retry on rate limit (429) - wait instead
                 if error_status == 429:
-                    print(f"    ⚠️  Rate limit exceeded (429): {error_text}")
-                    print(f"    ⚠️  Apollo.io API rate limit reached - please wait before trying again")
+                    logger.warning(f"Rate limit exceeded (429): {error_text}")
+                    logger.warning(f"Apollo.io API rate limit reached - please wait before trying again")
                     return None
                 
                 # Don't retry on 404 (person not found)
                 if error_status == 404:
-                    print(f"    ⚠️  Person not found (404): Person ID {person_id} doesn't exist")
+                    logger.warning(f"Person not found (404): Person ID {person_id} doesn't exist")
                     return None
                 
                 # Only retry on network/timeout errors, not API errors
                 if response:
-                    print(f"    ⚠️  people/match failed (status {error_status}): {error_text}")
-                    print(f"    ⚠️  Not retrying to avoid wasting credits - check API status")
+                    logger.warning(f"people/match failed (status {error_status}): {error_text}")
+                    logger.warning(f"Not retrying to avoid wasting credits - check API status")
                     return None
                 else:
-                    print(f"    ⚠️  people/match failed: No response received (network error)")
+                    logger.warning(f"people/match failed: No response received (network error)")
                     # Only retry on network errors, not API errors
-                    print(f"    ⚠️  Retrying with GET method (network error only)...")
+                    logger.warning(f"Retrying with GET method (network error only)...")
                 
                 # METHOD 2: Only retry on network errors, not API errors
                 url2 = f"{self.base_url}/people/{person_id}"
@@ -925,17 +1133,40 @@ class ApolloClient:
                 try:
                     response2 = requests.get(url2, headers=self.headers, params=params, timeout=10)
                 except Exception as e:
-                    print(f"    ⚠️  GET /people/{person_id} request exception: {str(e)}")
+                    logger.warning(f"GET /people/{person_id} request exception: {str(e)}")
+                    # region agent log
+                    _agent_debug_log(
+                        hypothesis_id="E",
+                        location="apollo_client.py:enrich_single_person",
+                        message="people_get_network_exception",
+                        data={
+                            "person_id": person_id,
+                            "error": str(e),
+                        },
+                    )
+                    # endregion
                     return None  # Network error - don't waste more credits
                 
                 if response2 and response2.status_code == 200:
                     person = response2.json().get('person', {})
+                    email_val2 = person.get('email', '')
+                    # region agent log
+                    _agent_debug_log(
+                        hypothesis_id="E",
+                        location="apollo_client.py:enrich_single_person",
+                        message="people_get_success",
+                        data={
+                            "person_id": person_id,
+                            "has_email": bool(email_val2),
+                        },
+                    )
+                    # endregion
                     if person:
                         return {
                             'name': f"{person.get('first_name', '')} {person.get('last_name', '')}".strip(),
                             'first_name': person.get('first_name', ''),
                             'last_name': person.get('last_name', ''),
-                            'email': person.get('email', ''),
+                            'email': email_val2,
                             'phone': '',  # Phone numbers not requested - reveal in Apollo.io dashboard
                             'title': person.get('title', ''),
                             'linkedin_url': person.get('linkedin_url', ''),
@@ -944,14 +1175,24 @@ class ApolloClient:
                         }
                 else:
                     error_status2 = response2.status_code if response2 else None
-                    print(f"    ❌ GET /people/{person_id} also failed: {error_status2 if response2 else 'No response'}")
+                    logger.error(f"GET /people/{person_id} also failed: {error_status2 if response2 else 'No response'}")
                     if response2:
-                        print(f"    Response: {response2.text[:300]}")
+                        logger.error(f"Response: {response2.text[:300]}")
                     return None  # Don't waste more credits
         except Exception as e:
-            print(f"    ❌ Error enriching person {person_id}: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error enriching person {person_id}: {str(e)}")
+            logger.exception("enrich_single_person traceback")
+            # region agent log
+            _agent_debug_log(
+                hypothesis_id="E",
+                location="apollo_client.py:enrich_single_person",
+                message="enrich_single_person_exception",
+                data={
+                    "person_id": person_id,
+                    "error": str(e),
+                },
+            )
+            # endregion
         
         return None
     
@@ -985,7 +1226,7 @@ class ApolloClient:
                 base_payload = {
                     'organization_domains': [domain],
                     'page': 1,
-                    'per_page': 25
+                    'per_page': getattr(Config, 'APOLLO_MIXED_PEOPLE_SEARCH_PER_PAGE', 25)
                 }
                 response = requests.post(url, json=base_payload, headers=self.headers)
                 if response.status_code == 200:
@@ -1004,7 +1245,7 @@ class ApolloClient:
                         })
                 time.sleep(0.5)
             except Exception as e:
-                print(f"Error searching without title filter: {str(e)}")
+                logger.error(f"Error searching without title filter: {str(e)}")
             return people
         
         for title in titles:
@@ -1015,7 +1256,7 @@ class ApolloClient:
                     'organization_domains': [domain],
                     'person_titles': [title],
                     'page': 1,
-                    'per_page': 5
+                    'per_page': getattr(Config, 'APOLLO_MIXED_PEOPLE_SEARCH_PER_TITLE_PER_PAGE', 5)
                 }
 
                 payload = self._add_current_employee_filter(base_payload)
@@ -1049,7 +1290,7 @@ class ApolloClient:
                 time.sleep(0.5)  # Rate limiting
                 
             except Exception as e:
-                print(f"Error searching Apollo by domain for {title}: {str(e)}")
+                logger.error(f"Error searching Apollo by domain for {title}: {str(e)}")
                 continue
         
         return people
@@ -1083,19 +1324,30 @@ class ApolloClient:
                     org = organizations[0]
                     org_id = org.get('id')
                     org_domain = org.get('website_url', '')
+                    org_name = (org.get('name') or '').strip()
+                    
+                    # Validate that Apollo returned the RIGHT company (not google.com for "TCS")
+                    if not self._person_org_matches_company_name({'organization': org}, company_name):
+                        logger.warning(f"Apollo org search returned '{org_name}' for '{company_name}' - name mismatch, skipping to save credits")
+                        org_domain = ''
+                        org_id = None
                     
                     if org_domain:
                         domain = self.extract_domain(org_domain)
+                        # Reject obviously wrong generic domains
+                        generic_domains = {'google.com', 'facebook.com', 'linkedin.com', 'twitter.com', 'youtube.com', 'instagram.com', 'gmail.com', 'yahoo.com', 'outlook.com', 'microsoft.com', 'apple.com', 'amazon.com'}
+                        if domain and domain in generic_domains:
+                            logger.warning(f"Apollo returned generic domain '{domain}' for '{company_name}' - skipping to avoid wrong contacts")
+                            domain = ''
                         if domain:
-                            # Try NEW api_search first (FREE), then fallback to old domain search
-                            print(f"  🔍 Found domain {domain} for {company_name}, trying api_search...")
+                            logger.info(f"Found domain {domain} for {company_name}, trying api_search...")
                             try:
                                 people = self.search_people_api_search(domain, titles)
                                 if people:
-                                    print(f"  ✅ Found {len(people)} contacts via api_search for {company_name}")
+                                    logger.info(f"Found {len(people)} contacts via api_search for {company_name}")
                                     return people
                             except Exception as e:
-                                print(f"  ⚠️  api_search failed for {company_name}: {str(e)}, trying fallback...")
+                                logger.warning(f"api_search failed for {company_name}: {str(e)}, trying fallback...")
                             
                             # Fallback to old domain search
                             people = self.search_people_by_domain(domain, titles)
@@ -1104,14 +1356,14 @@ class ApolloClient:
                     
                     # If no domain or domain search failed, try searching by organization ID directly
                     if org_id and not people:
-                        print(f"  🔍 No domain available, searching by organization ID: {org_id}")
+                        logger.info(f"No domain available, searching by organization ID: {org_id}")
                         try:
                             # Search people by organization ID
                             people_url = f"{self.base_url}/mixed_people/search"
                             people_payload = {
                                 'organization_ids': [org_id],
                                 'page': 1,
-                                'per_page': 25
+                                'per_page': getattr(Config, 'APOLLO_MIXED_PEOPLE_SEARCH_PER_PAGE', 25)
                             }
                             
                             # Add title filter if provided
@@ -1137,23 +1389,22 @@ class ApolloClient:
                                     people.append(person_data)
                                 
                                 if people:
-                                    print(f"  ✅ Found {len(people)} contacts via organization ID search")
+                                    logger.info(f"Found {len(people)} contacts via organization ID search")
                                     return people
                         except Exception as e:
-                            print(f"  ⚠️  Organization ID search failed: {str(e)}")
+                            logger.warning(f"Organization ID search failed: {str(e)}")
                     
                     if not people:
-                        print(f"  ⚠️  Organization {company_name} found in Apollo but has no website URL and organization ID search returned no results")
+                        logger.warning(f"Organization {company_name} found in Apollo but has no website URL and organization ID search returned no results")
                 else:
-                    print(f"  ⚠️  Organization {company_name} not found in Apollo database")
+                    logger.warning(f"Organization {company_name} not found in Apollo database")
             else:
-                print(f"  ⚠️  Apollo organization search failed with status {org_response.status_code}")
+                logger.warning(f"Apollo organization search failed with status {org_response.status_code}")
             
             time.sleep(0.5)
         except Exception as e:
-            print(f"  ❌ Error searching Apollo by company name: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error searching Apollo by company name: {str(e)}")
+            logger.exception("search_people_by_company_name traceback")
         
         return people
     
@@ -1171,83 +1422,146 @@ class ApolloClient:
         people = []
         user_provided_titles = titles  # Store user's titles for later filtering
         
-        # If user provided titles, use ONLY those. Otherwise use broad filters to get maximum contacts.
+        # If user provided titles, use ONLY those for local filtering.
+        # If no titles provided, pass empty list so title filtering is SKIPPED entirely.
+        # The api_search endpoint (free) often returns people WITHOUT the title field,
+        # so filtering before enrichment removes everyone and shows 0 contacts.
         if titles:
-            # User provided specific titles - use ONLY those (no hardcoded fallback)
             search_titles = titles
-            search_seniorities = None  # Let Apollo use default seniorities
-            print(f"  🔍 User provided titles - using ONLY: {titles[:5]}{'...' if len(titles) > 5 else ''}")
+            search_seniorities = None
+            logger.info(f"User provided titles - using ONLY: {titles[:5]}{'...' if len(titles) > 5 else ''}")
         else:
-            # No user titles - use broad filters to get maximum contacts
-            broad_seniorities = ['owner', 'founder', 'c_suite', 'vp', 'head', 'director', 'manager', 'senior', 'lead', 'executive']
-            broad_titles = ['Founder', 'HR Director', 'HR Manager', 'CHRO', 'Director', 'HR', 'Manager', 'VP', 'Vice President', 'Head', 'Chief', 'Owner', 'CEO', 'CTO', 'CFO', 'COO', 'Executive', 'Senior']
-            search_titles = broad_titles
-            search_seniorities = broad_seniorities
-            print(f"  📋 No user titles - using broad filters to get maximum contacts")
+            search_titles = []
+            search_seniorities = None
+            logger.info(f"No user titles - skipping title filter to get ALL contacts")
         
         # Strategy 1: NEW api_search endpoint (FREE - no credits for search)
         if website:
             domain = self.extract_domain(website)
             if domain:
-                print(f"  🔍 Trying NEW Apollo api_search (free) by domain: {domain}")
+                logger.info(f"Trying NEW Apollo api_search (free) by domain: {domain}")
                 try:
                     # Use user's titles if provided, otherwise use broad filters
                     people = self.search_people_api_search(domain, titles=search_titles, seniorities=search_seniorities)
                     if people:
                         apollo_count = len([p for p in people if p.get('source') == 'apollo'])
-                        print(f"  ✅ Found {len(people)} contacts via NEW api_search ({apollo_count} from Apollo)")
+                        logger.info(f"Found {len(people)} contacts via NEW api_search ({apollo_count} from Apollo)")
                         # Now filter by user's designation if provided
                         if user_provided_titles:
                             filtered_people = self._filter_contacts_by_titles(people, user_provided_titles)
-                            print(f"  🔍 Filtered to {len(filtered_people)} contacts matching user's designation: {', '.join(user_provided_titles)}")
+                            logger.info(f"Filtered to {len(filtered_people)} contacts matching user's designation: {', '.join(user_provided_titles)}")
+                            # region agent log
+                            _agent_debug_log(
+                                hypothesis_id="B",
+                                location="apollo_client.py:search_people_by_company",
+                                message="api_search_returned_with_user_titles",
+                                data={
+                                    "company_name": company_name,
+                                    "domain": domain,
+                                    "website": website,
+                                    "total_contacts": len(people),
+                                    "filtered_contacts": len(filtered_people),
+                                },
+                            )
+                            # endregion
                             return filtered_people
+                        # region agent log
+                        _agent_debug_log(
+                            hypothesis_id="B",
+                            location="apollo_client.py:search_people_by_company",
+                            message="api_search_returned_no_user_titles",
+                            data={
+                                "company_name": company_name,
+                                "domain": domain,
+                                "website": website,
+                                "total_contacts": len(people),
+                            },
+                        )
+                        # endregion
                         return people
                     else:
-                        print(f"  ⚠️  NEW api_search found 0 contacts for {domain}")
+                        logger.warning(f"NEW api_search found 0 contacts for {domain}")
                         # FREE fallback: try searching by org name when domain returns 0
                         if company_name:
-                            print(f"  🔍 Trying NEW Apollo api_search (free) by org name: {company_name}")
-                            people = self.search_people_api_search_by_org_name(company_name, titles=search_titles, seniorities=search_seniorities)
+                            logger.info(f"Trying NEW Apollo api_search (free) by org name: {company_name}")
+                            people = self.search_people_api_search_by_org_name(company_name, titles=search_titles, seniorities=search_seniorities, domain_for_filter=domain)
                             if people:
                                 apollo_count = len([p for p in people if p.get('source') == 'apollo'])
-                                print(f"  ✅ Found {len(people)} contacts via NEW api_search(org_name) ({apollo_count} from Apollo)")
+                                logger.info(f"Found {len(people)} contacts via NEW api_search(org_name) ({apollo_count} from Apollo)")
                                 if user_provided_titles:
                                     filtered_people = self._filter_contacts_by_titles(people, user_provided_titles)
-                                    print(f"  🔍 Filtered to {len(filtered_people)} contacts matching user's designation: {', '.join(user_provided_titles)}")
+                                    logger.info(f"Filtered to {len(filtered_people)} contacts matching user's designation: {', '.join(user_provided_titles)}")
+                                    # region agent log
+                                    _agent_debug_log(
+                                        hypothesis_id="B",
+                                        location="apollo_client.py:search_people_by_company",
+                                        message="api_search_org_name_returned_with_user_titles",
+                                        data={
+                                            "company_name": company_name,
+                                            "website": website,
+                                            "total_contacts": len(people),
+                                            "filtered_contacts": len(filtered_people),
+                                        },
+                                    )
+                                    # endregion
                                     return filtered_people
+                                # region agent log
+                                _agent_debug_log(
+                                    hypothesis_id="B",
+                                    location="apollo_client.py:search_people_by_company",
+                                    message="api_search_org_name_returned_no_user_titles",
+                                    data={
+                                        "company_name": company_name,
+                                        "website": website,
+                                        "total_contacts": len(people),
+                                    },
+                                )
+                                # endregion
                                 return people
                 except Exception as e:
-                    print(f"  ❌ NEW api_search failed: {str(e)}, trying fallback...")
-                    import traceback
-                    traceback.print_exc()
+                    logger.error(f"NEW api_search failed: {str(e)}, trying fallback...")
+                    logger.exception("api_search fallback traceback")
         
         # Strategy 2: OLD search by domain (fallback - uses credits)
         if website and not people:
             domain = self.extract_domain(website)
             if domain:
-                print(f"  Trying OLD Apollo search by domain: {domain}")
+                logger.info(f"Trying OLD Apollo search by domain: {domain}")
                 # Use user's titles if provided, otherwise use None (will use default in function)
                 people = self.search_people_by_domain(domain, titles=search_titles if titles else None)
                 if people:
-                    print(f"  Found {len(people)} contacts via OLD domain search")
+                    logger.info(f"Found {len(people)} contacts via OLD domain search")
                     # Filter by user's designation if provided
                     if user_provided_titles:
                         filtered_people = self._filter_contacts_by_titles(people, user_provided_titles)
-                        print(f"  🔍 Filtered to {len(filtered_people)} contacts matching user's designation")
+                        logger.info(f"Filtered to {len(filtered_people)} contacts matching user's designation")
                         return filtered_people
                     return people
         
         # Strategy 3: Search by company name
         if company_name and not people:
-            print(f"  Trying Apollo search by company name: {company_name}")
+            logger.info(f"Trying Apollo search by company name: {company_name}")
             # Use user's titles if provided, otherwise use None (will use default in function)
             people = self.search_people_by_company_name(company_name, titles=search_titles if titles else None)
             if people:
-                print(f"  Found {len(people)} contacts via company name search")
+                logger.info(f"Found {len(people)} contacts via company name search")
                 # Filter by user's designation if provided
                 if user_provided_titles:
                     filtered_people = self._filter_contacts_by_titles(people, user_provided_titles)
-                    print(f"  🔍 Filtered to {len(filtered_people)} contacts matching user's designation")
+                    logger.info(f"Filtered to {len(filtered_people)} contacts matching user's designation")
+                    # region agent log
+                    _agent_debug_log(
+                        hypothesis_id="B",
+                        location="apollo_client.py:search_people_by_company",
+                        message="company_name_search_with_user_titles",
+                        data={
+                            "company_name": company_name,
+                            "website": website,
+                            "total_contacts": len(people),
+                            "filtered_contacts": len(filtered_people),
+                        },
+                    )
+                    # endregion
                     people = filtered_people
         
         # Web scraping fallback removed - using Apollo.io only
@@ -1256,6 +1570,17 @@ class ApolloClient:
         for person in people:
             person['company_name'] = company_name
             person['company_website'] = website
+
+        # CRITICAL: If we have company website, keep only contacts whose email is @ company domain
+        # (fixes wrong contacts e.g. Bill Gates / Google employees shown for unrelated companies)
+        # Keep contacts with no email; only drop when email is clearly from another domain
+        if website and people:
+            domain = self.extract_domain(website)
+            if domain:
+                before = len(people)
+                people = [p for p in people if (not (p.get('email') or '').strip()) or self._email_domain_matches((p.get('email') or '').strip(), domain)]
+                if before != len(people):
+                    logger.info(f"Final email-domain filter: kept {len(people)} contacts @ {domain} (removed {before - len(people)} from other domains)")
         
         # VERY RELAXED filtering - only remove clearly irrelevant contacts
         # Keep ALL contacts with names, even if no title (titles might be missing in Apollo)
@@ -1266,21 +1591,34 @@ class ApolloClient:
             # CRITICAL FIX: Don't skip contacts without titles - they might still be valid!
             # Only require a name
             if not person.get('name') and not person.get('first_name'):
-                print(f"    ⚠️ Skipping: No name found")
+                logger.warning(f"Skipping: No name found")
                 continue
             
             title = (person.get('title') or '').lower().strip()
             
             # Only skip if title contains clearly blocked keywords (but keep if no title!)
             if title and any(blocked in title for blocked in blocked_titles):
-                print(f"    ❌ FILTERED OUT: {person.get('name')} - '{title}' (blocked)")
+                logger.error(f"FILTERED OUT: {person.get('name')} - '{title}' (blocked)")
                 continue
             
             # Keep everyone else - we want MORE contacts, not fewer!
             # Note: User title filtering already happened above if user provided titles
             filtered_people.append(person)
         
-        print(f"  📊 FINAL: {len(filtered_people)} contacts after filtering (from {len(people)})")
+        logger.info(f"FINAL: {len(filtered_people)} contacts after filtering (from {len(people)})")
+        # region agent log
+        _agent_debug_log(
+            hypothesis_id="D",
+            location="apollo_client.py:search_people_by_company",
+            message="final_contacts_after_all_filters",
+            data={
+                "company_name": company_name,
+                "website": website,
+                "final_contacts": len(filtered_people),
+                "initial_contacts": len(people),
+            },
+        )
+        # endregion
         return filtered_people
     
     def _filter_contacts_by_titles(self, contacts: List[Dict], user_titles: List[str]) -> List[Dict]:
@@ -1322,7 +1660,7 @@ class ApolloClient:
             website = company.get('website', '')
             company_name = company.get('company_name', '')
             
-            print(f"[{idx}/{total_companies}] Enriching: {company_name}")
+            logger.info(f"[{idx}/{total_companies}] Enriching: {company_name}")
             
             # Get people using multiple search strategies
             people = self.search_people_by_company(company_name, website)
@@ -1346,9 +1684,9 @@ class ApolloClient:
             }
             
             if people:
-                print(f"  ✓ Found {len(people)} contacts ({apollo_count} from Apollo, {scraping_count} from web scraping)")
+                logger.info(f"Found {len(people)} contacts ({apollo_count} from Apollo, {scraping_count} from web scraping)")
             else:
-                print(f"  ✗ No contacts found")
+                logger.warning(f"No contacts found")
             
             enriched_companies.append(company)
             
@@ -1356,4 +1694,3 @@ class ApolloClient:
             time.sleep(1)
         
         return enriched_companies
-

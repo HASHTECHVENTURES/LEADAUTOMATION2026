@@ -13,6 +13,13 @@ class Config:
     # Optional: Apollo custom field ID for "Industry" (set after creating the field in Apollo Settings → Custom fields)
     # When set, we send contact industry when pushing to Apollo so you can filter by industry in People.
     APOLLO_INDUSTRY_CUSTOM_FIELD_ID = os.getenv('APOLLO_INDUSTRY_CUSTOM_FIELD_ID', '').strip() or None
+
+    # Level 2 / Apollo contact enrichment (tunable; no hardcoded limits)
+    APOLLO_MAX_CONTACTS_TO_ENRICH = int(os.getenv('APOLLO_MAX_CONTACTS_TO_ENRICH', '100'))  # max contacts to enrich per company (uses ~this many credits)
+    APOLLO_ENRICH_PARALLEL_WORKERS = int(os.getenv('APOLLO_ENRICH_PARALLEL_WORKERS', '5'))  # parallel workers for enrichment (avoid rate limits)
+    APOLLO_API_SEARCH_PER_PAGE = int(os.getenv('APOLLO_API_SEARCH_PER_PAGE', '100'))  # per_page for api_search (domain / org name)
+    APOLLO_MIXED_PEOPLE_SEARCH_PER_PAGE = int(os.getenv('APOLLO_MIXED_PEOPLE_SEARCH_PER_PAGE', '25'))  # per_page for mixed_people/search (old endpoint)
+    APOLLO_MIXED_PEOPLE_SEARCH_PER_TITLE_PER_PAGE = int(os.getenv('APOLLO_MIXED_PEOPLE_SEARCH_PER_TITLE_PER_PAGE', '5'))  # per_page when searching by title
     
     # Flask settings
     SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')

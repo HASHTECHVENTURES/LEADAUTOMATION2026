@@ -630,9 +630,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            if (!/^[a-zA-Z0-9\s\-_/]+$/.test(projectName)) {
+            if (!/^[a-zA-Z0-9\s\-_/()]+$/.test(projectName)) {
                 if (errorDiv) {
-                    errorDiv.textContent = 'Project name can only contain letters, numbers, spaces, hyphens, underscores, and forward slashes';
+                    errorDiv.textContent = 'Project name can only contain letters, numbers, spaces, hyphens, underscores, forward slashes, and parentheses';
                     errorDiv.style.display = 'block';
                 }
                 return;
@@ -782,13 +782,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Show results section (even if empty, so user sees message)
                 if (resultsSection) resultsSection.style.display = 'block';
                 
-                // Show/hide export and save buttons based on results
+                // Show/hide export button based on results
                 if (exportBtn) {
                     exportBtn.style.display = totalCompanies > 0 ? 'inline-block' : 'none';
-                }
-                const saveProjectBtn = document.getElementById('saveProjectBtn');
-                if (saveProjectBtn) {
-                    saveProjectBtn.style.display = totalCompanies > 0 ? 'inline-block' : 'none';
                 }
 
                 if (totalCompanies === 0) {
@@ -958,11 +954,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Update selection UI
         updateSelectionUI();
         
-        // Show export and save buttons
+        // Show export button
         const exportBtn = document.getElementById('exportBtn');
         if (exportBtn) exportBtn.style.display = 'inline-block';
-        const saveProjectBtn = document.getElementById('saveProjectBtn');
-        if (saveProjectBtn) saveProjectBtn.style.display = 'inline-block';
         
         console.log(`✅ Loaded ${companies.length} companies from previous project`);
     }
@@ -1245,8 +1239,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (sendToLevel2Btn) sendToLevel2Btn.style.display = 'none';
             if (exportBtn) exportBtn.style.display = 'none';
             if (deleteSelectedBtn) deleteSelectedBtn.style.display = 'none';
-            const saveProjectBtnReset = document.getElementById('saveProjectBtn');
-            if (saveProjectBtnReset) saveProjectBtnReset.style.display = 'none';
             
             // Reset dropdown and RELOAD project list from server
             const projectHistoryDropdown = document.getElementById('projectHistoryDropdown');
@@ -1306,45 +1298,6 @@ document.addEventListener('DOMContentLoaded', function() {
             this.innerHTML = '<i class="fas fa-download"></i> Export to Excel';
         }
     });
-    
-    // Save Project button handler
-    const saveProjectBtn = document.getElementById('saveProjectBtn');
-    if (saveProjectBtn) {
-        saveProjectBtn.addEventListener('click', async function() {
-            if (!currentProjectName) {
-                alert('No project name set');
-                return;
-            }
-            
-            this.disabled = true;
-            this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
-            
-            try {
-                // The data is already saved when search completes
-                // Just refresh the project list to confirm
-                if (window.reloadProjectDropdown) {
-                    window.reloadProjectDropdown();
-                }
-                
-                // Show success message
-                this.innerHTML = '<i class="fas fa-check"></i> Saved!';
-                this.style.background = '#2f855a';
-                
-                setTimeout(() => {
-                    this.innerHTML = '<i class="fas fa-save"></i> Save Project';
-                    this.style.background = '#38a169';
-                    this.disabled = false;
-                }, 2000);
-                
-                alert('✅ Project "' + currentProjectName + '" saved successfully!\n\nYou can now click "Back to Start" to see it in Previous Projects.');
-                
-            } catch (error) {
-                alert('Save failed: ' + error.message);
-                this.disabled = false;
-                this.innerHTML = '<i class="fas fa-save"></i> Save Project';
-            }
-        });
-    }
     
     function convertToCSV(data) {
         if (data.length === 0) return '';

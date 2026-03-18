@@ -8,8 +8,32 @@ from config import Config
 from datetime import datetime
 import logging
 import re
+import json
+import time
 
 logger = logging.getLogger(__name__)
+
+# region agent log helper
+def _agent_debug_log(hypothesis_id: str, location: str, message: str, data: Dict):
+    """
+    Lightweight NDJSON logger for debugging Level 1 include/exclude behaviour.
+    """
+    try:
+        payload = {
+            "sessionId": "b341be",
+            "runId": "level2_companies",
+            "hypothesisId": hypothesis_id,
+            "location": location,
+            "message": message,
+            "data": data or {},
+            "timestamp": int(time.time() * 1000),
+        }
+        with open("/Users/sujalpatel/Documents/lead Automation /.cursor/debug-b341be.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except Exception:
+        # Never let debug logging break the main flow
+        pass
+# endregion
 
 class SupabaseClient:
     def __init__(self):
@@ -476,32 +500,58 @@ class SupabaseClient:
         self,
         project_name: Optional[str] = None,
         selected_only: bool = False,
+        excluded_only: bool = False,
+        apollo_no_data_only: bool = False,
+        include_excluded: bool = True,
         limit: int = 50
     ) -> List[Dict]:
         """
-        Get companies from Level 1
+        Get companies from Level 1.
+        - selected_only: only selected_for_level2 = True
+        - excluded_only: only excluded_at IS NOT NULL (soft-excluded list)
+        - apollo_no_data_only: only apollo_fetched_at IS NOT NULL and apollo_contact_count = 0
+        - include_excluded: if False, exclude companies where excluded_at IS NOT NULL (for main lists)
         """
         try:
             query = self.client.table('level1_companies').select('*')
             
-            # Filter by project_name if provided
             if project_name:
                 query = query.eq('project_name', project_name)
             
-            # Filter by selected_for_level2 if needed
             if selected_only:
                 query = query.eq('selected_for_level2', True)
+            if excluded_only:
+                query = query.not_.is_('excluded_at', 'null')
+            if apollo_no_data_only:
+                query = query.not_.is_('apollo_fetched_at', 'null')
+                query = query.eq('apollo_contact_count', 0)
+            if not include_excluded and not excluded_only:
+                query = query.is_('excluded_at', 'null')
             
-            # Order by search_date descending (newest first)
             query = query.order('search_date', desc=True)
-            
-            # Limit results
             query = query.limit(limit)
             
             response = query.execute()
             companies = response.data if response.data else []
-            
-            logger.info(f"✅ Retrieved {len(companies)} companies from Supabase (project_name={project_name}, selected_only={selected_only})")
+            logger.info(f"✅ Retrieved {len(companies)} companies (project_name={project_name}, selected_only={selected_only}, excluded_only={excluded_only}, apollo_no_data_only={apollo_no_data_only}, include_excluded={include_excluded})")
+            # region agent log
+            excluded_count = len([c for c in companies if c.get('excluded_at')])
+            _agent_debug_log(
+                hypothesis_id="L1",
+                location="supabase_client.py:get_level1_companies",
+                message="level1_companies_fetched",
+                data={
+                    "project_name": project_name,
+                    "selected_only": selected_only,
+                    "excluded_only": excluded_only,
+                    "apollo_no_data_only": apollo_no_data_only,
+                    "include_excluded": include_excluded,
+                    "limit": limit,
+                    "total": len(companies),
+                    "excluded_in_result": excluded_count,
+                },
+            )
+            # endregion
             return companies
             
         except Exception as e:
@@ -510,39 +560,125 @@ class SupabaseClient:
     
     def mark_companies_selected(self, companies: List[Dict], project_name: Optional[str] = None) -> Dict:
         """
-        Mark companies as selected for Level 2 processing
+        Mark companies as selected for Level 2 processing (from Level 1 "Next: Get Contacts").
+
+        Behaviour:
+        - If project_name is provided, first clear previous selections for that project.
+        - Then, for each company:
+          * Prefer matching by place_id when available.
+          * Fallback to company_name (scoped to project_name) when place_id is missing
+            or the first update did not affect any rows.
         """
         try:
             if not companies:
                 return {'success': False, 'error': 'No companies provided'}
-            
-            # Extract place_ids from companies
-            place_ids = [c.get('place_id') or c.get('company_name') for c in companies if c.get('place_id') or c.get('company_name')]
-            
-            if not place_ids:
-                return {'success': False, 'error': 'No valid company identifiers found'}
-            
-            # Update selected_for_level2 to True for matching companies
-            # Filter by project_name if provided
-            query = self.client.table('level1_companies')
-            
+
             if project_name:
-                query = query.eq('project_name', project_name)
-            
-            # Update all matching place_ids
-            updated_count = 0
-            for place_id in place_ids:
-                try:
-                    response = query.eq('place_id', place_id).update({'selected_for_level2': True}).execute()
-                    if response.data:
-                        updated_count += len(response.data)
-                except Exception as e:
-                    logger.warning(f"⚠️  Could not update company {place_id}: {str(e)}")
+                project_name = project_name.strip()
+
+            # Normalise identifiers
+            normalised_companies = []
+            for c in companies:
+                if not isinstance(c, dict):
                     continue
-            
-            logger.info(f"✅ Marked {updated_count} companies as selected for Level 2")
+                place_id = (c.get('place_id') or '').strip() or None
+                company_name = (c.get('company_name') or '').strip() or None
+                if not place_id and not company_name:
+                    continue
+                normalised_companies.append(
+                    {
+                        'place_id': place_id,
+                        'company_name': company_name,
+                    }
+                )
+
+            if not normalised_companies:
+                return {'success': False, 'error': 'No valid company identifiers found'}
+
+            # If we know the project, clear previous selections to avoid stale state.
+            # Use .match(...) for filters on update queries to avoid chaining issues.
+            if project_name:
+                try:
+                    (
+                        self.client.table('level1_companies')
+                        .update({'selected_for_level2': False})
+                        .match({'project_name': project_name})
+                        .execute()
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"⚠️  Could not clear previous selections for project '{project_name}': {str(e)}"
+                    )
+
+            updated_count = 0
+
+            # Update each company individually with sensible fallbacks
+            for item in normalised_companies:
+                place_id = item['place_id']
+                company_name = item['company_name']
+
+                try:
+                    # Start a fresh query each iteration so .eq(...) conditions don't stack up
+                    base_query = self.client.table('level1_companies')
+                    if project_name:
+                        base_query = base_query.eq('project_name', project_name)
+
+                    rows_updated = 0
+
+                    # 1) Prefer place_id when present
+                    if place_id:
+                        try:
+                            resp = (
+                                self.client.table('level1_companies')
+                                .update({'selected_for_level2': True})
+                                .match(
+                                    {
+                                        **({'project_name': project_name} if project_name else {}),
+                                        'place_id': place_id,
+                                    }
+                                )
+                                .execute()
+                            )
+                            if getattr(resp, "data", None):
+                                rows_updated = len(resp.data)
+                                updated_count += rows_updated
+                        except Exception as e:
+                            logger.warning(
+                                f"⚠️  Could not update company by place_id '{place_id}': {str(e)}"
+                            )
+
+                    # 2) Fallback to company_name (scoped to project) if nothing updated
+                    if rows_updated == 0 and company_name:
+                        try:
+                            resp2 = (
+                                self.client.table('level1_companies')
+                                .update({'selected_for_level2': True})
+                                .match(
+                                    {
+                                        **({'project_name': project_name} if project_name else {}),
+                                        'company_name': company_name,
+                                    }
+                                )
+                                .execute()
+                            )
+                            if getattr(resp2, "data", None):
+                                rows_updated = len(resp2.data)
+                                updated_count += rows_updated
+                        except Exception as e:
+                            logger.warning(
+                                f"⚠️  Could not update company by name '{company_name}' (project='{project_name}'): {str(e)}"
+                            )
+
+                except Exception as e:
+                    logger.warning(f"⚠️  Unexpected error while marking company selected: {str(e)}")
+                    continue
+
+            logger.info(
+                f"✅ Marked {updated_count} companies as selected_for_level2"
+                + (f" for project '{project_name}'" if project_name else "")
+            )
             return {'success': True, 'count': updated_count}
-            
+
         except Exception as e:
             logger.error(f"❌ Error marking companies as selected: {str(e)}")
             return {'success': False, 'error': str(e)}
@@ -616,10 +752,12 @@ class SupabaseClient:
         total_employees: Optional[str] = None,
         active_members: Optional[int] = None,
         active_members_with_email: Optional[int] = None,
+        apollo_contact_count: Optional[int] = None,
+        apollo_fetched_at: Optional[str] = None,
     ) -> Dict:
         """
         Best-effort update for company metrics on level1_companies.
-        NOTE: If columns don't exist in Supabase yet, this will fail gracefully (we don't break Level 2).
+        Also supports apollo_contact_count and apollo_fetched_at (for "No data from Apollo" list).
         """
         try:
             if not project_name or not place_id:
@@ -632,6 +770,10 @@ class SupabaseClient:
                 payload['active_members'] = int(active_members)
             if active_members_with_email is not None:
                 payload['active_members_with_email'] = int(active_members_with_email)
+            if apollo_contact_count is not None:
+                payload['apollo_contact_count'] = int(apollo_contact_count)
+            if apollo_fetched_at is not None:
+                payload['apollo_fetched_at'] = apollo_fetched_at
 
             if not payload:
                 return {'success': True, 'updated': 0}
@@ -651,15 +793,53 @@ class SupabaseClient:
             # Don't fail Level 2 if schema doesn't have these columns yet
             logger.warning(f"⚠️  Could not update company metrics (likely missing columns): {str(e)}")
             return {'success': False, 'error': str(e)}
-    
+
+    def update_level1_company_apollo_stats(
+        self,
+        project_name: str,
+        apollo_contact_count: int,
+        place_id: Optional[str] = None,
+        company_name: Optional[str] = None,
+    ) -> Dict:
+        """
+        Set apollo_contact_count and apollo_fetched_at for a company (for "No data from Apollo" list).
+        Match by place_id if provided, else by company_name.
+        """
+        try:
+            if not project_name:
+                return {'success': False, 'error': 'project_name is required'}
+            if not place_id and not company_name:
+                return {'success': False, 'error': 'place_id or company_name is required'}
+
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            payload = {'apollo_contact_count': int(apollo_contact_count), 'apollo_fetched_at': now}
+            query = self.client.table('level1_companies').update(payload).eq('project_name', project_name)
+            if place_id:
+                query = query.eq('place_id', place_id)
+            else:
+                query = query.eq('company_name', company_name or '')
+            resp = query.execute()
+            updated = len(resp.data) if resp.data else 0
+            return {'success': True, 'updated': updated}
+        except Exception as e:
+            logger.warning(f"⚠️  Could not update apollo stats: {str(e)}")
+            return {'success': False, 'error': str(e)}
+
     def get_projects_list(self) -> List[Dict]:
         """
         Get list of all unique project names (for history/resume feature)
         Returns projects with name, date, industry, pin_codes, and company_count
         """
         try:
-            # Get all distinct project names with their data
-            response = self.client.table('level1_companies').select('project_name, search_date, industry, pin_codes_searched, created_at').execute()
+            # Get all distinct project names with their data (include excluded_at, apollo fields for home counts)
+            try:
+                response = self.client.table('level1_companies').select(
+                    'project_name, search_date, industry, pin_codes_searched, created_at, excluded_at, apollo_contact_count, apollo_fetched_at'
+                ).execute()
+            except Exception:
+                response = self.client.table('level1_companies').select(
+                    'project_name, search_date, industry, pin_codes_searched, created_at'
+                ).execute()
             
             if not response.data:
                 logger.info("ℹ️  No projects found in level1_companies table")
@@ -667,28 +847,33 @@ class SupabaseClient:
             
             logger.info(f"ℹ️  Found {len(response.data)} company records in Supabase")
             
-            # Get unique projects with latest search_date, company count, and other details
             projects_map = {}
             for record in response.data:
                 project_name = record.get('project_name', '').strip()
                 if not project_name:
                     continue
-                    
                 search_date = record.get('search_date', '') or record.get('created_at', '')
                 industry = record.get('industry', '')
                 pin_codes = record.get('pin_codes_searched', '')
+                excluded_at = record.get('excluded_at')
+                apollo_fetched_at = record.get('apollo_fetched_at')
+                apollo_contact_count = record.get('apollo_contact_count')
                 
                 if project_name not in projects_map:
                     projects_map[project_name] = {
                         'search_date': search_date,
                         'industry': industry,
                         'pin_codes': pin_codes,
-                        'company_count': 1
+                        'company_count': 1,
+                        'excluded_count': 1 if excluded_at else 0,
+                        'no_apollo_data_count': 1 if (apollo_fetched_at is not None and apollo_contact_count == 0) else 0,
                     }
                 else:
-                    # Increment company count
                     projects_map[project_name]['company_count'] += 1
-                    # Update metadata if this record is newer
+                    if excluded_at:
+                        projects_map[project_name]['excluded_count'] += 1
+                    if apollo_fetched_at is not None and apollo_contact_count == 0:
+                        projects_map[project_name]['no_apollo_data_count'] += 1
                     if search_date and (not projects_map[project_name].get('search_date') or search_date > projects_map[project_name].get('search_date', '')):
                         projects_map[project_name]['search_date'] = search_date
                         if industry:
@@ -696,13 +881,14 @@ class SupabaseClient:
                         if pin_codes:
                             projects_map[project_name]['pin_codes'] = pin_codes
             
-            # Convert to list of dicts
             projects = [{
                 'project_name': name,
                 'search_date': data.get('search_date', ''),
                 'industry': data.get('industry', ''),
                 'pin_codes': data.get('pin_codes', ''),
-                'company_count': data.get('company_count', 0)
+                'company_count': data.get('company_count', 0),
+                'excluded_count': data.get('excluded_count', 0),
+                'no_apollo_data_count': data.get('no_apollo_data_count', 0),
             } for name, data in projects_map.items()]
             
             # Sort by search_date descending (newest first), or by created_at if search_date is missing
@@ -717,9 +903,9 @@ class SupabaseClient:
             traceback.print_exc()
             return []
 
-    def delete_level1_companies(self, project_name: str, identifiers: List[str]) -> Dict:
+    def exclude_level1_companies(self, project_name: str, identifiers: List[str]) -> Dict:
         """
-        Delete Level 1 companies from Supabase by identifiers.
+        Soft-exclude companies: set excluded_at = now() instead of deleting.
         Identifiers may be place_id (preferred) or company_name (fallback).
         """
         try:
@@ -728,21 +914,102 @@ class SupabaseClient:
             if not identifiers:
                 return {'success': False, 'error': 'No identifiers provided'}
 
-            # Split identifiers into likely place_ids vs company_names
             place_ids: List[str] = []
             company_names: List[str] = []
             for ident in identifiers:
                 if not ident:
                     continue
                 s = str(ident).strip()
-                # Heuristic: place_id often starts with "ChIJ" and has no spaces
+                if s.startswith('ChIJ') and (' ' not in s):
+                    place_ids.append(s)
+                else:
+                    company_names.append(s)
+
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            updated = 0
+
+            if place_ids:
+                resp = (
+                    self.client.table('level1_companies')
+                    .update({'excluded_at': now})
+                    .eq('project_name', project_name)
+                    .in_('place_id', place_ids)
+                    .execute()
+                )
+                if resp.data:
+                    updated += len(resp.data)
+
+            if company_names:
+                resp = (
+                    self.client.table('level1_companies')
+                    .update({'excluded_at': now})
+                    .eq('project_name', project_name)
+                    .in_('company_name', company_names)
+                    .execute()
+                )
+                if resp.data:
+                    updated += len(resp.data)
+
+            logger.info(f"✅ Excluded {updated} companies (soft) for project={project_name}")
+            return {'success': True, 'excluded': updated}
+
+        except Exception as e:
+            logger.error(f"❌ Error excluding Level 1 companies: {str(e)}")
+            return {'success': False, 'error': str(e)}
+
+    def restore_level1_companies(self, project_name: str, identifiers: List[str]) -> Dict:
+        """Clear excluded_at so companies show again in the main list."""
+        try:
+            if not project_name or not identifiers:
+                return {'success': False, 'error': 'project_name and identifiers are required'}
+            place_ids = []
+            company_names = []
+            for ident in identifiers:
+                s = str(ident).strip()
+                if not s:
+                    continue
+                if s.startswith('ChIJ') and (' ' not in s):
+                    place_ids.append(s)
+                else:
+                    company_names.append(s)
+            updated = 0
+            if place_ids:
+                resp = self.client.table('level1_companies').update({'excluded_at': None}).eq('project_name', project_name).in_('place_id', place_ids).execute()
+                if resp.data:
+                    updated += len(resp.data)
+            if company_names:
+                resp = self.client.table('level1_companies').update({'excluded_at': None}).eq('project_name', project_name).in_('company_name', company_names).execute()
+                if resp.data:
+                    updated += len(resp.data)
+            logger.info(f"✅ Restored {updated} companies for project={project_name}")
+            return {'success': True, 'restored': updated}
+        except Exception as e:
+            logger.error(f"❌ Error restoring companies: {str(e)}")
+            return {'success': False, 'error': str(e)}
+
+    def delete_level1_companies(self, project_name: str, identifiers: List[str]) -> Dict:
+        """
+        Hard-delete Level 1 companies (e.g. when deleting whole project).
+        For "remove from list" use exclude_level1_companies instead.
+        """
+        try:
+            if not project_name:
+                return {'success': False, 'error': 'project_name is required'}
+            if not identifiers:
+                return {'success': False, 'error': 'No identifiers provided'}
+
+            place_ids: List[str] = []
+            company_names: List[str] = []
+            for ident in identifiers:
+                if not ident:
+                    continue
+                s = str(ident).strip()
                 if s.startswith('ChIJ') and (' ' not in s):
                     place_ids.append(s)
                 else:
                     company_names.append(s)
 
             deleted = 0
-
             if place_ids:
                 resp = (
                     self.client.table('level1_companies')
@@ -753,7 +1020,6 @@ class SupabaseClient:
                 )
                 if resp.data:
                     deleted += len(resp.data)
-
             if company_names:
                 resp = (
                     self.client.table('level1_companies')
@@ -815,6 +1081,18 @@ class SupabaseClient:
 
         except Exception as e:
             logger.error(f"❌ Error deleting batch: {str(e)}")
+            return {'success': False, 'error': str(e)}
+
+    def delete_level2_contact(self, contact_id: int) -> Dict:
+        """Delete a single contact from level2_contacts by id. Returns {success, error?}."""
+        try:
+            if contact_id is None:
+                return {'success': False, 'error': 'contact_id is required'}
+            resp = self.client.table('level2_contacts').delete().eq('id', int(contact_id)).execute()
+            logger.info(f"✅ Deleted contact id={contact_id}")
+            return {'success': True}
+        except Exception as e:
+            logger.error(f"❌ Error deleting contact {contact_id}: {str(e)}")
             return {'success': False, 'error': str(e)}
     
     def save_level2_results(self, enriched_companies: List[Dict], project_name: Optional[str] = None, batch_name: Optional[str] = None) -> Dict:
@@ -887,12 +1165,25 @@ class SupabaseClient:
                     records.append(record)
             
             if records:
-                # Insert into Supabase
                 response = self.client.table('level2_contacts').insert(records).execute()
                 logger.info(f"✅ Saved {len(records)} contacts to Supabase for Level 2")
-                return {'success': True, 'count': len(records)}
             else:
-                return {'success': True, 'count': 0, 'message': 'No contacts to save'}
+                logger.info(f"✅ Level 2 save: 0 contacts to insert")
+
+            # Update level1_companies with apollo_contact_count and apollo_fetched_at (for "No data from Apollo" list)
+            if project_name:
+                for company in enriched_companies:
+                    place_id = company.get('place_id') or ''
+                    company_name = company.get('company_name', '') or ''
+                    count = len(company.get('people', []))
+                    self.update_level1_company_apollo_stats(
+                        project_name=project_name,
+                        apollo_contact_count=count,
+                        place_id=place_id if place_id else None,
+                        company_name=company_name if not place_id else None,
+                    )
+
+            return {'success': True, 'count': len(records) if records else 0}
             
         except Exception as e:
             logger.error(f"❌ Error saving Level 2 results to Supabase: {str(e)}")
