@@ -579,6 +579,15 @@
     <script src="/static/js/production-utils.js"></script>
     
     <script>
+        // Ensure escapeHtml exists (fallback if production-utils.js fails to load)
+        if (typeof window.escapeHtml !== 'function') {
+            window.escapeHtml = function(text) {
+                var div = document.createElement('div');
+                div.textContent = text || '';
+                return div.innerHTML;
+            };
+        }
+        
         // Delete single project
         async function deleteProject(projectName) {
             if (!confirm(`Delete project "${projectName}" and all its data?\n\n⚠️ This will permanently delete:\n• All companies\n• All contacts\n• All saved batches\n\nThis action cannot be undone.`)) {
@@ -607,12 +616,19 @@
             }
         }
         
-        // Load recent projects
-        fetch('/api/level1/projects')
-            .then(r => r.json())
-            .then(data => {
-                const projects = data.projects || [];
-                const list = document.getElementById('recentProjects');
+        // Load recent projects (with one retry for Vercel cold start)
+        function loadRecentProjects() {
+            fetch('/api/level1/projects', { credentials: 'same-origin' })
+                .then(function(r) {
+                    if (!r.ok) throw new Error('Server returned ' + r.status);
+                    var ct = r.headers.get('content-type') || '';
+                    if (!ct.includes('application/json')) throw new Error('Invalid response');
+                    return r.json();
+                })
+            .then(function(data) {
+                var projects = data.projects || [];
+                var list = document.getElementById('recentProjects');
+                if (!list) return;
                 
                 if (projects.length === 0) {
                     list.innerHTML = `
@@ -630,12 +646,12 @@
                     document.getElementById('deleteAllBtn').style.display = 'inline-flex';
                 }
                 
-                list.innerHTML = projects.slice(0, 5).map((p, idx) => {
-                    const date = p.search_date ? new Date(p.search_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '';
-                    const industry = p.industry || 'All Industries';
-                    const projectName = escapeHtml(p.project_name);
-                    const projectNameEncoded = encodeURIComponent(p.project_name);
-                    const projectNameEscaped = projectName.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                list.innerHTML = projects.slice(0, 5).map(function(p, idx) {
+                    var date = p.search_date ? new Date(p.search_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '';
+                    var industry = p.industry || 'All Industries';
+                    var projectName = window.escapeHtml(p.project_name);
+                    var projectNameEncoded = encodeURIComponent(p.project_name);
+                    var projectNameEscaped = projectName.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                     return `
                         <li class="recent-item fade-in" style="animation-delay: ${idx * 50}ms" data-project="${projectNameEscaped}">
                             <div class="recent-item-icon" style="cursor: pointer;"><i class="fas fa-folder"></i></div>
@@ -660,38 +676,41 @@
                 }).join('');
                 
                 // Add click handlers after rendering
-                document.querySelectorAll('.recent-item').forEach(item => {
-                    const projectName = item.dataset.project;
-                    const projectNameEncoded = encodeURIComponent(projectName);
-                    
-                    const navEl = item.querySelector('.recent-item-icon, .recent-item-content, .recent-item-arrow');
+                document.querySelectorAll('.recent-item').forEach(function(item) {
+                    var projectName = item.dataset.project;
+                    var projectNameEncoded = encodeURIComponent(projectName);
+                    var navEl = item.querySelector('.recent-item-icon, .recent-item-content, .recent-item-arrow');
                     if (navEl) {
-                        navEl.addEventListener('click', () => {
-                            window.location.href = `/level1?project=${projectNameEncoded}`;
+                        navEl.addEventListener('click', function() {
+                            window.location.href = '/level1?project=' + projectNameEncoded;
                         });
                     }
-                    
-                    const delEl = item.querySelector('.recent-item-delete');
+                    var delEl = item.querySelector('.recent-item-delete');
                     if (delEl) {
-                        delEl.addEventListener('click', (e) => {
+                        delEl.addEventListener('click', function(e) {
                             e.stopPropagation();
                             deleteProject(projectName);
                         });
                     }
                 });
             })
-            .catch(() => {
-                document.getElementById('recentProjects').innerHTML = `
-                    <li class="empty-state">
-                        <div class="empty-state-icon"><i class="fas fa-exclamation-circle"></i></div>
-                        <h3>Unable to Load</h3>
-                        <p>Check your connection and refresh</p>
-                    </li>
-                `;
+            .catch(function(err) {
+                console.error('Recent projects load failed:', err);
+                var list = document.getElementById('recentProjects');
+                if (list) {
+                    list.innerHTML = '<li class="empty-state"><div class="empty-state-icon"><i class="fas fa-exclamation-circle"></i></div><h3>Unable to Load</h3><p>Check your connection and refresh</p><button type="button" class="btn btn-primary" id="retryProjectsBtn" style="margin-top:8px;">Retry</button></li>';
+                    document.getElementById('retryProjectsBtn') && document.getElementById('retryProjectsBtn').addEventListener('click', function() {
+                        list.innerHTML = '<li class="empty-state"><div class="empty-state-icon"><i class="fas fa-spinner fa-spin"></i></div><h3>Loading…</h3></li>';
+                        loadRecentProjects();
+                    });
+                }
             });
+        }
+        loadRecentProjects();
         
         // Delete all projects
-        document.getElementById('deleteAllBtn').addEventListener('click', async function() {
+        var deleteAllBtn = document.getElementById('deleteAllBtn');
+        if (deleteAllBtn) deleteAllBtn.addEventListener('click', async function() {
             try {
                 const res = await fetch('/api/level1/projects');
                 const data = await res.json();
