@@ -1889,7 +1889,7 @@ def level2_batches():
 
 @app.route('/api/level2/delete-contact', methods=['POST'])
 def level2_delete_contact():
-    """Delete a single contact by id. Used when user removes a contact from the list."""
+    """Soft-delete a contact: set deleted_at so it stays in DB and shows in View Deleted Contacts."""
     try:
         data = request.json or {}
         contact_id = data.get('contact_id')
@@ -1897,10 +1897,27 @@ def level2_delete_contact():
             return jsonify({'error': 'contact_id is required'}), 400
         result = get_supabase_client().delete_level2_contact(contact_id)
         if not result.get('success'):
-            return jsonify({'error': result.get('error', 'Failed to delete contact')}), 500
-        return jsonify({'success': True, 'message': 'Contact removed from database'}), 200
+            return jsonify({'error': result.get('error', 'Failed to remove contact')}), 500
+        return jsonify({'success': True, 'message': 'Contact moved to deleted list'}), 200
     except Exception as e:
-        logger.error(f"Error deleting contact: {e}")
+        logger.error(f"Error soft-deleting contact: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/level2/deleted-contacts', methods=['GET'])
+def level2_deleted_contacts():
+    """Get soft-deleted contacts for a batch or project (for View Deleted Contacts)."""
+    try:
+        batch_name = request.args.get('batch_name')
+        project_name = request.args.get('project_name')
+        if not batch_name and not project_name:
+            return jsonify({'error': 'batch_name or project_name is required'}), 400
+        contacts = get_supabase_client().get_deleted_level2_contacts(batch_name=batch_name, project_name=project_name)
+        for c in contacts:
+            c.setdefault('phone', c.get('phone_number') or '')
+            c.setdefault('name', c.get('contact_name') or '')
+        return jsonify({'contacts': contacts}), 200
+    except Exception as e:
+        logger.error(f"Error fetching deleted contacts: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/level2/delete-batch', methods=['POST'])

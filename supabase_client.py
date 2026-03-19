@@ -1084,16 +1084,31 @@ class SupabaseClient:
             return {'success': False, 'error': str(e)}
 
     def delete_level2_contact(self, contact_id: int) -> Dict:
-        """Delete a single contact from level2_contacts by id. Returns {success, error?}."""
+        """Soft-delete a single contact: set deleted_at so it stays in DB and shows in View Deleted Contacts."""
         try:
             if contact_id is None:
                 return {'success': False, 'error': 'contact_id is required'}
-            resp = self.client.table('level2_contacts').delete().eq('id', int(contact_id)).execute()
-            logger.info(f"✅ Deleted contact id={contact_id}")
+            now = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+            self.client.table('level2_contacts').update({'deleted_at': now}).eq('id', int(contact_id)).execute()
+            logger.info(f"✅ Soft-deleted contact id={contact_id}")
             return {'success': True}
         except Exception as e:
-            logger.error(f"❌ Error deleting contact {contact_id}: {str(e)}")
+            logger.error(f"❌ Error soft-deleting contact {contact_id}: {str(e)}")
             return {'success': False, 'error': str(e)}
+
+    def get_deleted_level2_contacts(self, batch_name: Optional[str] = None, project_name: Optional[str] = None) -> List[Dict]:
+        """Get contacts that were soft-deleted (deleted_at IS NOT NULL) for a batch or project."""
+        try:
+            query = self.client.table('level2_contacts').select('*').not_.is_('deleted_at', 'null')
+            if batch_name:
+                query = query.eq('batch_name', batch_name)
+            if project_name:
+                query = query.eq('project_name', project_name)
+            response = query.order('deleted_at', desc=True).execute()
+            return response.data if response.data else []
+        except Exception as e:
+            logger.error(f"❌ Error getting deleted contacts: {str(e)}")
+            return []
     
     def save_level2_results(self, enriched_companies: List[Dict], project_name: Optional[str] = None, batch_name: Optional[str] = None) -> Dict:
         """
@@ -1410,7 +1425,7 @@ class SupabaseClient:
                         If NOT provided, uses default allowed titles as fallback.
         """
         try:
-            query = self.client.table('level2_contacts').select('*')
+            query = self.client.table('level2_contacts').select('*').is_('deleted_at', 'null')
             
             # Filter by batch_name (preferred) or project_name
             if batch_name:
@@ -1423,7 +1438,7 @@ class SupabaseClient:
                     prefixed_name = batch_name
                     if not batch_name.startswith(self.saved_batch_prefix):
                         prefixed_name = f"{self.saved_batch_prefix}{batch_name}"
-                    query = self.client.table('level2_contacts').select('*').eq('batch_name', prefixed_name)
+                    query = self.client.table('level2_contacts').select('*').is_('deleted_at', 'null').eq('batch_name', prefixed_name)
                 else:
                     query = None
             elif project_name:
@@ -1486,7 +1501,7 @@ class SupabaseClient:
         Returns contacts if found, empty list if not found
         """
         try:
-            query = self.client.table('level2_contacts').select('*')
+            query = self.client.table('level2_contacts').select('*').is_('deleted_at', 'null')
             query = query.eq('company_name', company_name)
             
             if project_name:
@@ -1532,6 +1547,7 @@ class SupabaseClient:
             resp = (
                 self.client.table('level2_contacts')
                 .select('*')
+                .is_('deleted_at', 'null')
                 .in_('id', contact_ids)
                 .execute()
             )
