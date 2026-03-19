@@ -1593,13 +1593,13 @@
                     projectSelect.appendChild(opt);
                 });
                 
-                // Check URL param
+                // Check URL param (e.g. from Level 1 "Next: Get Contacts")
                 const urlParams = new URLSearchParams(window.location.search);
                 const projectParam = urlParams.get('project');
                 if (projectParam) {
                     projectSelect.value = projectParam;
                     showProjectInfo(projectParam);
-                    loadCompanies(projectParam);
+                    await loadCompanies(projectParam);
                 }
                 const viewParam = urlParams.get('view');
                 if (viewParam === 'excluded' && projectParam) {
@@ -2803,7 +2803,7 @@
                     const res = await fetch(`/api/level2/contacts?batch_name=${encodeURIComponent(lastBatch)}${designationParam}`);
                     const data = await res.json();
                     contacts = data.contacts || [];
-                    companiesCard.style.display = 'none';
+                    // Keep companies card visible so Search Settings (designation, Find Contacts) stay visible
                     contactsCard.style.display = 'block';
                     renderContacts();
                     const deleteBatchBtnEl = document.getElementById('deleteBatchBtn');
