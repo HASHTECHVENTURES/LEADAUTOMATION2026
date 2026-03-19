@@ -2292,9 +2292,6 @@
 
         // View Not Found: fetch companies that had no Apollo data, render list, then show companies card and noApollo section
         const viewNoDataBtn = document.getElementById('viewNoDataBtn');
-        const companiesTableContainer = document.getElementById('companiesTableContainer');
-        const toggleCompaniesText = document.getElementById('toggleCompaniesText');
-        const toggleCompaniesIcon = document.getElementById('toggleCompaniesIcon');
         if (viewNoDataBtn) {
             viewNoDataBtn.addEventListener('click', async () => {
                 const projectName = currentProject || (currentBatchName ? String(currentBatchName).replace(/_Main_Batch$/i, '').trim() : '');
