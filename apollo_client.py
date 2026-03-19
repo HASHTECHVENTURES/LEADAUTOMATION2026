@@ -138,6 +138,13 @@ class ApolloClient:
         if industry and field_id:
             payload['typed_custom_fields'] = {field_id: industry}
 
+        # Lists in Apollo: pass list name(s) so contact appears in that list (Apollo creates list if needed)
+        label_names = contact.get('label_names')
+        if not label_names and contact.get('list_name'):
+            label_names = [contact.get('list_name')]
+        if label_names:
+            payload['label_names'] = [str(n).strip() for n in label_names if str(n).strip()]
+
         endpoints = [
             (f"{self.api_search_base}/contacts", payload),  # Official: api/v1/contacts
             (f"{self.base_url}/contacts", payload),
@@ -225,7 +232,9 @@ class ApolloClient:
         if list_name in self._list_cache:
             return {'success': True, 'list_id': self._list_cache[list_name], 'cached': True}
         try:
-            url = f"{self.base_url}/contact_lists"
+            # Apollo list endpoints use api/v1 base (docs: https://api.apollo.io/api/v1)
+            base = getattr(self, 'api_search_base', None) or 'https://api.apollo.io/api/v1'
+            url = f"{base}/contact_lists"
             payload = {'name': list_name}
             resp = requests.post(url, json=payload, headers=self.headers)
             if resp.status_code in (200, 201):
@@ -246,9 +255,10 @@ class ApolloClient:
         """
         if not list_id or not contact_id:
             return {'success': False, 'error': 'list_id and contact_id are required'}
+        base = getattr(self, 'api_search_base', None) or 'https://api.apollo.io/api/v1'
         endpoints = [
-            (f"{self.base_url}/contact_lists/{list_id}/contacts", {'contact_ids': [contact_id]}),
-            (f"{self.base_url}/contact_lists/{list_id}/contacts", {'contacts': [{'id': contact_id}]}),
+            (f"{base}/contact_lists/{list_id}/contacts", {'contact_ids': [contact_id]}),
+            (f"{base}/contact_lists/{list_id}/contacts", {'contacts': [{'id': contact_id}]}),
         ]
         last_error = ''
         for url, payload in endpoints:

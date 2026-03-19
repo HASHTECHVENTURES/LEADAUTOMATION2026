@@ -2422,6 +2422,7 @@ def level3_transfer_one():
         data = request.json or {}
         contact_id = data.get('contact_id')
         list_id = data.get('list_id')
+        list_name = (data.get('list_name') or '').strip()  # List name for Apollo label_names (shows in People → Lists)
         industry_tag = (data.get('industry_tag') or data.get('industry') or '').strip()  # Tag for Apollo filter (e.g. "IT MUMBAI")
         if not contact_id:
             return jsonify({'error': 'contact_id is required'}), 400
@@ -2444,7 +2445,8 @@ def level3_transfer_one():
             'linkedin_url': contact.get('linkedin_url', ''),
             'organization_name': contact.get('company_name', ''),
             'title': contact.get('contact_type', '') or contact.get('title', ''),
-            'industry': industry_for_apollo  # Sent to Apollo custom field so client can filter by industry in People
+            'industry': industry_for_apollo,  # Sent to Apollo custom field so client can filter by industry in People
+            'list_name': list_name or None,   # Apollo label_names: contact appears in this list (create list if needed)
         }
 
         # Create contact in Outreach Platform

@@ -545,22 +545,23 @@
                 
                 <!-- Action Buttons -->
                 <div style="margin-top: 24px;" id="actionButtons">
-                    <!-- Industry tag -->
+                    <!-- Industry tag + List name: so you can filter in Apollo People by List (e.g. "Mumbai IT") -->
                     <div style="margin-bottom: 16px; padding: 16px; background: var(--gray-50); border-radius: 12px;">
                         <label class="form-label" style="display: block; margin-bottom: 8px; font-weight: 500; color: var(--gray-700);">
                             <i class="fas fa-industry" style="margin-right: 6px; color: var(--primary);"></i>
-                            Industry tag <span style="color: var(--danger, #dc3545);">*</span>
+                            Segment / campaign tag <span style="color: var(--danger, #dc3545);">*</span> <span style="font-weight: 400; color: var(--gray-500);">(e.g. Mumbai IT, Manufacturing)</span>
                         </label>
-                        <input type="text" class="form-input" id="industryKeywords" placeholder="e.g. IT MUMBAI, Manufacturing, Medical" style="width: 100%;" required>
+                        <input type="text" class="form-input" id="industryKeywords" placeholder="e.g. Mumbai IT, Manufacturing, Medical" style="width: 100%;" required>
+                        <p style="font-size: 0.85em; color: var(--gray-500); margin-top: 6px;">Used to tag contacts. In Apollo: the built-in &quot;Industry&quot; filter uses Apollo&#39;s categories only. To filter by <em>this</em> segment, use <strong>List</strong> (same value below) or your custom field.</p>
                     </div>
-                    <!-- List name: filter in Apollo People by this list -->
+                    <!-- List name: same value = filter in Apollo People by List → add to sequence -->
                     <div style="margin-bottom: 16px; padding: 16px; background: var(--gray-50); border-radius: 12px;">
                         <label class="form-label" style="display: block; margin-bottom: 8px; font-weight: 500; color: var(--gray-700);">
                             <i class="fas fa-list" style="margin-right: 6px; color: var(--primary);"></i>
-                            List name
+                            List name <span style="font-weight: 400; color: var(--gray-500);">(recommended: same as above)</span>
                         </label>
-                        <input type="text" class="form-input" id="listName" placeholder="e.g. IT Mumbai March, Manufacturing campaign" style="width: 100%;">
-                        <p style="font-size: 0.85em; color: var(--gray-500); margin-top: 6px;">Contacts go to this list. In the dashboard: People → filter by List → add to sequence.</p>
+                        <input type="text" class="form-input" id="listName" placeholder="e.g. Mumbai IT (same as segment = filter in Apollo by List)" style="width: 100%;">
+                        <p style="font-size: 0.85em; color: var(--gray-500); margin-top: 6px;">In the dashboard: <strong>People</strong> → filter by <strong>List</strong> → choose this name (e.g. Mumbai IT) → select people → Add to sequence.</p>
                     </div>
                     <button class="btn btn-primary btn-block" id="transferBtn" style="flex: 1;">
                         <i class="fas fa-paper-plane"></i>
@@ -730,6 +731,18 @@
             return div.innerHTML;
         }
         
+        // Auto-fill List name from Segment tag when empty, so user can filter in Apollo by List (e.g. "Mumbai IT")
+        const industryInput = document.getElementById('industryKeywords');
+        const listNameInput = document.getElementById('listName');
+        if (industryInput && listNameInput) {
+            industryInput.addEventListener('input', function() {
+                if (!listNameInput.value.trim()) listNameInput.value = this.value.trim();
+            });
+            industryInput.addEventListener('blur', function() {
+                if (!listNameInput.value.trim()) listNameInput.value = this.value.trim();
+            });
+        }
+        
         // Event listeners
         batchSelect && batchSelect.addEventListener('change', () => {
             if (batchSelect.value) {
@@ -806,7 +819,7 @@
             // Industry tag (required): sent to Apollo so client can filter by industry and run email campaign
             const industryTag = document.getElementById('industryKeywords')?.value.trim() || '';
             if (!industryTag) {
-                showUserFriendlyError('Please enter an industry tag (e.g. IT MUMBAI, Manufacturing) so you can filter by it in the database.');
+                showUserFriendlyError('Please enter a segment/campaign tag (e.g. Mumbai IT) so you can filter by it in the dashboard (use the same value as List name).');
                 this.disabled = false;
                 this.innerHTML = '<i class="fas fa-paper-plane"></i> Transfer to Outreach Platform';
                 return;
@@ -869,7 +882,7 @@
                         const res = await fetch('/api/level3/transfer-one', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ contact_id: contact.id, industry_tag: industryTag, list_id: listId || undefined })
+                            body: JSON.stringify({ contact_id: contact.id, industry_tag: industryTag, list_id: listId || undefined, list_name: listName || undefined })
                         });
                         
                         const data = await res.json();
