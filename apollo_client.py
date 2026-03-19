@@ -1694,3 +1694,306 @@ class ApolloClient:
             time.sleep(1)
         
         return enriched_companies
+
+    def search_sequences(self, q_name: Optional[str] = None, page: int = 1, per_page: int = 20) -> Dict:
+        """
+        Search for sequences (emailer campaigns) in Apollo.
+        Requires a master API key.
+        Returns list of sequences with id and name for dropdown / "Add batch to sequence".
+        """
+        url = f"{self.api_search_base}/emailer_campaigns/search"
+        params = {"page": page, "per_page": per_page}
+        if q_name and str(q_name).strip():
+            params["q_name"] = str(q_name).strip()
+        try:
+            resp = requests.post(url, headers=self.headers, params=params, timeout=15)
+            if resp.status_code == 401:
+                logger.warning("Apollo Search Sequences: invalid credentials")
+                return {"success": False, "error": "Invalid API key", "sequences": []}
+            if resp.status_code == 403:
+                data = resp.json() if resp.content else {}
+                msg = data.get("error") or data.get("message") or "Access denied"
+                logger.warning(f"Apollo Search Sequences: {msg}")
+                return {"success": False, "error": msg, "sequences": []}
+            if resp.status_code == 429:
+                logger.warning("Apollo Search Sequences: rate limited")
+                return {"success": False, "error": "Rate limit exceeded. Try again later.", "sequences": []}
+            if resp.status_code != 200:
+                logger.warning(f"Apollo Search Sequences: status {resp.status_code}")
+                return {"success": False, "error": f"Apollo returned {resp.status_code}", "sequences": []}
+            data = resp.json() if resp.content else {}
+            campaigns = data.get("emailer_campaigns") or []
+            pagination = data.get("pagination") or {}
+            sequences = [{"id": c.get("id"), "name": c.get("name") or "Unnamed"} for c in campaigns if c.get("id")]
+            logger.info(f"Apollo Search Sequences: found {len(sequences)} sequences")
+            return {
+                "success": True,
+                "sequences": sequences,
+                "pagination": {"page": pagination.get("page", 1), "per_page": pagination.get("per_page"), "total_entries": pagination.get("total_entries"), "total_pages": pagination.get("total_pages")},
+            }
+        except Exception as e:
+            logger.exception("Apollo Search Sequences request failed")
+            return {"success": False, "error": str(e), "sequences": []}
+
+    def add_contacts_to_sequence(
+        self,
+        sequence_id: str,
+        contact_ids: List[str],
+        send_email_from_email_account_id: str,
+        *,
+        send_email_from_email_address: Optional[str] = None,
+        sequence_no_email: bool = False,
+        sequence_unverified_email: bool = False,
+        sequence_active_in_other_campaigns: bool = False,
+        sequence_finished_in_other_campaigns: bool = False,
+        status: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> Dict:
+        """
+        Add contacts to an Apollo sequence (emailer campaign).
+        Requires master API key. contact_ids must be Apollo contact IDs (from Create Contact / Search Contacts).
+        send_email_from_email_account_id is required (get from Get a List of Email Accounts).
+        """
+        if not sequence_id or not send_email_from_email_account_id:
+            return {"success": False, "error": "sequence_id and send_email_from_email_account_id are required", "contacts": [], "skipped_contact_ids": {}}
+        if not contact_ids:
+            return {"success": False, "error": "contact_ids or label_names required", "contacts": [], "skipped_contact_ids": {}}
+        url = f"{self.api_search_base}/emailer_campaigns/{sequence_id}/add_contact_ids"
+        params: List[tuple] = [
+            ("emailer_campaign_id", sequence_id),
+            ("send_email_from_email_account_id", send_email_from_email_account_id),
+        ]
+        for cid in contact_ids:
+            if cid:
+                params.append(("contact_ids[]", cid))
+        if send_email_from_email_address:
+            params.append(("send_email_from_email_address", send_email_from_email_address))
+        if sequence_no_email:
+            params.append(("sequence_no_email", "true"))
+        if sequence_unverified_email:
+            params.append(("sequence_unverified_email", "true"))
+        if sequence_active_in_other_campaigns:
+            params.append(("sequence_active_in_other_campaigns", "true"))
+        if sequence_finished_in_other_campaigns:
+            params.append(("sequence_finished_in_other_campaigns", "true"))
+        if status in ("active", "paused"):
+            params.append(("status", status))
+        if user_id:
+            params.append(("user_id", user_id))
+        try:
+            resp = requests.post(url, headers=self.headers, params=params, timeout=30)
+            if resp.status_code == 401:
+                return {"success": False, "error": "Invalid API key", "contacts": [], "skipped_contact_ids": {}}
+            if resp.status_code == 403:
+                data = resp.json() if resp.content else {}
+                msg = data.get("error") or data.get("message") or "Master API key required"
+                return {"success": False, "error": msg, "contacts": [], "skipped_contact_ids": {}}
+            if resp.status_code == 422:
+                data = resp.json() if resp.content else {}
+                msg = data.get("error") or "Validation error"
+                return {"success": False, "error": msg, "contacts": [], "skipped_contact_ids": {}}
+            if resp.status_code == 429:
+                return {"success": False, "error": "Rate limit exceeded. Try again later.", "contacts": [], "skipped_contact_ids": {}}
+            if resp.status_code != 200:
+                return {"success": False, "error": f"Apollo returned {resp.status_code}", "contacts": [], "skipped_contact_ids": {}}
+            data = resp.json() if resp.content else {}
+            contacts = data.get("contacts") or []
+            skipped = data.get("skipped_contact_ids") or {}
+            logger.info(f"Apollo Add to Sequence: added {len(contacts)} contacts, skipped {len(skipped)}")
+            return {
+                "success": True,
+                "contacts": contacts,
+                "skipped_contact_ids": skipped,
+                "emailer_campaign": data.get("emailer_campaign"),
+            }
+        except Exception as e:
+            logger.exception("Apollo Add Contacts to Sequence request failed")
+            return {"success": False, "error": str(e), "contacts": [], "skipped_contact_ids": {}}
+
+    def update_contact_status_in_sequence(
+        self,
+        emailer_campaign_ids: List[str],
+        contact_ids: List[str],
+        mode: str,
+    ) -> Dict:
+        """
+        Update contact status in a sequence: mark as finished, remove, or stop.
+        mode: 'mark_as_finished' | 'remove' | 'stop'
+        Requires master API key.
+        """
+        if not emailer_campaign_ids or not contact_ids:
+            return {"success": False, "error": "emailer_campaign_ids and contact_ids are required", "contacts": []}
+        mode = (mode or "").strip().lower()
+        if mode not in ("mark_as_finished", "remove", "stop"):
+            return {"success": False, "error": "mode must be one of: mark_as_finished, remove, stop", "contacts": []}
+        url = f"{self.api_search_base}/emailer_campaigns/remove_or_stop_contact_ids"
+        params: List[tuple] = [("mode", mode)]
+        for sid in emailer_campaign_ids:
+            if sid:
+                params.append(("emailer_campaign_ids[]", sid))
+        for cid in contact_ids:
+            if cid:
+                params.append(("contact_ids[]", cid))
+        try:
+            resp = requests.post(url, headers=self.headers, params=params, timeout=30)
+            if resp.status_code == 401:
+                return {"success": False, "error": "Invalid API key", "contacts": []}
+            if resp.status_code == 403:
+                data = resp.json() if resp.content else {}
+                msg = data.get("error") or data.get("message") or "Master API key required"
+                return {"success": False, "error": msg, "contacts": []}
+            if resp.status_code == 429:
+                return {"success": False, "error": "Rate limit exceeded. Try again later.", "contacts": []}
+            if resp.status_code != 200:
+                return {"success": False, "error": f"Apollo returned {resp.status_code}", "contacts": []}
+            data = resp.json() if resp.content else {}
+            contacts = data.get("contacts") or []
+            logger.info(f"Apollo Update Contact Status: mode={mode}, updated {len(contacts)} contacts")
+            return {
+                "success": True,
+                "contacts": contacts,
+                "emailer_campaigns": data.get("emailer_campaigns", []),
+                "num_contacts": data.get("num_contacts"),
+                "contact_statuses": data.get("contact_statuses", {}),
+            }
+        except Exception as e:
+            logger.exception("Apollo Update Contact Status in Sequence request failed")
+            return {"success": False, "error": str(e), "contacts": []}
+
+    def bulk_create_contacts(
+        self,
+        contacts: List[Dict],
+        append_label_names: Optional[List[str]] = None,
+        run_dedupe: bool = False,
+    ) -> Dict:
+        """
+        Bulk create up to 100 contacts in Apollo. Returns created_contacts and existing_contacts (both with id).
+        Each contact dict can have: first_name, last_name, email, title, organization_name, phone,
+        linkedin_url, present_raw_address, account_id, organization_id, owner_id, etc.
+        """
+        if not contacts:
+            return {"success": False, "error": "contacts array is required", "created_contacts": [], "existing_contacts": []}
+        if len(contacts) > 100:
+            return {"success": False, "error": "Maximum 100 contacts per request", "created_contacts": [], "existing_contacts": []}
+        url = f"{self.api_search_base}/contacts/bulk_create"
+        payload = {"contacts": contacts, "run_dedupe": run_dedupe}
+        if append_label_names:
+            payload["append_label_names"] = append_label_names
+        try:
+            resp = requests.post(url, headers=self.headers, json=payload, timeout=60)
+            if resp.status_code == 401:
+                return {"success": False, "error": "Invalid API key", "created_contacts": [], "existing_contacts": []}
+            if resp.status_code == 403:
+                data = resp.json() if resp.content else {}
+                msg = data.get("message") or data.get("error") or "Access denied"
+                return {"success": False, "error": msg, "created_contacts": [], "existing_contacts": []}
+            if resp.status_code == 422:
+                data = resp.json() if resp.content else {}
+                msg = data.get("error") or "Validation error"
+                return {"success": False, "error": msg, "created_contacts": [], "existing_contacts": []}
+            if resp.status_code == 429:
+                return {"success": False, "error": "Rate limit exceeded", "created_contacts": [], "existing_contacts": []}
+            if resp.status_code not in (200, 201):
+                return {"success": False, "error": f"Apollo returned {resp.status_code}", "created_contacts": [], "existing_contacts": []}
+            data = resp.json() if resp.content else {}
+            created = data.get("created_contacts") or []
+            existing = data.get("existing_contacts") or []
+            logger.info(f"Apollo Bulk Create: {len(created)} created, {len(existing)} existing")
+            return {"success": True, "created_contacts": created, "existing_contacts": existing}
+        except Exception as e:
+            logger.exception("Apollo Bulk Create Contacts request failed")
+            return {"success": False, "error": str(e), "created_contacts": [], "existing_contacts": []}
+
+    def search_contacts(
+        self,
+        q_keywords: Optional[str] = None,
+        page: int = 1,
+        per_page: int = 25,
+        sort_by_field: Optional[str] = None,
+        sort_ascending: bool = False,
+    ) -> Dict:
+        """
+        Search for contacts in Apollo (team's contacts). Use q_keywords for name, email, company, title.
+        Returns contacts (each with id) and pagination.
+        """
+        url = f"{self.api_search_base}/contacts/search"
+        payload = {"page": page, "per_page": min(per_page, 100)}
+        if q_keywords and str(q_keywords).strip():
+            payload["q_keywords"] = str(q_keywords).strip()
+        if sort_by_field:
+            payload["sort_by_field"] = sort_by_field
+            payload["sort_ascending"] = sort_ascending
+        try:
+            resp = requests.post(url, headers=self.headers, json=payload, timeout=20)
+            if resp.status_code == 401:
+                return {"success": False, "error": "Invalid API key", "contacts": [], "pagination": {}}
+            if resp.status_code == 403:
+                data = resp.json() if resp.content else {}
+                msg = data.get("message") or data.get("error") or "Access denied"
+                return {"success": False, "error": msg, "contacts": [], "pagination": {}}
+            if resp.status_code == 429:
+                return {"success": False, "error": "Rate limit exceeded", "contacts": [], "pagination": {}}
+            if resp.status_code != 200:
+                return {"success": False, "error": f"Apollo returned {resp.status_code}", "contacts": [], "pagination": {}}
+            data = resp.json() if resp.content else {}
+            contacts = data.get("contacts") or []
+            pagination = data.get("pagination") or {}
+            logger.info(f"Apollo Search Contacts: {len(contacts)} results")
+            return {"success": True, "contacts": contacts, "pagination": pagination}
+        except Exception as e:
+            logger.exception("Apollo Search Contacts request failed")
+            return {"success": False, "error": str(e), "contacts": [], "pagination": {}}
+
+    def get_email_accounts(self) -> Dict:
+        """
+        Get list of linked email accounts (for Add to Sequence send_email_from_email_account_id).
+        Requires master API key. No parameters. Returns email_accounts with id, email, active, etc.
+        """
+        url = f"{self.api_search_base}/email_accounts"
+        try:
+            resp = requests.get(url, headers=self.headers, timeout=15)
+            if resp.status_code == 401:
+                return {"success": False, "error": "Invalid API key", "email_accounts": []}
+            if resp.status_code == 403:
+                data = resp.json() if resp.content else {}
+                msg = data.get("error") or data.get("message") or "Master API key required"
+                return {"success": False, "error": msg, "email_accounts": []}
+            if resp.status_code == 429:
+                return {"success": False, "error": "Rate limit exceeded", "email_accounts": []}
+            if resp.status_code != 200:
+                return {"success": False, "error": f"Apollo returned {resp.status_code}", "email_accounts": []}
+            data = resp.json() if resp.content else {}
+            accounts = data.get("email_accounts") or []
+            logger.info(f"Apollo Get Email Accounts: {len(accounts)} accounts")
+            return {"success": True, "email_accounts": accounts}
+        except Exception as e:
+            logger.exception("Apollo Get Email Accounts request failed")
+            return {"success": False, "error": str(e), "email_accounts": []}
+
+    def get_users(self, page: int = 1, per_page: int = 50) -> Dict:
+        """
+        Get list of users (teammates) in the Apollo account. Optional for Add to Sequence user_id.
+        Requires master API key. GET /users/search with optional page, per_page.
+        """
+        url = f"{self.api_search_base}/users/search"
+        params = {"page": page, "per_page": min(per_page, 100)}
+        try:
+            resp = requests.get(url, headers=self.headers, params=params, timeout=15)
+            if resp.status_code == 401:
+                return {"success": False, "error": "Invalid API key", "users": [], "pagination": {}}
+            if resp.status_code == 403:
+                data = resp.json() if resp.content else {}
+                msg = data.get("error") or data.get("message") or "Master API key required"
+                return {"success": False, "error": msg, "users": [], "pagination": {}}
+            if resp.status_code == 429:
+                return {"success": False, "error": "Rate limit exceeded", "users": [], "pagination": {}}
+            if resp.status_code != 200:
+                return {"success": False, "error": f"Apollo returned {resp.status_code}", "users": [], "pagination": {}}
+            data = resp.json() if resp.content else {}
+            users = data.get("users") or []
+            pagination = data.get("pagination") or {}
+            logger.info(f"Apollo Get Users: {len(users)} users")
+            return {"success": True, "users": users, "pagination": pagination}
+        except Exception as e:
+            logger.exception("Apollo Get Users request failed")
+            return {"success": False, "error": str(e), "users": [], "pagination": {}}

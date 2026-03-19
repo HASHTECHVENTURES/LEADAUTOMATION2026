@@ -2057,6 +2057,216 @@ def level3_status():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/level3/apollo-email-accounts', methods=['GET'])
+def level3_apollo_email_accounts():
+    """Fetch Apollo email accounts for 'Send from' dropdown when adding contacts to a sequence."""
+    try:
+        result = apollo_client.get_email_accounts()
+        if not result.get('success'):
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Failed to fetch email accounts'),
+                'email_accounts': []
+            }), 200
+        accounts = result.get('email_accounts', [])
+        return jsonify({
+            'success': True,
+            'email_accounts': [{"id": a.get("id"), "email": a.get("email"), "active": a.get("active", True), "provider_display_name": a.get("provider_display_name")} for a in accounts]
+        }), 200
+    except Exception as e:
+        logger.exception("Apollo email accounts fetch failed")
+        return jsonify({'success': False, 'error': str(e), 'email_accounts': []}), 200
+
+@app.route('/api/level3/apollo-users', methods=['GET'])
+def level3_apollo_users():
+    """Fetch Apollo users (teammates) for optional user_id when adding contacts to a sequence."""
+    try:
+        page = int(request.args.get('page', 1))
+        per_page = min(int(request.args.get('per_page', 50)), 100)
+        result = apollo_client.get_users(page=page, per_page=per_page)
+        if not result.get('success'):
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Failed to fetch users'),
+                'users': [],
+                'pagination': {}
+            }), 200
+        users = result.get('users', [])
+        return jsonify({
+            'success': True,
+            'users': [{"id": u.get("id"), "email": u.get("email"), "name": u.get("name") or f"{u.get('first_name') or ''} {u.get('last_name') or ''}".strip() or u.get("email")} for u in users],
+            'pagination': result.get('pagination', {})
+        }), 200
+    except Exception as e:
+        logger.exception("Apollo users fetch failed")
+        return jsonify({'success': False, 'error': str(e), 'users': [], 'pagination': {}}), 200
+
+@app.route('/api/level3/apollo-sequences', methods=['GET'])
+def level3_apollo_sequences():
+    """Fetch Apollo sequences (emailer campaigns) for dropdown: Add batch to sequence.
+    Requires Apollo master API key. Optional q_name to filter by sequence name."""
+    try:
+        q_name = request.args.get('q_name', '').strip() or None
+        page = int(request.args.get('page', 1))
+        per_page = min(int(request.args.get('per_page', 20)), 50)
+        result = apollo_client.search_sequences(q_name=q_name, page=page, per_page=per_page)
+        if not result.get('success'):
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Failed to fetch sequences'),
+                'sequences': []
+            }), 200
+        return jsonify({
+            'success': True,
+            'sequences': result.get('sequences', []),
+            'pagination': result.get('pagination', {})
+        }), 200
+    except Exception as e:
+        logger.exception("Apollo sequences fetch failed")
+        return jsonify({'success': False, 'error': str(e), 'sequences': []}), 200
+
+@app.route('/api/level3/apollo-add-to-sequence', methods=['POST'])
+def level3_apollo_add_to_sequence():
+    """Add Apollo contacts to an Apollo sequence. Requires Apollo contact IDs and send_email_from_email_account_id."""
+    try:
+        data = request.json or {}
+        sequence_id = (data.get('sequence_id') or '').strip()
+        contact_ids = data.get('contact_ids') or []
+        if isinstance(contact_ids, str):
+            contact_ids = [contact_ids] if contact_ids else []
+        contact_ids = [str(c).strip() for c in contact_ids if c]
+        send_email_from_email_account_id = (data.get('send_email_from_email_account_id') or '').strip()
+        if not sequence_id:
+            return jsonify({'success': False, 'error': 'sequence_id is required'}), 400
+        if not send_email_from_email_account_id:
+            return jsonify({'success': False, 'error': 'send_email_from_email_account_id is required (Apollo email account ID)'}), 400
+        if not contact_ids:
+            return jsonify({'success': False, 'error': 'contact_ids is required (list of Apollo contact IDs)'}), 400
+        result = apollo_client.add_contacts_to_sequence(
+            sequence_id=sequence_id,
+            contact_ids=contact_ids,
+            send_email_from_email_account_id=send_email_from_email_account_id,
+            send_email_from_email_address=data.get('send_email_from_email_address') or None,
+            sequence_no_email=bool(data.get('sequence_no_email')),
+            sequence_unverified_email=bool(data.get('sequence_unverified_email')),
+            sequence_active_in_other_campaigns=bool(data.get('sequence_active_in_other_campaigns')),
+            sequence_finished_in_other_campaigns=bool(data.get('sequence_finished_in_other_campaigns')),
+            status=data.get('status') or None,
+            user_id=data.get('user_id') or None,
+        )
+        if not result.get('success'):
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Failed to add contacts to sequence'),
+                'contacts': result.get('contacts', []),
+                'skipped_contact_ids': result.get('skipped_contact_ids', {})
+            }), 200
+        return jsonify({
+            'success': True,
+            'contacts': result.get('contacts', []),
+            'skipped_contact_ids': result.get('skipped_contact_ids', {}),
+            'emailer_campaign': result.get('emailer_campaign'),
+        }), 200
+    except Exception as e:
+        logger.exception("Apollo add to sequence failed")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/level3/apollo-update-sequence-status', methods=['POST'])
+def level3_apollo_update_sequence_status():
+    """Update contact status in Apollo sequence: mark_as_finished, remove, or stop."""
+    try:
+        data = request.json or {}
+        emailer_campaign_ids = data.get('emailer_campaign_ids') or data.get('sequence_ids') or []
+        if isinstance(emailer_campaign_ids, str):
+            emailer_campaign_ids = [emailer_campaign_ids] if emailer_campaign_ids else []
+        emailer_campaign_ids = [str(s).strip() for s in emailer_campaign_ids if s]
+        contact_ids = data.get('contact_ids') or []
+        if isinstance(contact_ids, str):
+            contact_ids = [contact_ids] if contact_ids else []
+        contact_ids = [str(c).strip() for c in contact_ids if c]
+        mode = (data.get('mode') or '').strip()
+        if not emailer_campaign_ids:
+            return jsonify({'success': False, 'error': 'emailer_campaign_ids (or sequence_ids) is required'}), 400
+        if not contact_ids:
+            return jsonify({'success': False, 'error': 'contact_ids is required'}), 400
+        if not mode:
+            return jsonify({'success': False, 'error': 'mode is required (mark_as_finished, remove, or stop)'}), 400
+        result = apollo_client.update_contact_status_in_sequence(
+            emailer_campaign_ids=emailer_campaign_ids,
+            contact_ids=contact_ids,
+            mode=mode,
+        )
+        if not result.get('success'):
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Failed to update status'),
+                'contacts': result.get('contacts', []),
+            }), 200
+        return jsonify({
+            'success': True,
+            'contacts': result.get('contacts', []),
+            'emailer_campaigns': result.get('emailer_campaigns', []),
+            'num_contacts': result.get('num_contacts'),
+            'contact_statuses': result.get('contact_statuses', {}),
+        }), 200
+    except Exception as e:
+        logger.exception("Apollo update sequence status failed")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/level3/apollo-bulk-create-contacts', methods=['POST'])
+def level3_apollo_bulk_create_contacts():
+    """Bulk create contacts in Apollo (max 100 per request). Returns created_contacts and existing_contacts with ids."""
+    try:
+        data = request.json or {}
+        contacts = data.get('contacts') or []
+        append_label_names = data.get('append_label_names') or []
+        run_dedupe = bool(data.get('run_dedupe', False))
+        if not contacts:
+            return jsonify({'success': False, 'error': 'contacts array is required', 'created_contacts': [], 'existing_contacts': []}), 400
+        if len(contacts) > 100:
+            return jsonify({'success': False, 'error': 'Maximum 100 contacts per request', 'created_contacts': [], 'existing_contacts': []}), 400
+        result = apollo_client.bulk_create_contacts(contacts=contacts, append_label_names=append_label_names or None, run_dedupe=run_dedupe)
+        if not result.get('success'):
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Bulk create failed'),
+                'created_contacts': result.get('created_contacts', []),
+                'existing_contacts': result.get('existing_contacts', []),
+            }), 200
+        return jsonify({
+            'success': True,
+            'created_contacts': result.get('created_contacts', []),
+            'existing_contacts': result.get('existing_contacts', []),
+        }), 200
+    except Exception as e:
+        logger.exception("Apollo bulk create contacts failed")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/level3/apollo-search-contacts', methods=['GET', 'POST'])
+def level3_apollo_search_contacts():
+    """Search Apollo contacts by keywords (name, email, company, title). Returns contacts with id for add-to-sequence."""
+    try:
+        if request.method == 'POST':
+            data = request.json or {}
+            q_keywords = (data.get('q_keywords') or '').strip() or None
+            page = int(data.get('page', 1))
+            per_page = min(int(data.get('per_page', 25)), 100)
+        else:
+            q_keywords = request.args.get('q_keywords', '').strip() or None
+            page = int(request.args.get('page', 1))
+            per_page = min(int(request.args.get('per_page', 25)), 100)
+        result = apollo_client.search_contacts(q_keywords=q_keywords, page=page, per_page=per_page)
+        if not result.get('success'):
+            return jsonify({'success': False, 'error': result.get('error', 'Search failed'), 'contacts': [], 'pagination': {}}), 200
+        return jsonify({
+            'success': True,
+            'contacts': result.get('contacts', []),
+            'pagination': result.get('pagination', {}),
+        }), 200
+    except Exception as e:
+        logger.exception("Apollo search contacts failed")
+        return jsonify({'success': False, 'error': str(e), 'contacts': [], 'pagination': {}}), 500
+
 @app.route('/api/level3/create-list', methods=['POST'])
 def level3_create_list():
     """Create a list in Outreach Platform and return list_id"""
@@ -2222,20 +2432,23 @@ def level3_transfer_one():
             }), 200
 
         # Add to list if list_id provided
+        apollo_contact_id = result.get('contact_id')
         if list_id:
-            add_result = apollo_client.add_contact_to_list(list_id, result.get('contact_id'))
+            add_result = apollo_client.add_contact_to_list(list_id, apollo_contact_id)
             if not add_result.get('success'):
                 return jsonify({
                     'success': True,
                     'status': 'warning',
                     'reason': add_result.get('error', 'List add failed'),
-                    'contact': contact_name
+                    'contact': contact_name,
+                    'apollo_contact_id': apollo_contact_id,
                 }), 200
 
         return jsonify({
             'success': True,
             'status': 'transferred',
-            'contact': contact_name
+            'contact': contact_name,
+            'apollo_contact_id': apollo_contact_id,
         }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500

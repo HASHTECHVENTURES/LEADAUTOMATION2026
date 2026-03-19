@@ -2289,36 +2289,45 @@
             });
         }
         
-        // View Not Found: show companies card first, then noApollo section, scroll and expand
+        // View Not Found: show companies card and table container, then noApollo section, scroll and expand
         const viewNoDataBtn = document.getElementById('viewNoDataBtn');
+        const companiesTableContainer = document.getElementById('companiesTableContainer');
+        const toggleCompaniesText = document.getElementById('toggleCompaniesText');
+        const toggleCompaniesIcon = document.getElementById('toggleCompaniesIcon');
         if (viewNoDataBtn) {
             viewNoDataBtn.addEventListener('click', () => {
                 if (companiesCard) companiesCard.style.display = 'block';
+                if (companiesTableContainer) companiesTableContainer.style.display = 'block';
+                if (toggleCompaniesText) toggleCompaniesText.textContent = 'Hide Level 1 Companies';
+                if (toggleCompaniesIcon) { toggleCompaniesIcon.classList.remove('fa-chevron-down'); toggleCompaniesIcon.classList.add('fa-chevron-up'); }
                 const section = document.getElementById('noApolloSection');
                 const container = document.getElementById('noApolloListContainer');
                 const chevron = document.getElementById('noApolloChevron');
                 if (!section) return;
                 section.style.display = 'block';
                 setTimeout(() => section.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
-                if (container && chevron && container.style.display === 'none') {
+                if (container && chevron) {
                     container.style.display = 'block';
                     chevron.classList.remove('fa-chevron-down');
                     chevron.classList.add('fa-chevron-up');
                 }
             });
         }
-        // View Deleted Companies: show companies card first, then excluded section, scroll and expand
+        // View Deleted Companies: show companies card and table container, then excluded section, scroll and expand
         const viewExcludedCompaniesBtn = document.getElementById('viewExcludedCompaniesBtn');
         if (viewExcludedCompaniesBtn) {
             viewExcludedCompaniesBtn.addEventListener('click', () => {
                 if (companiesCard) companiesCard.style.display = 'block';
+                if (companiesTableContainer) companiesTableContainer.style.display = 'block';
+                if (toggleCompaniesText) toggleCompaniesText.textContent = 'Hide Level 1 Companies';
+                if (toggleCompaniesIcon) { toggleCompaniesIcon.classList.remove('fa-chevron-down'); toggleCompaniesIcon.classList.add('fa-chevron-up'); }
                 const section = document.getElementById('excludedSection');
                 const container = document.getElementById('excludedListContainer');
                 const chevron = document.getElementById('excludedChevron');
                 if (!section) return;
                 section.style.display = 'block';
                 setTimeout(() => section.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
-                if (container && chevron && container.style.display === 'none') {
+                if (container && chevron) {
                     container.style.display = 'block';
                     chevron.classList.remove('fa-chevron-down');
                     chevron.classList.add('fa-chevron-up');
