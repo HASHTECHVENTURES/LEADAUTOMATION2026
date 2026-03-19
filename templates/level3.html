@@ -603,6 +603,7 @@
         let contacts = [];
         let failedContacts = [];
         let currentProjectName = '';
+        let urlDesignation = ''; // From Level 2 so contact count matches
 
         // Load batches
         async function loadBatches() {
@@ -627,16 +628,35 @@
                     currentProjectName = data.batches[0].project_name || '';
                 }
                 
-                // Check URL parameter first, then auto-load first batch
+                // Check URL parameters (Level 2 passes batch and optional designation so count matches)
                 const urlParams = new URLSearchParams(window.location.search);
                 const batchParam = urlParams.get('batch');
-                
-                if (batchParam && data.batches && data.batches.some(b => b.batch_name === batchParam)) {
-                    // Load batch from URL parameter
-                    batchSelect.value = batchParam;
-                    loadBatch(batchParam);
+                urlDesignation = (urlParams.get('designation') || '').trim();
+                // Prefer exact batch_name match so we load the same batch as Level 2 (e.g. 30 contacts), not another batch that only matches after stripping SAVED:: (e.g. 45 contacts)
+                const matchByParam = batchParam && data.batches && (
+                    data.batches.find(b => b.batch_name === batchParam) ||
+                    data.batches.find(b => (b.batch_name || '').replace(/^SAVED::/, '') === batchParam)
+                );
+
+                if (matchByParam) {
+                    batchSelect.value = matchByParam.batch_name;
+                    loadBatch(matchByParam.batch_name);
+                } else if (batchParam) {
+                    // URL has batch param but no match in list – load by param so count matches Level 2 (avoids showing a different batch with more contacts)
+                    const optionForParam = Array.from(batchSelect.options).find(o => o.value === batchParam || o.value.replace(/^SAVED::/, '') === batchParam);
+                    if (optionForParam) {
+                        batchSelect.value = optionForParam.value;
+                        loadBatch(optionForParam.value);
+                    } else {
+                        const opt = document.createElement('option');
+                        opt.value = batchParam;
+                        opt.textContent = batchParam;
+                        batchSelect.appendChild(opt);
+                        batchSelect.value = batchParam;
+                        loadBatch(batchParam);
+                    }
                 } else if (data.batches && data.batches.length > 0) {
-                    // Auto-load the first/most recent batch if no parameter or parameter not found
+                    // No URL param: auto-load the first/most recent batch
                     const firstBatch = data.batches[0].batch_name;
                     batchSelect.value = firstBatch;
                     loadBatch(firstBatch);
@@ -646,10 +666,12 @@
             }
         }
         
-        // Load batch contacts
+        // Load batch contacts (use urlDesignation so count matches Level 2 when designation was set)
         async function loadBatch(batchName) {
             try {
-                const res = await fetch(`/api/level3/contacts?batch_name=${encodeURIComponent(batchName)}`);
+                let url = `/api/level3/contacts?batch_name=${encodeURIComponent(batchName)}`;
+                if (urlDesignation) url += '&designation=' + encodeURIComponent(urlDesignation);
+                const res = await fetch(url);
                 const data = await res.json();
                 contacts = data.contacts || [];
                 
@@ -784,7 +806,7 @@
             // Industry tag (required): sent to Apollo so client can filter by industry and run email campaign
             const industryTag = document.getElementById('industryKeywords')?.value.trim() || '';
             if (!industryTag) {
-                showUserFriendlyError('Please enter an industry tag (e.g. IT MUMBAI, Manufacturing) so you can filter by it in Apollo.');
+                showUserFriendlyError('Please enter an industry tag (e.g. IT MUMBAI, Manufacturing) so you can filter by it in the database.');
                 this.disabled = false;
                 this.innerHTML = '<i class="fas fa-paper-plane"></i> Transfer to Outreach Platform';
                 return;

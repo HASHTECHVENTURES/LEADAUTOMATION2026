@@ -1096,6 +1096,27 @@ class SupabaseClient:
             logger.error(f"❌ Error soft-deleting contact {contact_id}: {str(e)}")
             return {'success': False, 'error': str(e)}
 
+    def get_company_names_with_contacts_in_batch(self, batch_name: str) -> List[str]:
+        """Get distinct company names that have at least one (non-deleted) contact in this batch.
+        Used to compute 'Not Found in Apollo' for the current batch only."""
+        try:
+            if not batch_name:
+                return []
+            query = self.client.table('level2_contacts').select('company_name').eq('batch_name', batch_name).is_('deleted_at', 'null')
+            response = query.execute()
+            rows = response.data or []
+            seen = set()
+            names = []
+            for r in rows:
+                n = (r.get('company_name') or '').strip()
+                if n and n.lower() not in seen:
+                    seen.add(n.lower())
+                    names.append(n)
+            return names
+        except Exception as e:
+            logger.error(f"❌ Error getting company names in batch: {str(e)}")
+            return []
+
     def get_deleted_level2_contacts(self, batch_name: Optional[str] = None, project_name: Optional[str] = None) -> List[Dict]:
         """Get contacts that were soft-deleted (deleted_at IS NOT NULL) for a batch or project."""
         try:
@@ -1424,76 +1445,65 @@ class SupabaseClient:
                         If provided, ONLY contacts matching this designation will be returned.
                         If NOT provided, uses default allowed titles as fallback.
         """
-        try:
-            query = self.client.table('level2_contacts').select('*').is_('deleted_at', 'null')
-            
-            # Filter by batch_name (preferred) or project_name
+        def _run(exclude_deleted: bool):
+            query = self.client.table('level2_contacts').select('*')
+            if exclude_deleted:
+                query = query.is_('deleted_at', 'null')
+            contacts = []
             if batch_name:
-                # Try exact batch_name first (legacy)
                 exact_query = query.eq('batch_name', batch_name)
                 response = exact_query.execute()
                 contacts = response.data if response.data else []
                 if not contacts:
-                    # Try saved batch prefix
-                    prefixed_name = batch_name
-                    if not batch_name.startswith(self.saved_batch_prefix):
-                        prefixed_name = f"{self.saved_batch_prefix}{batch_name}"
-                    query = self.client.table('level2_contacts').select('*').is_('deleted_at', 'null').eq('batch_name', prefixed_name)
-                else:
-                    query = None
+                    prefixed_name = batch_name if batch_name.startswith(self.saved_batch_prefix) else f"{self.saved_batch_prefix}{batch_name}"
+                    q2 = self.client.table('level2_contacts').select('*')
+                    if exclude_deleted:
+                        q2 = q2.is_('deleted_at', 'null')
+                    response = q2.eq('batch_name', prefixed_name).execute()
+                    contacts = response.data if response.data else []
             elif project_name:
                 query = query.eq('project_name', project_name)
-            
-            # Execute query
-            if query is not None:
                 response = query.execute()
                 contacts = response.data if response.data else []
-            
-            # Filter by designation if provided
-            if designation and designation.strip():
-                # User provided specific designation - ONLY match that
-                user_titles = [t.strip().lower() for t in designation.split(',') if t.strip()]
-                logger.info(f"🔍 Filtering contacts by user designation: {user_titles}")
+            return contacts
+
+        try:
+            contacts = _run(exclude_deleted=True)
+        except Exception as e:
+            if 'deleted_at' in str(e) or 'column' in str(e).lower():
+                logger.warning(f"deleted_at column may be missing, retrying without it: {e}")
+                try:
+                    contacts = _run(exclude_deleted=False)
+                except Exception as e2:
+                    logger.error(f"❌ Error retrieving contacts for Level 3: {str(e2)}")
+                    return []
             else:
-                # No designation provided - return ALL contacts with email/phone (for transfer)
-                # Filter only by email/phone requirement (needed for transfer)
-                filtered_contacts = [c for c in contacts if (c.get('email') or c.get('phone_number'))]
-                logger.info(f"🔍 No designation provided - returning {len(filtered_contacts)} contacts with email/phone")
-                return filtered_contacts
-            
+                logger.error(f"❌ Error retrieving contacts for Level 3: {str(e)}")
+                return []
+
+        # Filter by designation if provided (runs when we have contacts from try or fallback)
+        if designation and designation.strip():
+            # User provided specific designation - ONLY match that
+            user_titles = [t.strip().lower() for t in designation.split(',') if t.strip()]
+            logger.info(f"🔍 Filtering contacts by user designation: {user_titles}")
             filtered_contacts = []
             for c in contacts:
-                # Must have email or phone (required for transfer)
                 if not (c.get('email') or c.get('phone_number')):
                     continue
-                
-                # CRITICAL: Check the ACTUAL title field first (not contact_type)
-                # contact_type is just for categorization, title has the real job title
                 actual_title = (c.get('title', '') or '').lower().strip()
                 contact_type_lower = (c.get('contact_type', '') or '').lower()
-                
-                # Check if actual title matches user's designation
                 matches_title = any(user_title in actual_title for user_title in user_titles) if actual_title else False
-                
-                # Also check contact_type as fallback (but prefer title)
                 matches_contact_type = any(user_title in contact_type_lower for user_title in user_titles) if contact_type_lower else False
-                
-                # Only include if title matches (contact_type is just categorization, not the real title)
                 if matches_title:
                     filtered_contacts.append(c)
                 elif matches_contact_type and not actual_title:
-                    # Only use contact_type if title is empty
                     filtered_contacts.append(c)
-            
-            if designation and designation.strip():
-                logger.info(f"✅ Retrieved {len(filtered_contacts)} contacts filtered by user designation: '{designation}'")
-            else:
-                logger.info(f"✅ Retrieved {len(filtered_contacts)} contacts using default allowed titles")
+            logger.info(f"✅ Retrieved {len(filtered_contacts)} contacts filtered by user designation: '{designation}'")
             return filtered_contacts
-            
-        except Exception as e:
-            logger.error(f"❌ Error retrieving contacts for Level 3: {str(e)}")
-            return []
+        # No designation - return all contacts with email/phone
+        filtered_contacts = [c for c in contacts if (c.get('email') or c.get('phone_number'))]
+        logger.info(f"🔍 No designation provided - returning {len(filtered_contacts)} contacts with email/phone")
+        return filtered_contacts
 
     def get_contacts_by_company(self, company_name: str, project_name: Optional[str] = None, titles: Optional[List[str]] = None) -> List[Dict]:
         """

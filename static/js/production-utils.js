@@ -166,6 +166,13 @@ function showSuccess(message, duration = 3000) {
 }
 
 /**
+ * Alias for showSuccess - used by index.html and other pages for consistent naming
+ */
+function showUserFriendlySuccess(message, duration = 3000) {
+    showSuccess(message, duration);
+}
+
+/**
  * Loading state manager
  */
 function setLoadingState(element, isLoading, loadingText = 'Loading...') {

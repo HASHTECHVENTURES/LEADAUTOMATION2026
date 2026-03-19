@@ -1078,9 +1078,9 @@ def level2_process():
         try:
             health_response = requests.get("https://api.apollo.io/v1/auth/health", headers=apollo_client.headers, timeout=5)
             if health_response.status_code != 200:
-                return jsonify({'error': f'Apollo.io connection failed (status {health_response.status_code}). Check config.'}), 401
+                return jsonify({'error': f'Database connection failed (status {health_response.status_code}). Check config.'}), 401
         except Exception as e:
-            return jsonify({'error': f'Apollo.io connection error: {str(e)}'}), 500
+            return jsonify({'error': f'Database connection error: {str(e)}'}), 500
 
         # NOTE: include_excluded=True so that even companies that were previously
         # marked as excluded can be processed if the user explicitly selects them
@@ -1155,7 +1155,7 @@ def level2_process():
                     employee_ranges = []
                 ranges_str = ', '.join(str(r) for r in employee_ranges) if employee_ranges else ''
                 if not companies_with_data:
-                    error_msg = f'No companies have employee data available. Employee range filter(s) "{ranges_str}" require employee data, but none of the {companies_before_filter_count} companies have this information in Apollo.io. Please select "All Company Sizes" to process all companies regardless of employee count.'
+                    error_msg = f'No companies have employee data available. Employee range filter(s) "{ranges_str}" require employee data, but none of the {companies_before_filter_count} companies have this information in the database. Please select "All Company Sizes" to process all companies regardless of employee count.'
                 else:
                     error_msg = f'No companies found matching employee range(s): {ranges_str}. {companies_before_filter_count - companies_after_filter} companies were filtered out. Try selecting "All Company Sizes" or different employee ranges.'
                 
@@ -1587,9 +1587,12 @@ def select_companies_for_level2():
 
 @app.route('/api/level2/companies', methods=['GET'])
 def get_level2_companies():
-    """Level 2: Get companies (selected + not excluded), excluded list, and no-Apollo-data list"""
+    """Level 2: Get companies (selected + not excluded), excluded list, and no-database-data list.
+    When batch_name is provided, 'Not Found in database' is scoped to the current batch only
+    (companies in project that have no contacts in this batch); old data does not persist."""
     try:
         project_name = request.args.get('project_name')
+        batch_name = request.args.get('batch_name')
         limit = int(request.args.get('limit', 500))
 
         if not project_name:
@@ -1624,14 +1627,23 @@ def get_level2_companies():
         )
 
         # IMPORTANT: Never auto-promote excluded companies into the main list.
-        # If user deleted everything in Level 1, Level 2 should show empty main list
-        # until they restore items explicitly.
-        # Apollo ran but returned 0 contacts
-        no_apollo_data_companies = client.get_level1_companies(
-            project_name=project_name,
-            apollo_no_data_only=True,
-            limit=limit,
-        )
+        # Not Found in database: when batch_name is set, show only companies from current batch
+        # that have no contacts in this batch (so list refreshes on re-run and is batch-specific).
+        if batch_name:
+            companies_with_contacts_in_batch = set(
+                c.lower() for c in client.get_company_names_with_contacts_in_batch(batch_name)
+            )
+            no_apollo_data_companies = [
+                c for c in main_companies
+                if (c.get('company_name') or '').strip().lower() not in companies_with_contacts_in_batch
+            ]
+        else:
+            # No batch: use project-level (database lookup returned 0 contacts)
+            no_apollo_data_companies = client.get_level1_companies(
+                project_name=project_name,
+                apollo_no_data_only=True,
+                limit=limit,
+            )
 
         def to_ui(c, selected=True, default_selected=True):
             place_id = c.get('place_id') or c.get('company_name')
@@ -1810,7 +1822,7 @@ def level2_contacts():
 def enrich_phones_parallel():
     """
     DEPRECATED: Phone numbers are no longer enriched via API to save credits.
-    Phone numbers should be revealed in Apollo.io dashboard when needed.
+    Phone numbers should be revealed in database dashboard when needed.
     This endpoint returns empty results with a message.
     """
     # Phone numbers are not requested via API to save credits
@@ -1818,8 +1830,8 @@ def enrich_phones_parallel():
     return jsonify({
         'success': True,
         'phones': {},
-        'message': 'Phone numbers are not enriched via API to save credits. Please reveal phone numbers in Apollo.io dashboard when needed.',
-        'note': 'This saves ~2-3 credits per contact. Reveal phone numbers in Apollo.io dashboard for contacts you want to call.'
+        'message': 'Phone numbers are not enriched via API to save credits. Please reveal phone numbers in the database dashboard when needed.',
+        'note': 'This saves ~2-3 credits per contact. Reveal phone numbers in the database dashboard for contacts you want to call.'
     }), 200
 
 @app.route('/api/level2/save-batch', methods=['POST'])
@@ -2302,17 +2314,16 @@ def level3_create_list():
 
 @app.route('/api/level3/contacts', methods=['GET'])
 def level3_contacts():
-    """Return contact list for a batch (for preview and transfer)
-    Level 2 filters at save time, so Level 3 loads filtered contacts.
-    Additional safety: Exclude generic employee titles if they somehow got through.
+    """Return contact list for a batch (for preview and transfer).
+    Pass designation from Level 2 so the count matches (e.g. 30 in L2 = 30 in L3).
     """
     try:
         batch_name = request.args.get('batch_name')
+        designation = (request.args.get('designation') or '').strip() or None
         if not batch_name:
             return jsonify({'error': 'batch_name is required'}), 400
 
-        # Level 2 already filtered at save time, so get contacts from batch
-        contacts = get_supabase_client().get_contacts_for_level3(batch_name=batch_name, designation=None)
+        contacts = get_supabase_client().get_contacts_for_level3(batch_name=batch_name, designation=designation)
         
         # Safety filter: Exclude generic employee titles (in case old batches weren't filtered)
         excluded_titles = ['employee', 'staff', 'worker', 'member', 'personnel']
