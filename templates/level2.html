@@ -2289,13 +2289,26 @@
             });
         }
         
-        // View Not Found: show companies card and table container, then noApollo section, scroll and expand
+        // View Not Found: fetch companies that had no Apollo data, render list, then show companies card and noApollo section
         const viewNoDataBtn = document.getElementById('viewNoDataBtn');
         const companiesTableContainer = document.getElementById('companiesTableContainer');
         const toggleCompaniesText = document.getElementById('toggleCompaniesText');
         const toggleCompaniesIcon = document.getElementById('toggleCompaniesIcon');
         if (viewNoDataBtn) {
-            viewNoDataBtn.addEventListener('click', () => {
+            viewNoDataBtn.addEventListener('click', async () => {
+                const projectName = currentProject || (currentBatchName ? String(currentBatchName).replace(/_Main_Batch$/i, '').trim() : '');
+                if (projectName) {
+                    try {
+                        const cr = await fetch(`/api/level2/companies?project_name=${encodeURIComponent(projectName)}&limit=500`);
+                        const cData = await cr.json();
+                        noApolloDataCompanies = cData.no_apollo_data_companies || [];
+                        renderNoApolloSection();
+                    } catch (err) {
+                        console.error('Failed to load not-found companies:', err);
+                        noApolloDataCompanies = [];
+                        renderNoApolloSection();
+                    }
+                }
                 if (companiesCard) companiesCard.style.display = 'block';
                 if (companiesTableContainer) companiesTableContainer.style.display = 'block';
                 if (toggleCompaniesText) toggleCompaniesText.textContent = 'Hide Level 1 Companies';
@@ -2311,12 +2324,29 @@
                     chevron.classList.remove('fa-chevron-down');
                     chevron.classList.add('fa-chevron-up');
                 }
+                if (noApolloDataCompanies.length === 0) {
+                    const tbody = document.getElementById('noApolloTableBody');
+                    if (tbody) tbody.innerHTML = '<tr><td colspan="3" class="empty-state"><p>No companies in this list. Companies appear here when we ran Apollo but found no contacts for them.</p></td></tr>';
+                }
             });
         }
-        // View Deleted Companies: show companies card and table container, then excluded section, scroll and expand
+        // View Deleted Companies: fetch excluded companies, render list, then show companies card and excluded section
         const viewExcludedCompaniesBtn = document.getElementById('viewExcludedCompaniesBtn');
         if (viewExcludedCompaniesBtn) {
-            viewExcludedCompaniesBtn.addEventListener('click', () => {
+            viewExcludedCompaniesBtn.addEventListener('click', async () => {
+                const projectName = currentProject || (currentBatchName ? String(currentBatchName).replace(/_Main_Batch$/i, '').trim() : '');
+                if (projectName) {
+                    try {
+                        const cr = await fetch(`/api/level2/companies?project_name=${encodeURIComponent(projectName)}&limit=500`);
+                        const cData = await cr.json();
+                        excludedCompanies = cData.excluded_companies || [];
+                        renderExcludedSection();
+                    } catch (err) {
+                        console.error('Failed to load deleted companies:', err);
+                        excludedCompanies = [];
+                        renderExcludedSection();
+                    }
+                }
                 if (companiesCard) companiesCard.style.display = 'block';
                 if (companiesTableContainer) companiesTableContainer.style.display = 'block';
                 if (toggleCompaniesText) toggleCompaniesText.textContent = 'Hide Level 1 Companies';
