@@ -119,7 +119,7 @@ class ApolloClient:
         Returns {success: bool, error?: str, response?: Dict}
         """
         if not contact or not contact.get('email'):
-            return {'success': False, 'error': 'Email is required for Apollo contact creation'}
+            return {'success': False, 'error': 'Email is required to create a contact'}
 
         # Common payload fields
         payload = {
@@ -132,11 +132,18 @@ class ApolloClient:
             'title': contact.get('title', '')
         }
 
-        # Trial: send industry via Apollo custom field so client can filter by industry in People
+        # Send optional custom fields so they can be filtered in People view
         industry = (contact.get('industry') or '').strip()
-        field_id = getattr(Config, 'APOLLO_INDUSTRY_CUSTOM_FIELD_ID', None) or None
-        if industry and field_id:
-            payload['typed_custom_fields'] = {field_id: industry}
+        employee_count = str(contact.get('employee_count') or '').strip()
+        industry_field_id = getattr(Config, 'APOLLO_INDUSTRY_CUSTOM_FIELD_ID', None) or None
+        employee_field_id = getattr(Config, 'APOLLO_EMPLOYEE_COUNT_CUSTOM_FIELD_ID', None) or None
+        typed_custom_fields = {}
+        if industry and industry_field_id:
+            typed_custom_fields[industry_field_id] = industry
+        if employee_count and employee_field_id:
+            typed_custom_fields[employee_field_id] = employee_count
+        if typed_custom_fields:
+            payload['typed_custom_fields'] = typed_custom_fields
 
         # Lists in Apollo: pass list name(s) so contact appears in that list (Apollo creates list if needed)
         label_names = contact.get('label_names')
@@ -144,6 +151,9 @@ class ApolloClient:
             label_names = [contact.get('list_name')]
         if label_names:
             payload['label_names'] = [str(n).strip() for n in label_names if str(n).strip()]
+
+        if typed_custom_fields:
+            logger.info(f"Apollo create_contact: typed_custom_fields = {typed_custom_fields}")
 
         endpoints = [
             (f"{self.api_search_base}/contacts", payload),  # Official: api/v1/contacts
@@ -171,7 +181,7 @@ class ApolloClient:
                 last_error = str(e)
                 continue
 
-        return {'success': False, 'error': last_error or 'Apollo contact creation failed'}
+        return {'success': False, 'error': last_error or 'Contact creation failed on outreach platform'}
 
     def get_contact_custom_fields(self) -> List[Dict]:
         """

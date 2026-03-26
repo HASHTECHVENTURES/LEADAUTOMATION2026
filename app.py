@@ -1826,7 +1826,7 @@ def enrich_phones_parallel():
     This endpoint returns empty results with a message.
     """
     # Phone numbers are not requested via API to save credits
-    # Users should reveal phone numbers in Apollo.io dashboard when needed
+    # Users should reveal phone numbers in the outreach dashboard when needed
     return jsonify({
         'success': True,
         'phones': {},
@@ -2168,9 +2168,9 @@ def level3_apollo_add_to_sequence():
         if not sequence_id:
             return jsonify({'success': False, 'error': 'sequence_id is required'}), 400
         if not send_email_from_email_account_id:
-            return jsonify({'success': False, 'error': 'send_email_from_email_account_id is required (Apollo email account ID)'}), 400
+            return jsonify({'success': False, 'error': 'send_email_from_email_account_id is required (connected email account ID)'}), 400
         if not contact_ids:
-            return jsonify({'success': False, 'error': 'contact_ids is required (list of Apollo contact IDs)'}), 400
+            return jsonify({'success': False, 'error': 'contact_ids is required (list of contact IDs on your outreach platform)'}), 400
         result = apollo_client.add_contacts_to_sequence(
             sequence_id=sequence_id,
             contact_ids=contact_ids,
@@ -2435,8 +2435,10 @@ def level3_transfer_one():
 
         contact_name = contact.get('contact_name', '') or contact.get('name', '')
         name_parts = contact_name.split() if contact_name else []
-        # Use industry_tag from Level 3 so in Apollo they can filter by industry and run email campaign
+        # Use segment tag + company employee count for downstream filtering in dashboard
         industry_for_apollo = industry_tag or (contact.get('industry') or '').strip()
+        employee_count_raw = contact.get('company_total_employees') or contact.get('total_employees') or ''
+        employee_count_for_apollo = str(employee_count_raw).strip()
         contact_data = {
             'first_name': name_parts[0] if len(name_parts) > 0 else '',
             'last_name': ' '.join(name_parts[1:]) if len(name_parts) > 1 else '',
@@ -2445,7 +2447,8 @@ def level3_transfer_one():
             'linkedin_url': contact.get('linkedin_url', ''),
             'organization_name': contact.get('company_name', ''),
             'title': contact.get('contact_type', '') or contact.get('title', ''),
-            'industry': industry_for_apollo,  # Sent to Apollo custom field so client can filter by industry in People
+            'industry': industry_for_apollo,  # Sent to custom field (if configured) for People filtering
+            'employee_count': employee_count_for_apollo,  # Sent to custom field (if configured) for People filtering
             'list_name': list_name or None,   # Apollo label_names: contact appears in this list (create list if needed)
         }
 

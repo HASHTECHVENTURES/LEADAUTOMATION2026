@@ -10,9 +10,10 @@ class Config:
     
     # Apollo API (Master Key)
     APOLLO_API_KEY = os.getenv('APOLLO_API_KEY', 'lpLP_qGLdPOXeHgp6yNBKg')
-    # Optional: Apollo custom field ID for "Industry" (set after creating the field in Apollo Settings → Custom fields)
-    # When set, we send contact industry when pushing to Apollo so you can filter by industry in People.
+    # Optional: custom field IDs for contact metadata (set in dashboard settings -> custom fields)
+    # When set, we send these values while creating contacts so they are filterable in People view.
     APOLLO_INDUSTRY_CUSTOM_FIELD_ID = os.getenv('APOLLO_INDUSTRY_CUSTOM_FIELD_ID', '').strip() or None
+    APOLLO_EMPLOYEE_COUNT_CUSTOM_FIELD_ID = os.getenv('APOLLO_EMPLOYEE_COUNT_CUSTOM_FIELD_ID', '').strip() or None
 
     # Level 2 / Apollo contact enrichment (tunable; no hardcoded limits)
     APOLLO_MAX_CONTACTS_TO_ENRICH = int(os.getenv('APOLLO_MAX_CONTACTS_TO_ENRICH', '100'))  # max contacts to enrich per company (uses ~this many credits)

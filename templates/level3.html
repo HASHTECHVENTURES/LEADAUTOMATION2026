@@ -545,23 +545,21 @@
                 
                 <!-- Action Buttons -->
                 <div style="margin-top: 24px;" id="actionButtons">
-                    <!-- Industry tag + List name: so you can filter in Apollo People by List (e.g. "Mumbai IT") -->
+                    <!-- Segment + List name: filter by list in outreach dashboard (e.g. "Mumbai IT") -->
                     <div style="margin-bottom: 16px; padding: 16px; background: var(--gray-50); border-radius: 12px;">
                         <label class="form-label" style="display: block; margin-bottom: 8px; font-weight: 500; color: var(--gray-700);">
                             <i class="fas fa-industry" style="margin-right: 6px; color: var(--primary);"></i>
-                            Segment / campaign tag <span style="color: var(--danger, #dc3545);">*</span> <span style="font-weight: 400; color: var(--gray-500);">(e.g. Mumbai IT, Manufacturing)</span>
+                            Segment / campaign tag <span style="color: var(--danger, #dc3545);">*</span>
                         </label>
-                        <input type="text" class="form-input" id="industryKeywords" placeholder="e.g. Mumbai IT, Manufacturing, Medical" style="width: 100%;" required>
-                        <p style="font-size: 0.85em; color: var(--gray-500); margin-top: 6px;">Used to tag contacts. In Apollo: the built-in &quot;Industry&quot; filter uses Apollo&#39;s categories only. To filter by <em>this</em> segment, use <strong>List</strong> (same value below) or your custom field.</p>
+                        <input type="text" class="form-input" id="industryKeywords" placeholder="Enter segment tag" style="width: 100%;" required>
                     </div>
-                    <!-- List name: same value = filter in Apollo People by List → add to sequence -->
+                    <!-- List name: same value = filter by list in outreach dashboard → add to sequence -->
                     <div style="margin-bottom: 16px; padding: 16px; background: var(--gray-50); border-radius: 12px;">
                         <label class="form-label" style="display: block; margin-bottom: 8px; font-weight: 500; color: var(--gray-700);">
                             <i class="fas fa-list" style="margin-right: 6px; color: var(--primary);"></i>
-                            List name <span style="font-weight: 400; color: var(--gray-500);">(recommended: same as above)</span>
+                            List name
                         </label>
-                        <input type="text" class="form-input" id="listName" placeholder="e.g. Mumbai IT (same as segment = filter in Apollo by List)" style="width: 100%;">
-                        <p style="font-size: 0.85em; color: var(--gray-500); margin-top: 6px;">In the dashboard: <strong>People</strong> → filter by <strong>List</strong> → choose this name (e.g. Mumbai IT) → select people → Add to sequence.</p>
+                        <input type="text" class="form-input" id="listName" placeholder="Enter list name" style="width: 100%;">
                     </div>
                     <button class="btn btn-primary btn-block" id="transferBtn" style="flex: 1;">
                         <i class="fas fa-paper-plane"></i>
@@ -731,7 +729,7 @@
             return div.innerHTML;
         }
         
-        // Auto-fill List name from Segment tag when empty, so user can filter in Apollo by List (e.g. "Mumbai IT")
+        // Auto-fill List name from Segment tag when empty (filter by list in outreach dashboard, e.g. "Mumbai IT")
         const industryInput = document.getElementById('industryKeywords');
         const listNameInput = document.getElementById('listName');
         if (industryInput && listNameInput) {
@@ -816,7 +814,7 @@
             this.disabled = true;
             this.innerHTML = '<i class="fas fa-spinner spinner"></i> Transferring...';
             
-            // Industry tag (required): sent to Apollo so client can filter by industry and run email campaign
+            // Segment tag (required): sent to outreach platform for tagging / filtering
             const industryTag = document.getElementById('industryKeywords')?.value.trim() || '';
             if (!industryTag) {
                 showUserFriendlyError('Please enter a segment/campaign tag (e.g. Mumbai IT) so you can filter by it in the dashboard (use the same value as List name).');
@@ -824,7 +822,7 @@
                 this.innerHTML = '<i class="fas fa-paper-plane"></i> Transfer to Outreach Platform';
                 return;
             }
-            // List name (optional): create list in Apollo and add contacts so user can filter by List in Apollo People
+            // List name (optional): assign contacts to a list for filtering in the outreach dashboard
             let listId = null;
             const listName = document.getElementById('listName')?.value?.trim() || '';
             if (listName) {
@@ -842,10 +840,10 @@
                 }
             }
             
-            // Transfer ALL contacts; tag each with industry_tag in Apollo
+            // Transfer ALL contacts; tag each with industry_tag on the outreach platform
             const contactsToTransfer = contacts;
             
-            // Create companies in Apollo Companies for this batch (so data shows under Companies too)
+            // Create company records on the outreach platform for this batch (Companies view)
             const currentBatchName = batchSelect.value;
             if (currentBatchName) {
                 try {
@@ -856,7 +854,7 @@
                     });
                     const ensureData = await ensureRes.json();
                     if (ensureData.success && ensureData.companies_created > 0) {
-                        console.log(`✅ Created ${ensureData.companies_created} companies in Apollo Companies`);
+                        console.log(`✅ Created ${ensureData.companies_created} companies on outreach platform`);
                     }
                 } catch (e) {
                     console.warn('⚠️ Ensure companies failed (continuing with contact transfer):', e.message);
