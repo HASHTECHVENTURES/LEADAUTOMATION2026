@@ -545,21 +545,13 @@
                 
                 <!-- Action Buttons -->
                 <div style="margin-top: 24px;" id="actionButtons">
-                    <!-- Segment + List name: filter by list in outreach dashboard (e.g. "Mumbai IT") -->
+                    <!-- Single input: used for both segment tag and list name -->
                     <div style="margin-bottom: 16px; padding: 16px; background: var(--gray-50); border-radius: 12px;">
                         <label class="form-label" style="display: block; margin-bottom: 8px; font-weight: 500; color: var(--gray-700);">
                             <i class="fas fa-industry" style="margin-right: 6px; color: var(--primary);"></i>
-                            Segment / campaign tag <span style="color: var(--danger, #dc3545);">*</span>
+                            Segment / campaign tag + List name <span style="color: var(--danger, #dc3545);">*</span>
                         </label>
                         <input type="text" class="form-input" id="industryKeywords" placeholder="Enter segment tag" style="width: 100%;" required>
-                    </div>
-                    <!-- List name: same value = filter by list in outreach dashboard → add to sequence -->
-                    <div style="margin-bottom: 16px; padding: 16px; background: var(--gray-50); border-radius: 12px;">
-                        <label class="form-label" style="display: block; margin-bottom: 8px; font-weight: 500; color: var(--gray-700);">
-                            <i class="fas fa-list" style="margin-right: 6px; color: var(--primary);"></i>
-                            List name
-                        </label>
-                        <input type="text" class="form-input" id="listName" placeholder="Enter list name" style="width: 100%;">
                     </div>
                     <button class="btn btn-primary btn-block" id="transferBtn" style="flex: 1;">
                         <i class="fas fa-paper-plane"></i>
@@ -729,17 +721,7 @@
             return div.innerHTML;
         }
         
-        // Auto-fill List name from Segment tag when empty (filter by list in outreach dashboard, e.g. "Mumbai IT")
         const industryInput = document.getElementById('industryKeywords');
-        const listNameInput = document.getElementById('listName');
-        if (industryInput && listNameInput) {
-            industryInput.addEventListener('input', function() {
-                if (!listNameInput.value.trim()) listNameInput.value = this.value.trim();
-            });
-            industryInput.addEventListener('blur', function() {
-                if (!listNameInput.value.trim()) listNameInput.value = this.value.trim();
-            });
-        }
         
         // Event listeners
         batchSelect && batchSelect.addEventListener('change', () => {
@@ -822,9 +804,9 @@
                 this.innerHTML = '<i class="fas fa-paper-plane"></i> Transfer to Outreach Platform';
                 return;
             }
-            // List name (optional): assign contacts to a list for filtering in the outreach dashboard
+            // Use the same value for list name and segment tag
             let listId = null;
-            const listName = document.getElementById('listName')?.value?.trim() || '';
+            const listName = industryTag;
             if (listName) {
                 try {
                     const listRes = await fetch('/api/level3/create-list', {
@@ -970,7 +952,7 @@
             let transferred = parseInt(document.getElementById('transferredCount').textContent);
             const retryIndustryTag = document.getElementById('industryKeywords')?.value.trim() || '';
             let retryListId = null;
-            const retryListName = document.getElementById('listName')?.value?.trim() || '';
+            const retryListName = retryIndustryTag;
             if (retryListName) {
                 try {
                     const listRes = await fetch('/api/level3/create-list', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ list_name: retryListName }) });
