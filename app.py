@@ -37,153 +37,229 @@ supabase_client = None
 
 def search_places_progressively(place_name: str, industry: str, max_results: int, place_idx: int = 1, total_places: int = 1):
     """
-    Search for places with progressive pagination - yields companies as they're found
-    This allows lazy loading - results appear immediately without waiting for all pages
+    Search for places with progressive pagination - yields companies as they're found.
+    FIX: Now uses geocoding + location/radius for geographically accurate results,
+    retries failed detail calls, and uses multiple query variations for more results.
     """
     import requests
 
     try:
-        # Build search query — industry + place name in text (same as Google Maps web search)
-        if industry:
-            query = f"{industry} in {place_name}"
-        else:
-            query = f"businesses in {place_name}"
+        # --- FIX 1: Geocode place name to get lat/lng for location-biased search ---
+        geocode_url = "https://maps.googleapis.com/maps/api/geocode/json"
+        geocode_params = {'address': place_name, 'key': google_client.api_key}
+        try:
+            geo_resp = requests.get(geocode_url, params=geocode_params, timeout=10)
+            geo_data = geo_resp.json()
+            if geo_data.get('status') == 'OK' and geo_data.get('results'):
+                loc = geo_data['results'][0]['geometry']['location']
+                lat, lng = loc['lat'], loc['lng']
+                location_str = f"{lat},{lng}"
+                logger.info(f"Geocoded '{place_name}' → lat={lat}, lng={lng}")
+            else:
+                location_str = None
+                logger.warning(f"Geocoding failed for '{place_name}': {geo_data.get('status')}. Falling back to text-only search.")
+        except Exception as geo_err:
+            location_str = None
+            logger.warning(f"Geocoding error for '{place_name}': {geo_err}. Falling back to text-only search.")
 
-        # Search for places with pagination support (pure text search, no coord bias)
         places_url = f"{google_client.base_url}/textsearch/json"
-        next_page_token = None
-        page_number = 1
+        seen_place_ids = set()
         companies_found = 0
 
-        while companies_found < max_results:
-            places_params = {
-                'query': query,
-                'key': google_client.api_key
-            }
-            
-            # Add pagination token if we have one
-            if next_page_token:
-                places_params['pagetoken'] = next_page_token
-                time.sleep(2)
-            
-            places_response = requests.get(places_url, params=places_params)
-            places_data = places_response.json()
+        # --- FIX 2: Multiple query variations to get more unique results ---
+        base_queries = []
+        if industry:
+            base_queries.append(f"{industry} in {place_name}")
+            base_queries.append(f"{industry} company {place_name}")
+            base_queries.append(f"{industry} industry {place_name}")
+        else:
+            base_queries.append(f"businesses in {place_name}")
+            base_queries.append(f"companies in {place_name}")
 
-            if places_data['status'] != 'OK':
-                error_msg = places_data.get('error_message', 'Unknown error')
-                logger.warning(f"Places search {place_name} page {page_number}: {places_data['status']} - {error_msg}")
-                if places_data['status'] == 'ZERO_RESULTS':
-                    break
-                elif places_data['status'] == 'OVER_QUERY_LIMIT':
-                    raise Exception(f"Google Places API quota exceeded for {place_name}")
-                elif places_data['status'] == 'INVALID_REQUEST' and next_page_token:
-                    break  # Token expired
-                else:
-                    break
+        for query in base_queries:
+            if companies_found >= max_results:
+                break
 
-            places_list = places_data.get('results', [])
-            
-            # Process each place and yield immediately
-            for place in places_list:
-                if companies_found >= max_results:
-                    break
-                
-                place_id = place.get('place_id')
-                if place_id:
-                    details = google_client.get_place_details(place_id)
+            next_page_token = None
+            page_number = 1
+
+            while companies_found < max_results:
+                places_params = {
+                    'query': query,
+                    'key': google_client.api_key
+                }
+                # --- FIX 1 applied: attach geocoded location + radius ---
+                if location_str:
+                    places_params['location'] = location_str
+                    places_params['radius'] = 50000  # 50km for place names (cities)
+
+                if next_page_token:
+                    places_params['pagetoken'] = next_page_token
+                    time.sleep(3)  # FIX 3: 3s is safer than 2s for token readiness
+
+                places_response = requests.get(places_url, params=places_params, timeout=15)
+                places_data = places_response.json()
+
+                if places_data['status'] != 'OK':
+                    error_msg = places_data.get('error_message', 'Unknown error')
+                    logger.warning(f"Places search '{place_name}' query='{query}' page {page_number}: {places_data['status']} - {error_msg}")
+                    if places_data['status'] == 'ZERO_RESULTS':
+                        break
+                    elif places_data['status'] == 'OVER_QUERY_LIMIT':
+                        raise Exception(f"Google Places API quota exceeded for {place_name}")
+                    elif places_data['status'] == 'INVALID_REQUEST' and next_page_token:
+                        break  # Token expired
+                    else:
+                        break
+
+                places_list = places_data.get('results', [])
+                logger.info(f"Places query='{query}' page {page_number}: got {len(places_list)} raw results")
+
+                for place in places_list:
+                    if companies_found >= max_results:
+                        break
+
+                    place_id = place.get('place_id')
+                    if not place_id or place_id in seen_place_ids:
+                        continue
+                    seen_place_ids.add(place_id)
+
+                    # --- FIX 4: Retry get_place_details up to 2 times on failure ---
+                    details = None
+                    for attempt in range(2):
+                        details = google_client.get_place_details(place_id)
+                        if details:
+                            break
+                        time.sleep(0.5)
+
                     if details:
-                        # Preserve the user's search industry
                         details['place_type'] = details.get('industry', '')
                         details['industry'] = industry.strip() if industry else details.get('industry', '')
                         details['search_location'] = place_name
                         details['place_name'] = place_name
                         companies_found += 1
-                        yield details  # Yield immediately for lazy loading
-                    time.sleep(0.1)  # Rate limiting
-            
-            next_page_token = places_data.get('next_page_token')
-            if not next_page_token or companies_found >= max_results:
-                break
-            
-            page_number += 1
-        
+                        yield details
+                    time.sleep(0.1)
+
+                next_page_token = places_data.get('next_page_token')
+                if not next_page_token or companies_found >= max_results:
+                    break
+                page_number += 1
+
     except Exception as e:
         raise Exception(f"Google Places API error for place {place_name}: {str(e)}") from e
 
 def search_pins_progressively(pin_code: str, industry: str, max_results: int, pin_idx: int = 1, total_pins: int = 1):
     """
-    Search for places by PIN code with progressive pagination - yields companies as they're found
-    This allows lazy loading - results appear immediately without waiting for all pages
+    Search for places by PIN code with progressive pagination - yields companies as they're found.
+    FIX: Now geocodes PIN to lat/lng first for geographically accurate results,
+    retries failed detail calls, and uses multiple query variations for more results.
     """
     import requests
 
     try:
-        # Build search query — industry + PIN code in text (same as Google Maps web search)
-        if industry:
-            query = f"{industry} in {pin_code}"
-        else:
-            query = f"businesses in {pin_code}"
+        # --- FIX 1: Geocode PIN code to get lat/lng for location-biased search ---
+        # Without this, all 3 PINs return almost identical global top-20 results → heavy deduplication → low count
+        geocode_url = "https://maps.googleapis.com/maps/api/geocode/json"
+        geocode_params = {'address': pin_code, 'key': google_client.api_key}
+        try:
+            geo_resp = requests.get(geocode_url, params=geocode_params, timeout=10)
+            geo_data = geo_resp.json()
+            if geo_data.get('status') == 'OK' and geo_data.get('results'):
+                loc = geo_data['results'][0]['geometry']['location']
+                lat, lng = loc['lat'], loc['lng']
+                location_str = f"{lat},{lng}"
+                logger.info(f"Geocoded PIN {pin_code} → lat={lat}, lng={lng}")
+            else:
+                location_str = None
+                logger.warning(f"Geocoding failed for PIN {pin_code}: {geo_data.get('status')}. Falling back to text-only search.")
+        except Exception as geo_err:
+            location_str = None
+            logger.warning(f"Geocoding error for PIN {pin_code}: {geo_err}. Falling back to text-only search.")
 
-        # Search for places with pagination support (pure text search, no coord bias)
         places_url = f"{google_client.base_url}/textsearch/json"
-        next_page_token = None
-        page_number = 1
+        seen_place_ids = set()
         companies_found = 0
 
-        while companies_found < max_results:
-            places_params = {
-                'query': query,
-                'key': google_client.api_key
-            }
-            
-            # Add pagination token if we have one
-            if next_page_token:
-                places_params['pagetoken'] = next_page_token
-                time.sleep(2)  # Google requires delay between pagination requests
-            
-            places_response = requests.get(places_url, params=places_params)
-            places_data = places_response.json()
-            
-            if places_data['status'] != 'OK':
-                error_msg = places_data.get('error_message', 'Unknown error')
-                logger.warning(f"Places search PIN {pin_code} page {page_number}: {places_data['status']} - {error_msg}")
-                if places_data['status'] == 'ZERO_RESULTS':
-                    break
-                elif places_data['status'] == 'OVER_QUERY_LIMIT':
-                    raise Exception(f"Google Places API quota exceeded for PIN {pin_code}")
-                elif places_data['status'] == 'INVALID_REQUEST' and next_page_token:
-                    break  # Token expired
-                else:
-                    break
-            
-            places_list = places_data.get('results', [])
-            
-            # Process each place and yield immediately
-            for place in places_list:
-                if companies_found >= max_results:
-                    break
-                
-                place_id = place.get('place_id')
-                if place_id:
-                    details = google_client.get_place_details(place_id)
+        # --- FIX 2: Multiple query variations to extract more unique results per PIN ---
+        base_queries = []
+        if industry:
+            base_queries.append(f"{industry} in {pin_code}")
+            base_queries.append(f"{industry} company {pin_code}")
+            base_queries.append(f"{industry} industry {pin_code}")
+        else:
+            base_queries.append(f"businesses in {pin_code}")
+            base_queries.append(f"companies in {pin_code}")
+
+        for query in base_queries:
+            if companies_found >= max_results:
+                break
+
+            next_page_token = None
+            page_number = 1
+
+            while companies_found < max_results:
+                places_params = {
+                    'query': query,
+                    'key': google_client.api_key
+                }
+                # --- FIX 1 applied: attach geocoded location + radius for PIN-specific results ---
+                if location_str:
+                    places_params['location'] = location_str
+                    places_params['radius'] = 10000  # 10km radius for PIN codes
+
+                if next_page_token:
+                    places_params['pagetoken'] = next_page_token
+                    time.sleep(3)  # FIX 3: 3s is safer than 2s for token readiness
+
+                places_response = requests.get(places_url, params=places_params, timeout=15)
+                places_data = places_response.json()
+
+                if places_data['status'] != 'OK':
+                    error_msg = places_data.get('error_message', 'Unknown error')
+                    logger.warning(f"Places search PIN {pin_code} query='{query}' page {page_number}: {places_data['status']} - {error_msg}")
+                    if places_data['status'] == 'ZERO_RESULTS':
+                        break
+                    elif places_data['status'] == 'OVER_QUERY_LIMIT':
+                        raise Exception(f"Google Places API quota exceeded for PIN {pin_code}")
+                    elif places_data['status'] == 'INVALID_REQUEST' and next_page_token:
+                        break  # Token expired
+                    else:
+                        break
+
+                places_list = places_data.get('results', [])
+                logger.info(f"PIN {pin_code} query='{query}' page {page_number}: got {len(places_list)} raw results")
+
+                for place in places_list:
+                    if companies_found >= max_results:
+                        break
+
+                    place_id = place.get('place_id')
+                    if not place_id or place_id in seen_place_ids:
+                        continue  # FIX 5: Skip within-PIN duplicates early
+                    seen_place_ids.add(place_id)
+
+                    # --- FIX 4: Retry get_place_details up to 2 times on failure ---
+                    details = None
+                    for attempt in range(2):
+                        details = google_client.get_place_details(place_id)
+                        if details:
+                            break
+                        time.sleep(0.5)
+
                     if details:
-                        # Preserve the user's search industry
                         details['place_type'] = details.get('industry', '')
                         details['industry'] = industry.strip() if industry else details.get('industry', '')
                         details['pin_code'] = pin_code
                         companies_found += 1
-                        yield details  # Yield immediately for lazy loading
-                    time.sleep(0.1)  # Rate limiting
-            
-            # Check if there's a next page token (Google returns max 20 per page)
-            next_page_token = places_data.get('next_page_token')
-            if not next_page_token:
-                break
-            if companies_found >= max_results:
-                break
-            
-            page_number += 1
-        
+                        yield details
+                    time.sleep(0.1)
+
+                next_page_token = places_data.get('next_page_token')
+                if not next_page_token or companies_found >= max_results:
+                    break
+                page_number += 1
+
     except Exception as e:
         raise Exception(f"Google Places API error for PIN {pin_code}: {str(e)}") from e
 
