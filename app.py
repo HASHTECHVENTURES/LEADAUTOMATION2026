@@ -35,6 +35,50 @@ apollo_client = ApolloClient()
 # Initialize lazily to avoid Vercel cold start issues
 supabase_client = None
 
+def _get_industry_synonyms(industry: str) -> list:
+    """
+    Return synonym search terms for a given industry.
+    Many companies are listed on Google Maps under different terms than the user searches.
+    E.g. a "Manufacturing" company may be listed as "factory", "plant", "pvt ltd", "works", etc.
+    """
+    industry_lower = industry.lower().strip()
+    synonym_map = {
+        'manufacturing': ['factory', 'manufacturer', 'plant', 'pvt ltd', 'works', 'industries', 'fabrication', 'industrial unit'],
+        'textile': ['textile mill', 'fabric', 'yarn', 'weaving', 'spinning mill', 'garment', 'dyeing'],
+        'pharma': ['pharmaceutical', 'medicine', 'drug', 'biotech', 'laboratory', 'chemical'],
+        'pharmaceutical': ['pharma', 'medicine', 'drug', 'biotech', 'laboratory', 'chemical'],
+        'chemical': ['chemicals', 'dyes', 'pigment', 'solvent', 'laboratory', 'pharma'],
+        'food': ['food processing', 'agro', 'packaged food', 'bakery', 'dairy', 'beverage'],
+        'it': ['software', 'technology', 'tech company', 'software development', 'IT services'],
+        'software': ['IT', 'technology', 'tech company', 'software development', 'IT services'],
+        'engineering': ['mechanical', 'fabrication', 'machining', 'tooling', 'precision parts'],
+        'plastic': ['plastics', 'polymer', 'moulding', 'packaging', 'PVC', 'rubber'],
+        'rubber': ['rubber products', 'polymer', 'seals', 'gasket', 'moulding'],
+        'steel': ['steel fabrication', 'iron', 'metal', 'rolling mill', 'casting', 'forging'],
+        'automotive': ['auto parts', 'automobile', 'vehicle', 'auto components', 'garage'],
+        'agriculture': ['agro', 'farm', 'seeds', 'fertilizer', 'pesticide', 'agri'],
+        'construction': ['builder', 'contractor', 'real estate', 'civil', 'infrastructure'],
+        'logistics': ['transport', 'courier', 'freight', 'cargo', 'warehouse', 'supply chain'],
+        'printing': ['printer', 'packaging', 'label', 'offset printing', 'press'],
+        'electrical': ['electronics', 'electrical equipment', 'wiring', 'switchgear', 'cable'],
+        'electronics': ['electrical', 'electronic components', 'PCB', 'semiconductor'],
+        'furniture': ['wood', 'carpenter', 'interior', 'modular furniture', 'plywood'],
+    }
+    # Find matching synonyms (also handle partial matches)
+    synonyms = []
+    for key, values in synonym_map.items():
+        if key in industry_lower or industry_lower in key:
+            synonyms.extend(values)
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_synonyms = []
+    for s in synonyms:
+        if s.lower() not in seen:
+            seen.add(s.lower())
+            unique_synonyms.append(s)
+    return unique_synonyms
+
+
 def search_places_progressively(place_name: str, industry: str, max_results: int, place_idx: int = 1, total_places: int = 1):
     """
     Search for places with progressive pagination - yields companies as they're found.
@@ -69,12 +113,20 @@ def search_places_progressively(place_name: str, industry: str, max_results: int
         # --- FIX 2: Multiple query variations to get more unique results ---
         base_queries = []
         if industry:
+            # Primary industry term queries
             base_queries.append(f"{industry} in {place_name}")
             base_queries.append(f"{industry} company {place_name}")
             base_queries.append(f"{industry} industry {place_name}")
+            # Synonym-based queries — catches companies NOT tagged with user's exact term
+            synonyms = _get_industry_synonyms(industry)
+            for synonym in synonyms:
+                base_queries.append(f"{synonym} in {place_name}")
+                if len(base_queries) >= 8:  # Cap at 8 queries to avoid excessive API usage
+                    break
         else:
             base_queries.append(f"businesses in {place_name}")
             base_queries.append(f"companies in {place_name}")
+            base_queries.append(f"pvt ltd in {place_name}")
 
         for query in base_queries:
             if companies_found >= max_results:
@@ -184,12 +236,20 @@ def search_pins_progressively(pin_code: str, industry: str, max_results: int, pi
         # --- FIX 2: Multiple query variations to extract more unique results per PIN ---
         base_queries = []
         if industry:
+            # Primary industry term queries
             base_queries.append(f"{industry} in {pin_code}")
             base_queries.append(f"{industry} company {pin_code}")
             base_queries.append(f"{industry} industry {pin_code}")
+            # Synonym-based queries — catches companies NOT tagged with user's exact term on Google Maps
+            synonyms = _get_industry_synonyms(industry)
+            for synonym in synonyms:
+                base_queries.append(f"{synonym} in {pin_code}")
+                if len(base_queries) >= 8:  # Cap at 8 queries to avoid excessive API usage
+                    break
         else:
             base_queries.append(f"businesses in {pin_code}")
             base_queries.append(f"companies in {pin_code}")
+            base_queries.append(f"pvt ltd in {pin_code}")
 
         for query in base_queries:
             if companies_found >= max_results:
@@ -206,7 +266,7 @@ def search_pins_progressively(pin_code: str, industry: str, max_results: int, pi
                 # --- FIX 1 applied: attach geocoded location + radius for PIN-specific results ---
                 if location_str:
                     places_params['location'] = location_str
-                    places_params['radius'] = 10000  # 10km radius for PIN codes
+                    places_params['radius'] = 20000  # 20km radius — wider to cover full GIDC / industrial estates
 
                 if next_page_token:
                     places_params['pagetoken'] = next_page_token
