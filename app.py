@@ -380,25 +380,35 @@ def _company_fingerprint(company):
     addr_prefix = ' '.join(addr.split())[:40] if addr else ''
     return (name_slug, addr_prefix)
 
+import re
+
+def _normalize_company_name(name):
+    """Normalize company name to aggressively catch branches of the same company."""
+    if not name:
+        return ""
+    name = name.lower().strip()
+    # Remove common suffixes that differ between branches
+    name = re.sub(r'\b(ltd|limited|pvt|private|inc|llp|branch|office|unit|co)\b', '', name)
+    # Remove location names often appended to branches (like " - Gandhinagar Branch")
+    name = re.split(r'[-–,|:;]', name)[0] 
+    return ' '.join(name.split())
+
 def _is_same_company_by_name_address(company, existing_list, _seen_fingerprints=None):
-    """True if company is a duplicate by name+address (same business, different place_id or formatting)."""
-    name = (company.get('company_name') or '').strip().lower()
-    addr_prefix = (company.get('address') or '').strip().lower()[:40]
-    if not name or not addr_prefix:
+    """Aggressive deduplication: True if company shares the same core name, ignoring branch address."""
+    name = _normalize_company_name(company.get('company_name'))
+    if not name or len(name) < 3: # Ignore very short un-normalizable names
         return False
+        
     for existing in existing_list:
-        ename = (existing.get('company_name') or '').strip().lower()
-        eaddr = (existing.get('address') or '').strip().lower()[:40]
-        if not ename or not eaddr:
+        ename = _normalize_company_name(existing.get('company_name'))
+        if not ename:
             continue
-        # Same or very similar address (first 25 chars match)
-        if addr_prefix[:25] != eaddr[:25] and not (addr_prefix.startswith(eaddr[:20]) or eaddr.startswith(addr_prefix[:20])):
-            continue
-        # Same or overlapping name: exact match or one contains the other (catches "Gleneagles Hospital" vs "Top Hospital... Gleneagles")
-        if name == ename:
+            
+        # If the core normalized names are exactly the same or very similar
+        if name == ename or (len(name) > 5 and len(ename) > 5 and (name in ename or ename in name)):
             return True
-        if name in ename or ename in name:
-            return True
+            
+    return False
     return False
 
 def _normalize_employee_ranges(data):
@@ -716,8 +726,8 @@ def level1_search():
             max_companies = 20  # Default to 20 if conversion fails
         
         # Validate max_companies (limit to reasonable range)
-        if max_companies < 1 or max_companies > 5000:
-            max_companies = 50  # Default to 50 if invalid
+        if max_companies < 1 or max_companies > 100:
+            max_companies = 20  # Default to 20 if invalid
         
         logger.info(f"Level1 search: project={project_name}, type={search_type}, max={max_companies}")
         
