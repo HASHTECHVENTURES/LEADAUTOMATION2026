@@ -828,8 +828,7 @@ def level1_search():
                                 # Send company immediately to frontend (lazy loading - no waiting!)
                                 yield f"data: {json.dumps({'type': 'company_update', 'data': company, 'progress': {'current': len(all_companies), 'total': max_companies, 'companies_found': len(all_companies)}})}\n\n"
                                 
-                                # Also emit progress update (use capped count)
-                                yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Found company in PIN {pin_code}... ({len(companies_for_pin)}/{companies_per_location})', 'current': idx, 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
+                                yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Found company in PIN {pin_code}... ({len(all_companies)}/{max_companies})', 'current': idx, 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
                             
                             yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Finished PIN {idx}/{total_locations}: {pin_code}. Total: {len(all_companies)}.', 'current': idx, 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
                             
@@ -900,7 +899,7 @@ def level1_search():
                                 all_companies.append(company)
                                 
                                 yield f"data: {json.dumps({'type': 'company_update', 'data': company, 'progress': {'current': len(all_companies), 'total': max_companies, 'companies_found': len(all_companies)}})}\n\n"
-                                yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Found company in {place_name}... ({len(companies_for_place)}/{companies_per_location})', 'current': idx, 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
+                                yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Found company in {place_name}... ({len(all_companies)}/{max_companies})', 'current': idx, 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
                             
                             yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Finished Place {idx}/{total_locations}: {place_name}. Total: {len(all_companies)}.', 'current': idx, 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
                             
