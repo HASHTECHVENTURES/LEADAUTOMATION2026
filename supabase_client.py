@@ -881,6 +881,21 @@ class SupabaseClient:
                         if pin_codes:
                             projects_map[project_name]['pin_codes'] = pin_codes
             
+            # --- Fetch Level 2 contact counts per project ---
+            try:
+                l2_response = self.client.table('level2_contacts').select(
+                    'project_name'
+                ).is_('deleted_at', 'null').execute()
+                l2_data = l2_response.data or []
+                l2_counts = {}
+                for row in l2_data:
+                    pn = (row.get('project_name') or '').strip()
+                    if pn:
+                        l2_counts[pn] = l2_counts.get(pn, 0) + 1
+            except Exception as l2_err:
+                logger.warning(f"Could not fetch Level 2 counts: {l2_err}")
+                l2_counts = {}
+
             projects = [{
                 'project_name': name,
                 'search_date': data.get('search_date', ''),
@@ -889,6 +904,8 @@ class SupabaseClient:
                 'company_count': data.get('company_count', 0),
                 'excluded_count': data.get('excluded_count', 0),
                 'no_apollo_data_count': data.get('no_apollo_data_count', 0),
+                'contact_count': l2_counts.get(name, 0),
+                'level2_done': l2_counts.get(name, 0) > 0,
             } for name, data in projects_map.items()]
             
             # Sort by search_date descending (newest first), or by created_at if search_date is missing

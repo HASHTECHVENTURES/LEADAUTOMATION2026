@@ -411,6 +411,61 @@
             color: white;
             transform: scale(1.1);
         }
+
+        /* 3-Level file badges per project */
+        .level-files {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+        }
+
+        .level-file {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.78em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1.5px solid transparent;
+            text-decoration: none;
+        }
+
+        .level-file.done {
+            background: #ecfdf5;
+            color: #059669;
+            border-color: #a7f3d0;
+        }
+
+        .level-file.done:hover {
+            background: #059669;
+            color: white;
+            border-color: #059669;
+            transform: translateY(-1px);
+        }
+
+        .level-file.pending {
+            background: var(--gray-100);
+            color: var(--gray-400);
+            border-color: var(--gray-200);
+            cursor: default;
+        }
+
+        .level-file.available {
+            background: #eff6ff;
+            color: #2563eb;
+            border-color: #bfdbfe;
+        }
+
+        .level-file.available:hover {
+            background: #2563eb;
+            color: white;
+            border-color: #2563eb;
+            transform: translateY(-1px);
+        }
         
         .delete-all-btn {
             padding: 8px 16px;
@@ -652,24 +707,54 @@
                     var projectName = window.escapeHtml(p.project_name);
                     var projectNameEncoded = encodeURIComponent(p.project_name);
                     var projectNameEscaped = projectName.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                    var companyCount = p.company_count || 0;
+                    var contactCount = p.contact_count || 0;
+                    var level2Done = p.level2_done || false;
+
+                    // Level 1 badge — always done if project exists
+                    var l1Badge = `<a class="level-file done" href="/level1?project=${projectNameEncoded}" title="View Level 1 Companies">
+                        <i class="fas fa-building"></i> ${companyCount} Companies
+                    </a>`;
+
+                    // Level 2 badge — green if contacts found, blue (available) if L1 done, grey if not started
+                    var l2Badge = level2Done
+                        ? `<a class="level-file done" href="/level2?project=${projectNameEncoded}" title="View Level 2 Contacts">
+                            <i class="fas fa-users"></i> ${contactCount} Contacts
+                           </a>`
+                        : `<a class="level-file available" href="/level2?project=${projectNameEncoded}" title="Go to Level 2 - Get Contacts">
+                            <i class="fas fa-users"></i> Get Contacts
+                           </a>`;
+
+                    // Level 3 badge — available only if Level 2 done
+                    var l3Badge = level2Done
+                        ? `<a class="level-file available" href="/level3" title="Go to Level 3 - Send Campaign">
+                            <i class="fas fa-paper-plane"></i> Send Campaign
+                           </a>`
+                        : `<span class="level-file pending" title="Complete Level 2 first">
+                            <i class="fas fa-paper-plane"></i> Campaign
+                           </span>`;
+
                     return `
                         <li class="recent-item fade-in" style="animation-delay: ${idx * 50}ms" data-project="${projectNameEscaped}">
-                            <div class="recent-item-icon" style="cursor: pointer;"><i class="fas fa-folder"></i></div>
-                            <div class="recent-item-content" style="cursor: pointer;">
+                            <div class="recent-item-icon">
+                                <i class="fas fa-folder"></i>
+                            </div>
+                            <div class="recent-item-content" style="flex:1;">
                                 <div class="recent-item-name">${projectName}</div>
                                 <div class="recent-item-meta">
-                                    <span><i class="fas fa-building"></i> ${p.company_count || 0} companies</span>
-                                    ${(p.excluded_count || 0) > 0 ? `<span><i class="fas fa-archive"></i> ${p.excluded_count} excluded</span>` : ''}
-                                    ${(p.no_apollo_data_count || 0) > 0 ? `<span><i class="fas fa-info-circle"></i> ${p.no_apollo_data_count} no database</span>` : ''}
                                     <span><i class="fas fa-industry"></i> ${industry}</span>
                                     <span><i class="fas fa-calendar"></i> ${date}</span>
+                                </div>
+                                <div class="level-files">
+                                    ${l1Badge}
+                                    ${l2Badge}
+                                    ${l3Badge}
                                 </div>
                             </div>
                             <div class="recent-item-actions">
                                 <button class="recent-item-delete" data-project="${projectNameEscaped}" title="Delete Project">
                                     <i class="fas fa-trash"></i>
                                 </button>
-                                <i class="fas fa-chevron-right recent-item-arrow" style="cursor: pointer;"></i>
                             </div>
                         </li>
                     `;
