@@ -1677,12 +1677,10 @@
         
         (document.getElementById('createProject'))?.addEventListener('click', () => {
             const name = document.getElementById('projectName').value.trim();
-            if (!name) {
-                showUserFriendlyError('Please enter a campaign name');
-                return;
-            }
-            if (name.length < 3) {
-                showUserFriendlyError('Campaign name must be at least 3 characters');
+            
+            const validation = validateProjectName(name);
+            if (!validation.valid) {
+                showUserFriendlyError(validation.error);
                 return;
             }
             
