@@ -35,290 +35,324 @@ apollo_client = ApolloClient()
 # Initialize lazily to avoid Vercel cold start issues
 supabase_client = None
 
-def _get_industry_synonyms(industry: str) -> list:
+def _build_search_queries(industry: str, location_label: str) -> list:
     """
-    Return synonym search terms for a given industry.
-    Many companies are listed on Google Maps under different terms than the user searches.
-    E.g. a "Manufacturing" company may be listed as "factory", "plant", "pvt ltd", "works", etc.
+    Build diverse search queries that work for ANY industry — no hardcoded synonym map.
+    Uses multiple phrasing patterns so Google returns different result sets each time.
     """
-    industry_lower = industry.lower().strip()
-    synonym_map = {
-        'manufacturing': ['factory', 'manufacturer', 'plant', 'pvt ltd', 'works', 'industries', 'fabrication', 'industrial unit'],
-        'textile': ['textile mill', 'fabric', 'yarn', 'weaving', 'spinning mill', 'garment', 'dyeing'],
-        'pharma': ['pharmaceutical', 'medicine', 'drug', 'biotech', 'laboratory', 'chemical'],
-        'pharmaceutical': ['pharma', 'medicine', 'drug', 'biotech', 'laboratory', 'chemical'],
-        'chemical': ['chemicals', 'dyes', 'pigment', 'solvent', 'laboratory', 'pharma'],
-        'food': ['food processing', 'agro', 'packaged food', 'bakery', 'dairy', 'beverage'],
-        'it': ['software', 'technology', 'tech company', 'software development', 'IT services'],
-        'software': ['IT', 'technology', 'tech company', 'software development', 'IT services'],
-        'engineering': ['mechanical', 'fabrication', 'machining', 'tooling', 'precision parts'],
-        'plastic': ['plastics', 'polymer', 'moulding', 'packaging', 'PVC', 'rubber'],
-        'rubber': ['rubber products', 'polymer', 'seals', 'gasket', 'moulding'],
-        'steel': ['steel fabrication', 'iron', 'metal', 'rolling mill', 'casting', 'forging'],
-        'automotive': ['auto parts', 'automobile', 'vehicle', 'auto components', 'garage'],
-        'agriculture': ['agro', 'farm', 'seeds', 'fertilizer', 'pesticide', 'agri'],
-        'construction': ['builder', 'contractor', 'real estate', 'civil', 'infrastructure'],
-        'logistics': ['transport', 'courier', 'freight', 'cargo', 'warehouse', 'supply chain'],
-        'printing': ['printer', 'packaging', 'label', 'offset printing', 'press'],
-        'electrical': ['electronics', 'electrical equipment', 'wiring', 'switchgear', 'cable'],
-        'electronics': ['electrical', 'electronic components', 'PCB', 'semiconductor'],
-        'furniture': ['wood', 'carpenter', 'interior', 'modular furniture', 'plywood'],
-    }
-    # Find matching synonyms (also handle partial matches)
-    synonyms = []
-    for key, values in synonym_map.items():
-        if key in industry_lower or industry_lower in key:
-            synonyms.extend(values)
-    # Remove duplicates while preserving order
-    seen = set()
-    unique_synonyms = []
-    for s in synonyms:
-        if s.lower() not in seen:
-            seen.add(s.lower())
-            unique_synonyms.append(s)
-    return unique_synonyms
+    queries = []
+    ind = industry.strip() if industry else ''
+
+    if ind:
+        # --- Pattern 1: Direct industry + location combos ---
+        queries.append(f"{ind} in {location_label}")
+        queries.append(f"{ind} company {location_label}")
+        queries.append(f"{ind} near {location_label}")
+        # --- Pattern 2: Generic business terms + location ---
+        queries.append(f"{ind} industry {location_label}")
+        queries.append(f"{ind} pvt ltd {location_label}")
+        queries.append(f"{ind} factory {location_label}")
+        queries.append(f"{ind} services {location_label}")
+        # --- Pattern 3: Broader terms to catch unlabeled businesses ---
+        queries.append(f"companies in {location_label}")
+        queries.append(f"industries in {location_label}")
+        queries.append(f"businesses in {location_label}")
+    else:
+        queries.append(f"businesses in {location_label}")
+        queries.append(f"companies in {location_label}")
+        queries.append(f"industries in {location_label}")
+        queries.append(f"pvt ltd in {location_label}")
+
+    return queries
 
 
-def search_places_progressively(place_name: str, industry: str, max_results: int, place_idx: int = 1, total_places: int = 1):
-    """
-    Search for places with progressive pagination - yields companies as they're found.
-    FIX: Now uses geocoding + location/radius for geographically accurate results,
-    retries failed detail calls, and uses multiple query variations for more results.
-    """
+def _geocode_location(address: str) -> tuple:
+    """Geocode an address/PIN to (lat, lng) or (None, None) on failure."""
     import requests
-
+    geocode_url = "https://maps.googleapis.com/maps/api/geocode/json"
+    geocode_params = {'address': address, 'key': google_client.api_key}
     try:
-        # --- FIX 1: Geocode place name to get lat/lng for location-biased search ---
-        geocode_url = "https://maps.googleapis.com/maps/api/geocode/json"
-        geocode_params = {'address': place_name, 'key': google_client.api_key}
-        try:
-            geo_resp = requests.get(geocode_url, params=geocode_params, timeout=10)
-            geo_data = geo_resp.json()
-            if geo_data.get('status') == 'OK' and geo_data.get('results'):
-                loc = geo_data['results'][0]['geometry']['location']
-                lat, lng = loc['lat'], loc['lng']
-                location_str = f"{lat},{lng}"
-                logger.info(f"Geocoded '{place_name}' → lat={lat}, lng={lng}")
-            else:
-                location_str = None
-                logger.warning(f"Geocoding failed for '{place_name}': {geo_data.get('status')}. Falling back to text-only search.")
-        except Exception as geo_err:
-            location_str = None
-            logger.warning(f"Geocoding error for '{place_name}': {geo_err}. Falling back to text-only search.")
+        geo_resp = requests.get(geocode_url, params=geocode_params, timeout=10)
+        geo_data = geo_resp.json()
+        if geo_data.get('status') == 'OK' and geo_data.get('results'):
+            loc = geo_data['results'][0]['geometry']['location']
+            logger.info(f"Geocoded '{address}' → lat={loc['lat']}, lng={loc['lng']}")
+            return loc['lat'], loc['lng']
+    except Exception as geo_err:
+        logger.warning(f"Geocoding error for '{address}': {geo_err}")
+    return None, None
 
-        places_url = f"{google_client.base_url}/textsearch/json"
+
+def _text_search_page(query: str, lat, lng, radius: int, page_token=None) -> dict:
+    """Execute one page of Google Places Text Search."""
+    import requests
+    params = {
+        'query': query,
+        'key': google_client.api_key,
+    }
+    if lat is not None and lng is not None:
+        params['location'] = f"{lat},{lng}"
+        params['radius'] = radius
+    if page_token:
+        params['pagetoken'] = page_token
+        time.sleep(3)  # Google requires delay before using next_page_token
+
+    resp = requests.get(f"{google_client.base_url}/textsearch/json", params=params, timeout=15)
+    return resp.json()
+
+
+def _nearby_search_page(lat, lng, radius: int, keyword: str = None, page_token=None) -> dict:
+    """Execute one page of Google Places Nearby Search (different result set than text search)."""
+    import requests
+    params = {
+        'location': f"{lat},{lng}",
+        'radius': radius,
+        'key': google_client.api_key,
+    }
+    if keyword:
+        params['keyword'] = keyword
+    if page_token:
+        params['pagetoken'] = page_token
+        time.sleep(3)
+
+    resp = requests.get(f"{google_client.base_url}/nearbysearch/json", params=params, timeout=15)
+    return resp.json()
+
+
+def _fetch_and_yield_places(places_list: list, seen_place_ids: set, industry: str,
+                            location_label: str, location_type: str) -> tuple:
+    """
+    Fetch details for a list of raw place results. Yields (company_dict) for each valid one.
+    Returns number of new companies found.
+    """
+    count = 0
+    for place in places_list:
+        place_id = place.get('place_id')
+        if not place_id or place_id in seen_place_ids:
+            continue
+        seen_place_ids.add(place_id)
+
+        # Retry up to 2 times
+        details = None
+        for attempt in range(2):
+            details = google_client.get_place_details(place_id)
+            if details:
+                break
+            time.sleep(0.5)
+
+        if details:
+            details['place_type'] = details.get('industry', '')
+            details['industry'] = industry.strip() if industry else details.get('industry', '')
+            if location_type == 'pin':
+                details['pin_code'] = location_label
+            else:
+                details['search_location'] = location_label
+                details['place_name'] = location_label
+            count += 1
+            yield details
+        time.sleep(0.1)
+
+
+def _run_text_search_all_pages(query, lat, lng, radius, seen_place_ids, industry,
+                                location_label, location_type, max_results, companies_found):
+    """Run text search with full pagination (up to 3 pages = 60 results)."""
+    next_page_token = None
+    page = 1
+    found = 0
+
+    while companies_found + found < max_results:
+        data = _text_search_page(query, lat, lng, radius, next_page_token)
+        status = data.get('status', 'UNKNOWN')
+
+        if status != 'OK':
+            if status == 'OVER_QUERY_LIMIT':
+                logger.warning(f"API quota exceeded on query '{query}'")
+            break
+
+        results = data.get('results', [])
+        logger.info(f"TextSearch '{query}' r={radius} p{page}: {len(results)} raw results")
+
+        for item in _fetch_and_yield_places(results, seen_place_ids, industry,
+                                             location_label, location_type):
+            found += 1
+            yield item
+            if companies_found + found >= max_results:
+                return
+
+        next_page_token = data.get('next_page_token')
+        if not next_page_token:
+            break
+        page += 1
+
+    return
+
+
+def _run_nearby_search_all_pages(keyword, lat, lng, radius, seen_place_ids, industry,
+                                  location_label, location_type, max_results, companies_found):
+    """Run Nearby Search with full pagination."""
+    next_page_token = None
+    page = 1
+    found = 0
+
+    while companies_found + found < max_results:
+        data = _nearby_search_page(lat, lng, radius, keyword, next_page_token)
+        status = data.get('status', 'UNKNOWN')
+
+        if status != 'OK':
+            break
+
+        results = data.get('results', [])
+        logger.info(f"NearbySearch kw='{keyword}' r={radius} p{page}: {len(results)} raw results")
+
+        for item in _fetch_and_yield_places(results, seen_place_ids, industry,
+                                             location_label, location_type):
+            found += 1
+            yield item
+            if companies_found + found >= max_results:
+                return
+
+        next_page_token = data.get('next_page_token')
+        if not next_page_token:
+            break
+        page += 1
+
+    return
+
+
+def search_places_progressively(place_name: str, industry: str, max_results: int,
+                                 place_idx: int = 1, total_places: int = 1):
+    """
+    Multi-strategy search for place names. Uses:
+    1. Text Search with diverse queries
+    2. Nearby Search API (returns different results)
+    3. Progressive radius expansion (25km → 50km)
+    """
+    try:
+        lat, lng = _geocode_location(place_name)
         seen_place_ids = set()
         companies_found = 0
 
-        # --- FIX 2: Multiple query variations to get more unique results ---
-        base_queries = []
-        if industry:
-            # Primary industry term queries
-            base_queries.append(f"{industry} in {place_name}")
-            base_queries.append(f"{industry} company {place_name}")
-            base_queries.append(f"{industry} industry {place_name}")
-            # Synonym-based queries — catches companies NOT tagged with user's exact term
-            synonyms = _get_industry_synonyms(industry)
-            for synonym in synonyms:
-                base_queries.append(f"{synonym} in {place_name}")
-                if len(base_queries) >= 8:  # Cap at 8 queries to avoid excessive API usage
-                    break
-        else:
-            base_queries.append(f"businesses in {place_name}")
-            base_queries.append(f"companies in {place_name}")
-            base_queries.append(f"pvt ltd in {place_name}")
+        queries = _build_search_queries(industry, place_name)
 
-        for query in base_queries:
+        # --- Strategy 1: Text Search across multiple queries at 50km ---
+        for query in queries:
             if companies_found >= max_results:
                 break
+            for company in _run_text_search_all_pages(
+                query, lat, lng, 50000, seen_place_ids, industry,
+                place_name, 'place', max_results, companies_found
+            ):
+                companies_found += 1
+                yield company
+                if companies_found >= max_results:
+                    break
 
-            next_page_token = None
-            page_number = 1
+        # --- Strategy 2: Nearby Search (different API = different results) ---
+        if companies_found < max_results and lat is not None:
+            nearby_keywords = [industry] if industry else ['company']
+            if industry:
+                nearby_keywords.extend([f"{industry} company", "factory", "industries", "pvt ltd"])
 
-            while companies_found < max_results:
-                places_params = {
-                    'query': query,
-                    'key': google_client.api_key
-                }
-                # --- FIX 1 applied: attach geocoded location + radius ---
-                if location_str:
-                    places_params['location'] = location_str
-                    places_params['radius'] = 50000  # 50km for place names (cities)
-
-                if next_page_token:
-                    places_params['pagetoken'] = next_page_token
-                    time.sleep(3)  # FIX 3: 3s is safer than 2s for token readiness
-
-                places_response = requests.get(places_url, params=places_params, timeout=15)
-                places_data = places_response.json()
-
-                if places_data['status'] != 'OK':
-                    error_msg = places_data.get('error_message', 'Unknown error')
-                    logger.warning(f"Places search '{place_name}' query='{query}' page {page_number}: {places_data['status']} - {error_msg}")
-                    if places_data['status'] == 'ZERO_RESULTS':
-                        break
-                    elif places_data['status'] == 'OVER_QUERY_LIMIT':
-                        raise Exception(f"Google Places API quota exceeded for {place_name}")
-                    elif places_data['status'] == 'INVALID_REQUEST' and next_page_token:
-                        break  # Token expired
-                    else:
-                        break
-
-                places_list = places_data.get('results', [])
-                logger.info(f"Places query='{query}' page {page_number}: got {len(places_list)} raw results")
-
-                for place in places_list:
+            for kw in nearby_keywords:
+                if companies_found >= max_results:
+                    break
+                for company in _run_nearby_search_all_pages(
+                    kw, lat, lng, 50000, seen_place_ids, industry,
+                    place_name, 'place', max_results, companies_found
+                ):
+                    companies_found += 1
+                    yield company
                     if companies_found >= max_results:
                         break
 
-                    place_id = place.get('place_id')
-                    if not place_id or place_id in seen_place_ids:
-                        continue
-                    seen_place_ids.add(place_id)
-
-                    # --- FIX 4: Retry get_place_details up to 2 times on failure ---
-                    details = None
-                    for attempt in range(2):
-                        details = google_client.get_place_details(place_id)
-                        if details:
-                            break
-                        time.sleep(0.5)
-
-                    if details:
-                        details['place_type'] = details.get('industry', '')
-                        details['industry'] = industry.strip() if industry else details.get('industry', '')
-                        details['search_location'] = place_name
-                        details['place_name'] = place_name
-                        companies_found += 1
-                        yield details
-                    time.sleep(0.1)
-
-                next_page_token = places_data.get('next_page_token')
-                if not next_page_token or companies_found >= max_results:
-                    break
-                page_number += 1
+        logger.info(f"Place '{place_name}': total {companies_found} companies found across all strategies")
 
     except Exception as e:
         raise Exception(f"Google Places API error for place {place_name}: {str(e)}") from e
 
-def search_pins_progressively(pin_code: str, industry: str, max_results: int, pin_idx: int = 1, total_pins: int = 1):
-    """
-    Search for places by PIN code with progressive pagination - yields companies as they're found.
-    FIX: Now geocodes PIN to lat/lng first for geographically accurate results,
-    retries failed detail calls, and uses multiple query variations for more results.
-    """
-    import requests
 
+def search_pins_progressively(pin_code: str, industry: str, max_results: int,
+                               pin_idx: int = 1, total_pins: int = 1):
+    """
+    Multi-strategy search for PIN codes. Uses:
+    1. Text Search with diverse queries
+    2. Nearby Search API (returns different results)
+    3. Progressive radius expansion (10km → 20km → 35km)
+    Designed to work for ANY industry, not just manufacturing.
+    """
     try:
-        # --- FIX 1: Geocode PIN code to get lat/lng for location-biased search ---
-        # Without this, all 3 PINs return almost identical global top-20 results → heavy deduplication → low count
-        geocode_url = "https://maps.googleapis.com/maps/api/geocode/json"
-        geocode_params = {'address': pin_code, 'key': google_client.api_key}
-        try:
-            geo_resp = requests.get(geocode_url, params=geocode_params, timeout=10)
-            geo_data = geo_resp.json()
-            if geo_data.get('status') == 'OK' and geo_data.get('results'):
-                loc = geo_data['results'][0]['geometry']['location']
-                lat, lng = loc['lat'], loc['lng']
-                location_str = f"{lat},{lng}"
-                logger.info(f"Geocoded PIN {pin_code} → lat={lat}, lng={lng}")
-            else:
-                location_str = None
-                logger.warning(f"Geocoding failed for PIN {pin_code}: {geo_data.get('status')}. Falling back to text-only search.")
-        except Exception as geo_err:
-            location_str = None
-            logger.warning(f"Geocoding error for PIN {pin_code}: {geo_err}. Falling back to text-only search.")
-
-        places_url = f"{google_client.base_url}/textsearch/json"
+        lat, lng = _geocode_location(pin_code)
         seen_place_ids = set()
         companies_found = 0
 
-        # --- FIX 2: Multiple query variations to extract more unique results per PIN ---
-        base_queries = []
-        if industry:
-            # Primary industry term queries
-            base_queries.append(f"{industry} in {pin_code}")
-            base_queries.append(f"{industry} company {pin_code}")
-            base_queries.append(f"{industry} industry {pin_code}")
-            # Synonym-based queries — catches companies NOT tagged with user's exact term on Google Maps
-            synonyms = _get_industry_synonyms(industry)
-            for synonym in synonyms:
-                base_queries.append(f"{synonym} in {pin_code}")
-                if len(base_queries) >= 8:  # Cap at 8 queries to avoid excessive API usage
-                    break
-        else:
-            base_queries.append(f"businesses in {pin_code}")
-            base_queries.append(f"companies in {pin_code}")
-            base_queries.append(f"pvt ltd in {pin_code}")
+        queries = _build_search_queries(industry, pin_code)
 
-        for query in base_queries:
+        # --- Strategy 1: Text Search — progressive radius expansion ---
+        radii = [10000, 20000, 35000]  # 10km → 20km → 35km
+        for radius in radii:
             if companies_found >= max_results:
                 break
-
-            next_page_token = None
-            page_number = 1
-
-            while companies_found < max_results:
-                places_params = {
-                    'query': query,
-                    'key': google_client.api_key
-                }
-                # --- FIX 1 applied: attach geocoded location + radius for PIN-specific results ---
-                if location_str:
-                    places_params['location'] = location_str
-                    places_params['radius'] = 20000  # 20km radius — wider to cover full GIDC / industrial estates
-
-                if next_page_token:
-                    places_params['pagetoken'] = next_page_token
-                    time.sleep(3)  # FIX 3: 3s is safer than 2s for token readiness
-
-                places_response = requests.get(places_url, params=places_params, timeout=15)
-                places_data = places_response.json()
-
-                if places_data['status'] != 'OK':
-                    error_msg = places_data.get('error_message', 'Unknown error')
-                    logger.warning(f"Places search PIN {pin_code} query='{query}' page {page_number}: {places_data['status']} - {error_msg}")
-                    if places_data['status'] == 'ZERO_RESULTS':
-                        break
-                    elif places_data['status'] == 'OVER_QUERY_LIMIT':
-                        raise Exception(f"Google Places API quota exceeded for PIN {pin_code}")
-                    elif places_data['status'] == 'INVALID_REQUEST' and next_page_token:
-                        break  # Token expired
-                    else:
-                        break
-
-                places_list = places_data.get('results', [])
-                logger.info(f"PIN {pin_code} query='{query}' page {page_number}: got {len(places_list)} raw results")
-
-                for place in places_list:
+            for query in queries:
+                if companies_found >= max_results:
+                    break
+                for company in _run_text_search_all_pages(
+                    query, lat, lng, radius, seen_place_ids, industry,
+                    pin_code, 'pin', max_results, companies_found
+                ):
+                    companies_found += 1
+                    yield company
                     if companies_found >= max_results:
                         break
 
-                    place_id = place.get('place_id')
-                    if not place_id or place_id in seen_place_ids:
-                        continue  # FIX 5: Skip within-PIN duplicates early
-                    seen_place_ids.add(place_id)
+            # If we already have enough from smaller radius, no need to expand
+            if companies_found >= max_results * 0.8:
+                break
 
-                    # --- FIX 4: Retry get_place_details up to 2 times on failure ---
-                    details = None
-                    for attempt in range(2):
-                        details = google_client.get_place_details(place_id)
-                        if details:
-                            break
-                        time.sleep(0.5)
+        # --- Strategy 2: Nearby Search API (completely different endpoint & result set) ---
+        if companies_found < max_results and lat is not None:
+            nearby_keywords = [industry] if industry else ['company']
+            if industry:
+                nearby_keywords.extend([f"{industry} company", "factory", "industries", "pvt ltd"])
 
-                    if details:
-                        details['place_type'] = details.get('industry', '')
-                        details['industry'] = industry.strip() if industry else details.get('industry', '')
-                        details['pin_code'] = pin_code
-                        companies_found += 1
-                        yield details
-                    time.sleep(0.1)
-
-                next_page_token = places_data.get('next_page_token')
-                if not next_page_token or companies_found >= max_results:
+            for radius in [15000, 30000]:
+                if companies_found >= max_results:
                     break
-                page_number += 1
+                for kw in nearby_keywords:
+                    if companies_found >= max_results:
+                        break
+                    for company in _run_nearby_search_all_pages(
+                        kw, lat, lng, radius, seen_place_ids, industry,
+                        pin_code, 'pin', max_results, companies_found
+                    ):
+                        companies_found += 1
+                        yield company
+                        if companies_found >= max_results:
+                            break
+
+        # --- Strategy 3: Grid search — offset coordinates N/S/E/W to cover blind spots ---
+        if companies_found < max_results and lat is not None:
+            offset = 0.08  # ~8-9km offset
+            grid_points = [
+                (lat + offset, lng),          # North
+                (lat - offset, lng),          # South
+                (lat, lng + offset),          # East
+                (lat, lng - offset),          # West
+            ]
+            grid_query = f"{industry} in {pin_code}" if industry else f"businesses in {pin_code}"
+
+            for g_lat, g_lng in grid_points:
+                if companies_found >= max_results:
+                    break
+                for company in _run_text_search_all_pages(
+                    grid_query, g_lat, g_lng, 15000, seen_place_ids, industry,
+                    pin_code, 'pin', max_results, companies_found
+                ):
+                    companies_found += 1
+                    yield company
+                    if companies_found >= max_results:
+                        break
+
+        logger.info(f"PIN {pin_code}: total {companies_found} companies found across all strategies")
 
     except Exception as e:
         raise Exception(f"Google Places API error for PIN {pin_code}: {str(e)}") from e
