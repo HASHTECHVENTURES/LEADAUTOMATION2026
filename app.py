@@ -757,14 +757,21 @@ def level1_search():
                 seen_fingerprints_progressive = set()
                 
                 if search_type == 'pin':
-                    # PIN code search: request up to max_companies from EACH PIN (then dedupe and cap at max_companies total).
-                    # This avoids always getting ~20 per PIN (one page) and ending up with similar counts (e.g. 29) every time.
+                    # PIN code search: divide max_companies across PINs so each PIN gets fair share
                     total_locations = len(pin_codes)
-                    companies_per_location = max_companies  # Try to get full max from each PIN so we have a chance to reach 50 total
+                    # Divide evenly with a ~30% buffer to account for deduplication losses
+                    companies_per_location = max(20, int((max_companies / total_locations) * 1.3))
+                    logger.info(f"Searching {total_locations} PINs, target per PIN = {companies_per_location}, total target = {max_companies}")
                     
                     for idx, pin_code in enumerate(pin_codes, 1):
                         if len(all_companies) >= max_companies:
-                            continue
+                            break  # Use break, not continue — saves API quota
+                        
+                        # Dynamic boost: if previous PINs underperformed, give remaining PINs more budget
+                        remaining_target = max_companies - len(all_companies)
+                        remaining_pins = total_locations - idx + 1
+                        dynamic_per_pin = max(companies_per_location, int((remaining_target / remaining_pins) * 1.3))
+                        
                         # Progress for PIN-level search (so the UI doesn't look "stuck")
                         yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Searching PIN {idx}/{total_locations}: {pin_code}...', 'current': idx, 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
                         
@@ -774,7 +781,7 @@ def level1_search():
                             for company in search_pins_progressively(
                                 pin_code=pin_code,
                                 industry=industry,
-                                max_results=companies_per_location,
+                                max_results=dynamic_per_pin,
                                 pin_idx=idx,
                                 total_pins=total_locations
                             ):
@@ -828,13 +835,20 @@ def level1_search():
                             # Continue to next PIN code but track errors
                             continue
                 else:
-                    # Place name search: same as PIN — request up to max_companies per place so we can reach the total
+                    # Place name search: divide max_companies across places fairly
                     total_locations = len(place_names)
-                    companies_per_location = max_companies
+                    companies_per_location = max(20, int((max_companies / total_locations) * 1.3))
+                    logger.info(f"Searching {total_locations} places, target per place = {companies_per_location}, total target = {max_companies}")
                     
                     for idx, place_name in enumerate(place_names, 1):
                         if len(all_companies) >= max_companies:
-                            continue
+                            break
+                        
+                        # Dynamic boost: if previous places underperformed, give remaining more budget
+                        remaining_target = max_companies - len(all_companies)
+                        remaining_places = total_locations - idx + 1
+                        dynamic_per_place = max(companies_per_location, int((remaining_target / remaining_places) * 1.3))
+                        
                         yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Searching Place {idx}/{total_locations}: {place_name}...', 'current': idx, 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
                         
                         try:
@@ -843,7 +857,7 @@ def level1_search():
                             for company in search_places_progressively(
                                 place_name=place_name,
                                 industry=industry,
-                                max_results=companies_per_location,
+                                max_results=dynamic_per_place,
                                 place_idx=idx,
                                 total_places=total_locations
                             ):
