@@ -701,7 +701,8 @@
                     document.getElementById('deleteAllBtn').style.display = 'inline-flex';
                 }
                 
-                list.innerHTML = projects.slice(0, 5).map(function(p, idx) {
+                // Show all projects (was capped at 5 — users couldn't see older campaigns)
+                list.innerHTML = projects.map(function(p, idx) {
                     var date = p.search_date ? new Date(p.search_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '';
                     var industry = p.industry || 'All Industries';
                     var projectName = window.escapeHtml(p.project_name);
