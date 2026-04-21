@@ -1361,13 +1361,29 @@
                 
                 // If current project exists, select it
                 if (currentProject) {
+                    // Check if the current project is already essentially in the dropdown
+                    let exists = false;
+                    for (let i = 0; i < projectSelect.options.length; i++) {
+                        if (projectSelect.options[i].value === currentProject) {
+                            exists = true;
+                            break;
+                        }
+                    }
+                    
+                    // If it belongs to a newly created project with 0 companies, it won't be in the DB yet, so we must add it manually to prevent the dropdown from going blank
+                    if (!exists) {
+                        const opt = document.createElement('option');
+                        opt.value = currentProject;
+                        opt.textContent = `${currentProject} (0 companies)`;
+                        projectSelect.appendChild(opt);
+                    }
                     projectSelect.value = currentProject;
                 }
                 
                 // Check URL for project param
                 const urlParams = new URLSearchParams(window.location.search);
                 const projectParam = urlParams.get('project');
-                if (projectParam) {
+                if (projectParam && !currentProject) {
                     projectSelect.value = projectParam;
                     selectProject(projectParam);
                     document.getElementById('deleteProjectBtn').style.display = 'inline-flex';
