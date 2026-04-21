@@ -251,7 +251,7 @@ def search_places_progressively(place_name: str, industry: str, max_results: int
         if companies_found < max_results and lat is not None:
             nearby_keywords = [industry] if industry else ['company']
             if industry:
-                nearby_keywords.extend([f"{industry} company", "factory", "industries", "pvt ltd"])
+                nearby_keywords.extend([f"{industry} company", f"{industry} business", f"{industry} services"])
 
             for kw in nearby_keywords:
                 if companies_found >= max_results:
@@ -312,7 +312,7 @@ def search_pins_progressively(pin_code: str, industry: str, max_results: int,
         if companies_found < max_results and lat is not None:
             nearby_keywords = [industry] if industry else ['company']
             if industry:
-                nearby_keywords.extend([f"{industry} company", "factory", "industries", "pvt ltd"])
+                nearby_keywords.extend([f"{industry} company", f"{industry} business", f"{industry} services"])
 
             for radius in [15000, 30000]:
                 if companies_found >= max_results:
