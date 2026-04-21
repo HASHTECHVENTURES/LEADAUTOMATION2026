@@ -394,7 +394,7 @@ def _normalize_company_name(name):
     return ' '.join(name.split())
 
 def _is_same_company_by_name_address(company, existing_list, _seen_fingerprints=None):
-    """Aggressive deduplication: True if company shares the same core name, ignoring branch address."""
+    """Deduplication: True if company shares the same core name, ignoring branch address."""
     name = _normalize_company_name(company.get('company_name'))
     if not name or len(name) < 3: # Ignore very short un-normalizable names
         return False
@@ -404,11 +404,16 @@ def _is_same_company_by_name_address(company, existing_list, _seen_fingerprints=
         if not ename:
             continue
             
-        # If the core normalized names are exactly the same or very similar
-        if name == ename or (len(name) > 5 and len(ename) > 5 and (name in ename or ename in name)):
+        # If the core normalized names are exactly the same
+        if name == ename:
             return True
             
-    return False
+        # Catch cases where one name is "Company Name" and the other is "Company Name India"
+        base = name if len(name) < len(ename) else ename
+        longer = ename if len(name) < len(ename) else name
+        if len(base) > 4 and longer.startswith(base + ' '):
+            return True
+            
     return False
 
 def _normalize_employee_ranges(data):
@@ -791,7 +796,7 @@ def level1_search():
                             for company in search_pins_progressively(
                                 pin_code=pin_code,
                                 industry=industry,
-                                max_results=dynamic_per_pin,
+                                max_results=max(150, dynamic_per_pin * 4),
                                 pin_idx=idx,
                                 total_pins=total_locations
                             ):
@@ -824,6 +829,9 @@ def level1_search():
                                     break
                                 companies_for_pin.append(company)
                                 all_companies.append(company)
+                                
+                                if len(companies_for_pin) >= dynamic_per_pin:
+                                    break
                                 
                                 # Send company immediately to frontend (lazy loading - no waiting!)
                                 yield f"data: {json.dumps({'type': 'company_update', 'data': company, 'progress': {'current': len(all_companies), 'total': max_companies, 'companies_found': len(all_companies)}})}\n\n"
@@ -866,7 +874,7 @@ def level1_search():
                             for company in search_places_progressively(
                                 place_name=place_name,
                                 industry=industry,
-                                max_results=dynamic_per_place,
+                                max_results=max(150, dynamic_per_place * 4),
                                 place_idx=idx,
                                 total_places=total_locations
                             ):
@@ -898,6 +906,10 @@ def level1_search():
                                 companies_for_place.append(company)
                                 all_companies.append(company)
                                 
+                                if len(companies_for_place) >= dynamic_per_place:
+                                    break
+                                
+
                                 yield f"data: {json.dumps({'type': 'company_update', 'data': company, 'progress': {'current': len(all_companies), 'total': max_companies, 'companies_found': len(all_companies)}})}\n\n"
                                 yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Found company in {place_name}... ({len(all_companies)}/{max_companies})', 'current': idx, 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
                             
