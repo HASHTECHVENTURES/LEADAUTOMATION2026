@@ -716,8 +716,8 @@ def level1_search():
             max_companies = 20  # Default to 20 if conversion fails
         
         # Validate max_companies (limit to reasonable range)
-        if max_companies < 1 or max_companies > 100:
-            max_companies = 20  # Default to 20 if invalid
+        if max_companies < 1 or max_companies > 5000:
+            max_companies = 50  # Default to 50 if invalid
         
         logger.info(f"Level1 search: project={project_name}, type={search_type}, max={max_companies}")
         
