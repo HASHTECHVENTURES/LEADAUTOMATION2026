@@ -165,23 +165,24 @@
         /* Steps */
         .steps {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(2, 1fr);
             gap: 24px;
             margin-bottom: 60px;
+            max-width: 900px;
+            margin-left: auto;
+            margin-right: auto;
         }
         
         .step-card {
             background: white;
             border-radius: 20px;
-            padding: 36px 28px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border: 2px solid transparent;
+            padding: 48px 36px;
             text-decoration: none;
             color: inherit;
+            border: 1px solid var(--gray-200);
             position: relative;
             overflow: hidden;
+            min-height: 280px;
         }
         
         .step-card::before {
@@ -197,7 +198,6 @@
         
         .step-card:nth-child(1)::before { background: var(--gradient-2); }
         .step-card:nth-child(2)::before { background: var(--gradient-3); }
-        .step-card:nth-child(3)::before { background: var(--gradient-4); }
         
         .step-card:hover {
             transform: translateY(-8px);
@@ -231,10 +231,6 @@
             color: #059669;
         }
         
-        .step-card:nth-child(3) .step-icon {
-            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-            color: #d97706;
-        }
         
         .step-number {
             display: inline-flex;
@@ -531,7 +527,10 @@
         
         /* Responsive */
         @media (max-width: 768px) {
-            .steps { grid-template-columns: 1fr; }
+            .steps { 
+                grid-template-columns: 1fr;
+                max-width: 500px;
+            }
             .hero h1 { font-size: 2em; }
             .hero p { font-size: 1em; }
         }
