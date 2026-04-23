@@ -623,6 +623,11 @@
             transform: translateX(4px);
         }
         
+        /* Table row hover effect */
+        .contact-row:hover {
+            background: var(--gray-50);
+        }
+        
         .contact-avatar {
             width: 52px;
             height: 52px;
@@ -1157,11 +1162,11 @@
                 <div class="contacts-container" id="contactsList"></div>
                 
                 <div class="action-bar" style="display: flex; gap: 12px; flex-wrap: wrap;">
-                    <button class="btn btn-primary" id="saveBatchBtn" title="Save this batch with a custom name so it appears in Load a saved batch and in Level 3">
+                    <button class="btn btn-primary" id="saveBatchBtn" title="Save this batch with a custom name so it appears in Load a saved batch">
                         <i class="fas fa-save"></i> Save batch
                     </button>
-                    <button class="btn btn-success" id="nextStepBtn">
-                        Next: Send Campaign <i class="fas fa-arrow-right"></i>
+                    <button class="btn btn-success" id="exportExcelBtn">
+                        <i class="fas fa-file-excel"></i> Export in Excel
                     </button>
                 </div>
             </div>
@@ -1219,7 +1224,7 @@
                 <span class="modal-title">Save batch</span>
             </div>
             <div class="modal-body">
-                <p class="form-hint" style="margin-bottom: 12px;">Give this batch a custom name. It will appear in "Load a saved batch" and be available in Level 3.</p>
+                <p class="form-hint" style="margin-bottom: 12px;">Give this batch a custom name. It will appear in "Load a saved batch".</p>
                 <label class="form-label" style="display: block; margin-bottom: 6px; font-weight: 500;">Batch name</label>
                 <input type="text" class="form-input" id="saveBatchNameInput" placeholder="e.g. Mumbai IT - March 2025" style="width: 100%; margin-bottom: 16px;">
             </div>
@@ -1974,58 +1979,90 @@
             if (companiesWithContactsCountEl) companiesWithContactsCountEl.textContent = companyCount;
             // Total employees stat removed
             
-            if (contactsList) contactsList.innerHTML = Object.entries(groups).map(([company, contactList], idx) => {
-                const companyEmpCount = companyEmployees[company] || 0;
-                const empDisplay = companyEmpCount > 0 ? ` • ${companyEmpCount.toLocaleString()} employees` : '';
-                return `
-                <div class="company-group fade-in" style="animation-delay: ${idx * 50}ms">
-                    <div class="company-group-header">
-                        <span class="company-group-name">
-                            <i class="fas fa-building"></i>
-                            ${escapeHtml(company)}
-                            ${empDisplay ? `<span style="color: var(--gray-500); font-weight: 400; margin-left: 8px;">${empDisplay}</span>` : ''}
-                        </span>
-                        <span class="badge badge-primary">${contactList.length} contacts</span>
-                    </div>
-                    <div class="contacts-grid">
-                        ${contactList.map(c => {
-                            const avatarClass = getAvatarClass(c.title || c.contact_type);
-                            const title = c.title || c.contact_type || '';
-                            const badgeClass = title.toLowerCase().includes('founder') || title.toLowerCase().includes('owner') || title.toLowerCase().includes('ceo') 
-                                ? 'badge-warning' 
-                                : title.toLowerCase().includes('hr') ? 'badge-primary' : 'badge-gray';
-                            const contactId = c.id != null ? c.id : '';
-                            return `
-                            <div class="contact-card" data-contact-id="${contactId}">
-                                <div class="contact-avatar ${avatarClass}">
-                                    <i class="fas fa-user"></i>
-                                </div>
-                                <div class="contact-info">
-                                    <div class="contact-name">
-                                        ${escapeHtml(c.name || c.contact_name || 'Unknown')}
-                                        ${c.email ? '<i class="fas fa-check-circle" style="color: var(--success); font-size: 0.8em;" title="Has email"></i>' : ''}
-                                    </div>
-                                    <div class="contact-title">
-                                        <span class="badge ${badgeClass}">${escapeHtml(title)}</span>
-                                    </div>
-                                    <div class="contact-details">
-                                        ${c.email ? `<a href="mailto:${c.email}"><i class="fas fa-envelope"></i> ${c.email}</a>` : ''}
-                                        ${c.linkedin_url ? `<a href="${c.linkedin_url}" target="_blank"><i class="fab fa-linkedin"></i> LinkedIn</a>` : ''}
-                                    </div>
-                                </div>
-                                ${contactId ? `<button type="button" class="contact-delete-btn" title="Remove from database" data-contact-id="${contactId}"><i class="fas fa-trash-alt"></i></button>` : ''}
-                            </div>
-                        `;
-                        }).join('')}
-                    </div>
+            // Flatten all contacts for table display
+            const allContacts = filtered;
+            
+            if (contactsList) contactsList.innerHTML = `
+                <div class="contacts-table-container" style="overflow-x: auto; margin-top: 16px;">
+                    <table class="contacts-table" style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
+                        <thead>
+                            <tr style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white;">
+                                <th style="padding: 12px 8px; text-align: center; font-weight: 600; width: 40px;">
+                                    <input type="checkbox" id="selectAllContacts" title="Select all" style="cursor: pointer;">
+                                </th>
+                                <th style="padding: 12px 16px; text-align: left; font-weight: 600;">Organization Name</th>
+                                <th style="padding: 12px 16px; text-align: left; font-weight: 600;">Full Name</th>
+                                <th style="padding: 12px 16px; text-align: left; font-weight: 600;">Designation</th>
+                                <th style="padding: 12px 16px; text-align: left; font-weight: 600;">Location</th>
+                                <th style="padding: 12px 16px; text-align: left; font-weight: 600;">Email ID</th>
+                                <th style="padding: 12px 16px; text-align: left; font-weight: 600;">Industry</th>
+                                <th style="padding: 12px 16px; text-align: center; font-weight: 600;">Employees</th>
+                                <th style="padding: 12px 16px; text-align: center; font-weight: 600;">LinkedIn</th>
+                                <th style="padding: 12px 16px; text-align: center; font-weight: 600;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${allContacts.map((c, idx) => {
+                                const contactId = c.id != null ? c.id : '';
+                                const company = c.company_name || c.organization_name || '-';
+                                const name = c.name || c.contact_name || 'Unknown';
+                                const designation = c.title || c.contact_type || '-';
+                                const location = c.company_address || c.address || c.city || c.state || c.country || '-';
+                                const email = c.email || '-';
+                                const industry = c.industry || '-';
+                                const employees = c.company_total_employees || c.total_employees || '-';
+                                const linkedin = c.linkedin_url || '';
+                                
+                                return `
+                                <tr class="contact-row" data-contact-id="${contactId}" style="border-bottom: 1px solid var(--gray-200); transition: background 0.2s;">
+                                    <td style="padding: 12px 8px; text-align: center;">
+                                        ${contactId ? `<input type="checkbox" class="contact-select-checkbox" data-contact-id="${contactId}" style="cursor: pointer;">` : ''}
+                                    </td>
+                                    <td style="padding: 12px 16px; font-weight: 500; color: var(--gray-800);">${escapeHtml(company)}</td>
+                                    <td style="padding: 12px 16px; color: var(--gray-800);">${escapeHtml(name)}</td>
+                                    <td style="padding: 12px 16px;">
+                                        <span class="badge ${designation.toLowerCase().includes('founder') || designation.toLowerCase().includes('ceo') || designation.toLowerCase().includes('owner') ? 'badge-warning' : designation.toLowerCase().includes('hr') ? 'badge-primary' : 'badge-gray'}">
+                                            ${escapeHtml(designation)}
+                                        </span>
+                                    </td>
+                                    <td style="padding: 12px 16px; color: var(--gray-600);">${escapeHtml(location)}</td>
+                                    <td style="padding: 12px 16px;">
+                                        ${email !== '-' ? `<a href="mailto:${email}" style="color: var(--primary); text-decoration: none;"><i class="fas fa-envelope" style="margin-right: 4px;"></i>${escapeHtml(email)}</a>` : '-'}
+                                    </td>
+                                    <td style="padding: 12px 16px; color: var(--gray-600);">${escapeHtml(industry)}</td>
+                                    <td style="padding: 12px 16px; text-align: center; color: var(--gray-600);">${escapeHtml(employees)}</td>
+                                    <td style="padding: 12px 16px; text-align: center;">
+                                        ${linkedin ? `<a href="${linkedin}" target="_blank" style="color: #0077b5; font-size: 1.2em;"><i class="fab fa-linkedin"></i></a>` : '-'}
+                                    </td>
+                                    <td style="padding: 12px 16px; text-align: center;">
+                                        ${contactId ? `<button type="button" class="contact-delete-btn" title="Remove from database" data-contact-id="${contactId}" style="background: none; border: none; color: var(--danger); cursor: pointer; padding: 4px 8px; border-radius: 4px; transition: background 0.2s;"><i class="fas fa-trash-alt"></i></button>` : ''}
+                                    </td>
+                                </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
                 </div>
             `;
-            }).join('');
+        }
+        
+        // Select All checkbox functionality
+        const selectAllCheckbox = document.getElementById('selectAllContacts');
+        if (selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', function() {
+                const checkboxes = contactsList.querySelectorAll('.contact-select-checkbox');
+                checkboxes.forEach(cb => cb.checked = selectAllCheckbox.checked);
+            });
         }
         
         // Delete contact: confirm then remove from database and refresh list
         if (contactsList) {
             contactsList.addEventListener('click', async function(e) {
+                const checkbox = e.target.closest('.contact-select-checkbox');
+                if (checkbox) {
+                    // Individual checkbox clicked - no action needed
+                    return;
+                }
                 const btn = e.target.closest('.contact-delete-btn');
                 if (!btn) return;
                 const contactId = btn.getAttribute('data-contact-id');
@@ -2744,7 +2781,7 @@
                     await loadBatches();
                     if (batchSelect) batchSelect.value = currentBatchName;
                     saveBatchModal.classList.remove('open');
-                    showUserFriendlySuccess('Batch saved as "' + customName + '". It will appear in Load a saved batch and in Level 3.');
+                    showUserFriendlySuccess('Batch saved as "' + customName + '". It will appear in Load a saved batch.');
                 } catch (e) {
                     showUserFriendlyError('Could not save: ' + (e.message || e));
                 } finally {
@@ -2754,8 +2791,8 @@
             });
         }
         
-        // Next step (Send to Level 3) – always pass current batch in URL
-        (document.getElementById('nextStepBtn'))?.addEventListener('click', async function() {
+        // Export to Excel functionality
+        (document.getElementById('exportExcelBtn'))?.addEventListener('click', async function() {
             var batchToPass = currentBatchName || (batchSelect && batchSelect.value) || '';
             if (!batchToPass) {
                 if (!currentProject) {
@@ -2764,25 +2801,46 @@
                 }
                 batchToPass = `${currentProject}_Main_Batch`;
                 currentBatchName = batchToPass;
-                try {
-                    await fetch('/api/level2/save-batch', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            project_name: currentProject,
-                            batch_name: batchToPass
-                        })
-                    });
-                } catch (e) { /* continue to Level 3 anyway */ }
             }
-            if (!batchToPass) {
-                showUserFriendlyError('No batch selected. Load a saved batch or run Find Contacts first.');
+            
+            // Get all currently displayed contacts
+            const allContacts = contacts || [];
+            if (allContacts.length === 0) {
+                showUserFriendlyError('No contacts to export. Please load a batch first.');
                 return;
             }
-            var q = '/level3?batch=' + encodeURIComponent(batchToPass);
-            var designation = (document.getElementById('designationInput') && document.getElementById('designationInput').value) ? document.getElementById('designationInput').value.trim() : (userDesignation || '').trim();
-            if (designation) q += '&designation=' + encodeURIComponent(designation);
-            window.location.href = q;
+            
+            // Create CSV content
+            const headers = ['Organization Name', 'Full Name', 'Designation', 'Location', 'Email ID', 'Industry', 'Employees', 'LinkedIn'];
+            const csvRows = [headers.join(',')];
+            
+            allContacts.forEach(c => {
+                const company = (c.company_name || c.organization_name || '').replace(/"/g, '""');
+                const name = (c.name || c.contact_name || '').replace(/"/g, '""');
+                const designation = (c.title || c.contact_type || '').replace(/"/g, '""');
+                const location = (c.company_address || c.address || '').replace(/"/g, '""');
+                const email = (c.email || '').replace(/"/g, '""');
+                const industry = (c.industry || '').replace(/"/g, '""');
+                const employees = (c.company_total_employees || c.total_employees || '').toString().replace(/"/g, '""');
+                const linkedin = (c.linkedin_url || '').replace(/"/g, '""');
+                
+                csvRows.push(`"${company}","${name}","${designation}","${location}","${email}","${industry}","${employees}","${linkedin}"`);
+            });
+            
+            const csvContent = csvRows.join('\n');
+            
+            // Download as Excel (CSV format with .xlsx extension - Excel can open it)
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `${batchToPass}_contacts.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showUserFriendlySuccess(`Exported ${allContacts.length} contacts to Excel!`);
         });
         
         // Phone numbers are not requested via API to save credits

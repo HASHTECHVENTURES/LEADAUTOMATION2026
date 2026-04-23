@@ -581,16 +581,6 @@
                 <div class="step-desc">Find founders, HR directors, and decision makers via contact database</div>
                 <div class="step-arrow">Enrich Data <i class="fas fa-arrow-right"></i></div>
             </a>
-            
-            <a href="/level3" class="step-card fade-in" style="animation-delay: 0.3s">
-                <div class="step-icon">
-                    <i class="fas fa-paper-plane"></i>
-                </div>
-                <div class="step-number">3</div>
-                <div class="step-title">Send Campaign</div>
-                <div class="step-desc">Transfer contacts to outreach platform for email campaigns</div>
-                <div class="step-arrow">Launch <i class="fas fa-arrow-right"></i></div>
-            </a>
         </div>
         
         <div class="recent-section">
@@ -727,14 +717,6 @@
                            </a>`;
 
                     // Level 3 badge — available only if Level 2 done
-                    var l3Badge = level2Done
-                        ? `<a class="level-file available" href="/level3" title="Go to Level 3 - Send Campaign">
-                            <i class="fas fa-paper-plane"></i> Send Campaign
-                           </a>`
-                        : `<span class="level-file pending" title="Complete Level 2 first">
-                            <i class="fas fa-paper-plane"></i> Campaign
-                           </span>`;
-
                     return `
                         <li class="recent-item fade-in" style="animation-delay: ${idx * 50}ms" data-project="${projectNameEscaped}">
                             <div class="recent-item-icon">
@@ -749,7 +731,6 @@
                                 <div class="level-files">
                                     ${l1Badge}
                                     ${l2Badge}
-                                    ${l3Badge}
                                 </div>
                             </div>
                             <div class="recent-item-actions">
