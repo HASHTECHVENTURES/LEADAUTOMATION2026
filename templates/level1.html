@@ -724,11 +724,11 @@
                     </div>
                     
                     <div class="form-group" id="pinCodeGroup">
-                        <label class="form-label">PIN Code(s)</label>
-                        <input type="text" class="form-input" id="pinCode" placeholder="e.g., 400001, 400002, 400003">
+                        <label class="form-label">PIN Code</label>
+                        <input type="text" class="form-input" id="pinCode" placeholder="e.g., 400001" maxlength="6">
                         <div class="form-hint">
                             <i class="fas fa-info-circle"></i>
-                            Enter one or more PIN codes, separated by commas
+                            Enter one 6-digit PIN code
                         </div>
                     </div>
                     
@@ -1115,51 +1115,21 @@
         }
         
         /**
-         * Validate PIN code (allows incomplete PIN codes for auto-completion)
+         * Validate single PIN code (must be exactly 6 digits)
          */
         function validatePinCode(pin) {
             if (!pin || pin.trim().length === 0) {
                 return { valid: false, error: 'PIN code is required' };
             }
             
-            const pins = pin.split(',').map(p => p.trim()).filter(p => p);
+            const cleanedPin = pin.trim();
             
-            if (pins.length === 0) {
-                return { valid: false, error: 'At least one PIN code is required' };
+            // Check if it's exactly 6 digits
+            if (!/^\d{6}$/.test(cleanedPin)) {
+                return { valid: false, error: 'Please enter a valid 6-digit PIN code (e.g., 400001)' };
             }
             
-            // Separate into valid (6 digits), incomplete (numeric but < 6 digits), and invalid
-            const validPins = [];
-            const incompletePins = [];
-            const invalidPins = [];
-            
-            pins.forEach(p => {
-                if (/^\d{6}$/.test(p)) {
-                    validPins.push(p);
-                } else if (/^\d+$/.test(p) && p.length < 6 && p.length > 0) {
-                    incompletePins.push(p);
-                } else {
-                    invalidPins.push(p);
-                }
-            });
-            
-            // If there are invalid (non-numeric) PIN codes, reject them
-            if (invalidPins.length > 0) {
-                return { valid: false, error: `Invalid PIN codes: ${invalidPins.join(', ')}. PIN codes must be numeric.` };
-            }
-            
-            // If there are incomplete PIN codes but no valid 6-digit PIN, warn
-            if (incompletePins.length > 0 && validPins.length === 0) {
-                return { valid: false, error: `Incomplete PIN codes: ${incompletePins.join(', ')}. Please provide at least one complete 6-digit PIN code (e.g., 400012) for auto-completion.` };
-            }
-            
-            // Allow if we have at least one valid PIN, or incomplete PINs with a valid one (backend will auto-complete)
-            // This is the smart PIN code feature - incomplete PINs will be auto-completed by the backend
-            if (validPins.length > 0 || incompletePins.length > 0) {
-                return { valid: true };
-            }
-            
-            return { valid: false, error: 'Please enter at least one PIN code' };
+            return { valid: true };
         }
         
         /**

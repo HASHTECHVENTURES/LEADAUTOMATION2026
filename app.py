@@ -669,44 +669,14 @@ def level1_search():
         
         # Handle PIN code search
         if search_type == 'pin':
-            # Parse multiple PIN codes (comma-separated)
-            # Parse and auto-complete PIN codes
-            all_pins = [p.strip() for p in pin_codes_input.split(',') if p.strip()]
+            # Single PIN code only
+            pin = pin_codes_input.strip()
             
-            # Separate into valid (6 digits), incomplete (numeric but < 6 digits), and invalid
-            valid_pins = []
-            incomplete_pins = []
-            invalid_pins = []
+            # Validate single 6-digit PIN
+            if not pin or not pin.isdigit() or len(pin) != 6:
+                return jsonify({'error': 'Please enter a valid 6-digit PIN code (e.g., 400001)'}), 400
             
-            for pin in all_pins:
-                if pin.isdigit() and len(pin) == 6:
-                    valid_pins.append(pin)
-                elif pin.isdigit() and len(pin) < 6:
-                    incomplete_pins.append(pin)
-                else:
-                    invalid_pins.append(pin)
-            
-            # Auto-complete incomplete PIN codes using prefix from first valid PIN
-            if valid_pins and incomplete_pins:
-                first_valid = valid_pins[0]
-                for incomplete in incomplete_pins:
-                    digits_needed = 6 - len(incomplete)
-                    if digits_needed > 0:
-                        prefix = first_valid[:digits_needed]
-                        completed = prefix + incomplete.zfill(len(incomplete))
-                        if len(completed) == 6 and completed.isdigit():
-                            valid_pins.append(completed)
-            
-            pin_codes = valid_pins
-            
-            if not pin_codes:
-                error_msg = 'No valid PIN codes found. '
-                if incomplete_pins:
-                    error_msg += f'Incomplete: {", ".join(incomplete_pins)} (need at least one full 6-digit PIN to auto-complete). '
-                if invalid_pins:
-                    error_msg += f'Invalid: {", ".join(invalid_pins)}. '
-                error_msg += 'Please enter at least one valid 6-digit PIN code.'
-                return jsonify({'error': error_msg}), 400
+            pin_codes = [pin]
         else:
             # Handle Place Name search
             place_names = [p.strip() for p in place_names_input.split(',') if p.strip()]
