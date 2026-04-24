@@ -762,189 +762,125 @@ def level1_search():
                 seen_fingerprints_progressive = set()
                 
                 if search_type == 'pin':
-                    # === ROUND-ROBIN BATCH SEARCH FOR PINS ===
-                    # Get 10 companies from each PIN in rotation until target reached
+                    # === SIMPLE SEQUENTIAL SEARCH FOR PINS ===
+                    # Search one PIN at a time until target reached or all PINs exhausted
                     total_locations = len(pin_codes)
-                    batch_size_per_pin = 10  # 10-by-10 round-robin for efficiency
-                    logger.info(f"Round-robin PIN search: {total_locations} PINs, batch_size={batch_size_per_pin}, target={max_companies}")
+                    logger.info(f"Sequential PIN search: {total_locations} PINs, target={max_companies}")
                     
-                    # Lazy creation: iterators created on first use, not pre-created
-                    pin_iterators = {}
-                    pin_exhausted = set()
-                    pin_initialized = set()
-                    
-                    # Round-robin: keep cycling through PINs until target reached or all exhausted
-                    batch_round = 0
-                    max_rounds = max(50, max_companies // batch_size_per_pin * total_locations + 20)  # Prevent infinite loops
-                    while len(all_companies) < max_companies and len(pin_exhausted) < total_locations and batch_round < max_rounds:
-                        batch_round += 1
-                        logger.info(f"Batch round {batch_round}/{max_rounds}: {len(all_companies)}/{max_companies} companies, exhausted: {len(pin_exhausted)}/{total_locations}")
+                    for idx, pin_code in enumerate(pin_codes, 1):
+                        if len(all_companies) >= max_companies:
+                            break
                         
-                        for pin_code in pin_codes:
-                            if len(all_companies) >= max_companies:
-                                break
-                            if pin_code in pin_exhausted:
-                                continue
+                        remaining_target = max_companies - len(all_companies)
+                        logger.info(f"PIN {pin_code}: need {remaining_target} more companies")
+                        
+                        yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Searching PIN {idx}/{total_locations}: {pin_code}...', 'current': idx, 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
+                        
+                        try:
+                            # Search this PIN until target reached or exhausted
+                            companies_from_pin = 0
+                            for company in search_pins_progressively(
+                                pin_code=pin_code,
+                                industry=industry,
+                                max_results=remaining_target,
+                                pin_idx=idx,
+                                total_pins=total_locations
+                            ):
+                                # Deduplication checks
+                                place_id = company.get('place_id')
+                                if place_id and place_id in existing_place_ids:
+                                    continue
+                                if place_id and place_id in seen_place_ids_progressive:
+                                    continue
+                                if place_id:
+                                    seen_place_ids_progressive.add(place_id)
+                                
+                                fp = _company_fingerprint(company)
+                                if fp in existing_fingerprints:
+                                    continue
+                                if fp in seen_fingerprints_progressive:
+                                    continue
+                                if _is_same_company_by_name_address(company, all_companies, set()):
+                                    continue
+                                seen_fingerprints_progressive.add(fp)
+                                
+                                all_companies.append(company)
+                                companies_from_pin += 1
+                                
+                                # Send to frontend
+                                yield f"data: {json.dumps({'type': 'company_update', 'data': company, 'progress': {'current': len(all_companies), 'total': max_companies, 'companies_found': len(all_companies)}})}\n\n"
+                                
+                                if len(all_companies) >= max_companies:
+                                    break
                             
-                            # Get up to batch_size_per_pin from this PIN (using next() to avoid consuming entire iterator)
-                            found_this_pin = 0
-                            try:
-                                # Lazy initialization: create iterator on first use
-                                iterator = pin_iterators.get(pin_code)
-                                if not iterator:
-                                    if pin_code not in pin_initialized:
-                                        pin_initialized.add(pin_code)
-                                        yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Starting search for PIN: {pin_code}...', 'current': len(pin_initialized), 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
-                                    try:
-                                        pin_iterators[pin_code] = search_pins_progressively(
-                                            pin_code=pin_code,
-                                            industry=industry,
-                                            max_results=max_companies * 2,
-                                            pin_idx=pin_codes.index(pin_code) + 1,
-                                            total_pins=total_locations
-                                        )
-                                        iterator = pin_iterators[pin_code]
-                                    except Exception as e:
-                                        logger.warning(f"Failed to initialize PIN {pin_code}: {e}")
-                                        pin_exhausted.add(pin_code)
-                                        continue
-                                
-                                # Use next() to get just 1 company at a time (not for loop which consumes all)
-                                while found_this_pin < batch_size_per_pin and len(all_companies) < max_companies:
-                                    try:
-                                        company = next(iterator)
-                                    except StopIteration:
-                                        pin_exhausted.add(pin_code)
-                                        logger.info(f"PIN {pin_code} exhausted (iterator ended)")
-                                        break
-                                    
-                                    # Deduplication checks
-                                    place_id = company.get('place_id')
-                                    if place_id and place_id in existing_place_ids:
-                                        continue
-                                    if place_id and place_id in seen_place_ids_progressive:
-                                        continue
-                                    if place_id:
-                                        seen_place_ids_progressive.add(place_id)
-                                    
-                                    fp = _company_fingerprint(company)
-                                    if fp in existing_fingerprints:
-                                        continue
-                                    if fp in seen_fingerprints_progressive:
-                                        continue
-                                    if _is_same_company_by_name_address(company, all_companies, set()):
-                                        continue
-                                    seen_fingerprints_progressive.add(fp)
-                                    
-                                    all_companies.append(company)
-                                    found_this_pin += 1
-                                    
-                                    # Send to frontend
-                                    yield f"data: {json.dumps({'type': 'company_update', 'data': company, 'progress': {'current': len(all_companies), 'total': max_companies, 'companies_found': len(all_companies)}})}\n\n"
-                                    yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Round {batch_round}: Found in PIN {pin_code} ({len(all_companies)}/{max_companies})', 'current': len(all_companies), 'total': max_companies, 'companies_found': len(all_companies)}})}\n\n"
-                                
-                                # If we didn't find anything in this batch, mark as potentially exhausted
-                                if found_this_pin == 0 and pin_code not in pin_exhausted:
-                                    pin_exhausted.add(pin_code)
-                                    logger.info(f"PIN {pin_code} exhausted (no more results)")
-                                    
-                            except Exception as e:
-                                logger.warning(f"Error in batch for PIN {pin_code}: {e}")
-                                pin_exhausted.add(pin_code)
+                            logger.info(f"PIN {pin_code}: found {companies_from_pin} companies")
+                            
+                        except Exception as e:
+                            logger.warning(f"Error searching PIN {pin_code}: {e}")
+                            search_errors.append(f"PIN {pin_code}: {str(e)}")
+                            continue
                     
-                    logger.info(f"PIN search complete: {len(all_companies)} companies from {total_locations} PINs in {batch_round} rounds")
+                    logger.info(f"PIN search complete: {len(all_companies)} companies from {total_locations} PINs")
                 else:
-                    # === ROUND-ROBIN BATCH SEARCH FOR PLACES ===
-                    # Get 10 companies from each place in rotation until target reached
+                    # === SIMPLE SEQUENTIAL SEARCH FOR PLACES ===
+                    # Search one place at a time until target reached or all places exhausted
                     total_locations = len(place_names)
-                    batch_size_per_place = 10  # 10-by-10 round-robin for efficiency
-                    logger.info(f"Round-robin Place search: {total_locations} places, batch_size={batch_size_per_place}, target={max_companies}")
+                    logger.info(f"Sequential Place search: {total_locations} places, target={max_companies}")
                     
-                    # Lazy creation: iterators created on first use, not pre-created
-                    place_iterators = {}
-                    place_exhausted = set()
-                    place_initialized = set()
-                    
-                    # Round-robin: keep cycling through places until target reached or all exhausted
-                    batch_round = 0
-                    max_rounds = max(50, max_companies // batch_size_per_place * total_locations + 20)  # Prevent infinite loops
-                    while len(all_companies) < max_companies and len(place_exhausted) < total_locations and batch_round < max_rounds:
-                        batch_round += 1
-                        logger.info(f"Batch round {batch_round}/{max_rounds}: {len(all_companies)}/{max_companies} companies, exhausted: {len(place_exhausted)}/{total_locations}")
+                    for idx, place_name in enumerate(place_names, 1):
+                        if len(all_companies) >= max_companies:
+                            break
                         
-                        for place_name in place_names:
-                            if len(all_companies) >= max_companies:
-                                break
-                            if place_name in place_exhausted:
-                                continue
+                        remaining_target = max_companies - len(all_companies)
+                        logger.info(f"Place {place_name}: need {remaining_target} more companies")
+                        
+                        yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Searching Place {idx}/{total_locations}: {place_name}...', 'current': idx, 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
+                        
+                        try:
+                            # Search this place until target reached or exhausted
+                            companies_from_place = 0
+                            for company in search_places_progressively(
+                                place_name=place_name,
+                                industry=industry,
+                                max_results=remaining_target,
+                                place_idx=idx,
+                                total_places=total_locations
+                            ):
+                                # Deduplication checks
+                                place_id = company.get('place_id')
+                                if place_id and place_id in existing_place_ids:
+                                    continue
+                                if place_id and place_id in seen_place_ids_progressive:
+                                    continue
+                                if place_id:
+                                    seen_place_ids_progressive.add(place_id)
+                                
+                                fp = _company_fingerprint(company)
+                                if fp in existing_fingerprints:
+                                    continue
+                                if fp in seen_fingerprints_progressive:
+                                    continue
+                                if _is_same_company_by_name_address(company, all_companies, set()):
+                                    continue
+                                seen_fingerprints_progressive.add(fp)
+                                
+                                all_companies.append(company)
+                                companies_from_place += 1
+                                
+                                # Send to frontend
+                                yield f"data: {json.dumps({'type': 'company_update', 'data': company, 'progress': {'current': len(all_companies), 'total': max_companies, 'companies_found': len(all_companies)}})}\n\n"
+                                
+                                if len(all_companies) >= max_companies:
+                                    break
                             
-                            # Get up to batch_size_per_place from this place (using next() to avoid consuming entire iterator)
-                            found_this_place = 0
-                            try:
-                                # Lazy initialization: create iterator on first use
-                                iterator = place_iterators.get(place_name)
-                                if not iterator:
-                                    if place_name not in place_initialized:
-                                        place_initialized.add(place_name)
-                                        yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Starting search for: {place_name}...', 'current': len(place_initialized), 'total': total_locations, 'companies_found': len(all_companies)}})}\n\n"
-                                    try:
-                                        place_iterators[place_name] = search_places_progressively(
-                                            place_name=place_name,
-                                            industry=industry,
-                                            max_results=max_companies * 2,
-                                            place_idx=place_names.index(place_name) + 1,
-                                            total_places=total_locations
-                                        )
-                                        iterator = place_iterators[place_name]
-                                    except Exception as e:
-                                        logger.warning(f"Failed to initialize Place {place_name}: {e}")
-                                        place_exhausted.add(place_name)
-                                        continue
-                                
-                                # Use next() to get just 1 company at a time (not for loop which consumes all)
-                                while found_this_place < batch_size_per_place and len(all_companies) < max_companies:
-                                    try:
-                                        company = next(iterator)
-                                    except StopIteration:
-                                        place_exhausted.add(place_name)
-                                        logger.info(f"Place {place_name} exhausted (iterator ended)")
-                                        break
-                                    
-                                    # Deduplication checks
-                                    place_id = company.get('place_id')
-                                    if place_id and place_id in existing_place_ids:
-                                        continue
-                                    if place_id and place_id in seen_place_ids_progressive:
-                                        continue
-                                    if place_id:
-                                        seen_place_ids_progressive.add(place_id)
-                                    
-                                    fp = _company_fingerprint(company)
-                                    if fp in existing_fingerprints:
-                                        continue
-                                    if fp in seen_fingerprints_progressive:
-                                        continue
-                                    if _is_same_company_by_name_address(company, all_companies, set()):
-                                        continue
-                                    seen_fingerprints_progressive.add(fp)
-                                    
-                                    all_companies.append(company)
-                                    found_this_place += 1
-                                    
-                                    # Send to frontend
-                                    yield f"data: {json.dumps({'type': 'company_update', 'data': company, 'progress': {'current': len(all_companies), 'total': max_companies, 'companies_found': len(all_companies)}})}\n\n"
-                                    yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'searching_places', 'message': f'Round {batch_round}: Found in {place_name} ({len(all_companies)}/{max_companies})', 'current': len(all_companies), 'total': max_companies, 'companies_found': len(all_companies)}})}\n\n"
-                                
-                                # If we didn't find anything in this batch, mark as potentially exhausted
-                                if found_this_place == 0 and place_name not in place_exhausted:
-                                    place_exhausted.add(place_name)
-                                    logger.info(f"Place {place_name} exhausted (no more results)")
-                                    
-                            except Exception as e:
-                                logger.warning(f"Error in batch for Place {place_name}: {e}")
-                                place_exhausted.add(place_name)
+                            logger.info(f"Place {place_name}: found {companies_from_place} companies")
+                            
+                        except Exception as e:
+                            logger.warning(f"Error searching Place {place_name}: {e}")
+                            search_errors.append(f"Place {place_name}: {str(e)}")
+                            continue
                     
-                    logger.info(f"Place search complete: {len(all_companies)} companies from {total_locations} places in {batch_round} rounds")
+                    logger.info(f"Place search complete: {len(all_companies)} companies from {total_locations} places")
                 
                 # Hard cap: never pass more than max_companies (user selected 50 = show/save at most 50)
                 all_companies = all_companies[:max_companies]
