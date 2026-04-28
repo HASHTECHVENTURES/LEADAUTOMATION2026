@@ -405,30 +405,10 @@ def _company_fingerprint(company):
 
 import re
 
-def _normalize_company_name(name):
-    """Normalize company name to aggressively catch branches of the same company."""
-    if not name:
-        return ""
-    name = name.lower().strip()
-    # Remove common suffixes that differ between branches
-    name = re.sub(r'\b(ltd|limited|pvt|private|inc|llp|branch|office|unit|co)\b', '', name)
-    # Remove location names often appended to branches (like " - Gandhinagar Branch")
-    name = re.split(r'[-–,|:;]', name)[0] 
-    return ' '.join(name.split())
-
 def _is_same_company_by_name_address(company, existing_list, _seen_fingerprints=None):
-    """Deduplication: True only if company has the exact same core normalized name."""
-    name = _normalize_company_name(company.get('company_name'))
-    if not name or len(name) < 3:
-        return False
-        
-    for existing in existing_list:
-        ename = _normalize_company_name(existing.get('company_name'))
-        if not ename:
-            continue
-        if name == ename:
-            return True
-            
+    """Deduplication via place_id and fingerprint is sufficient. Name-based matching
+    was too aggressive (splitting on dashes/commas destroyed distinct names).
+    This now always returns False — kept as a no-op so callers don't break."""
     return False
 
 def _normalize_employee_ranges(data):
