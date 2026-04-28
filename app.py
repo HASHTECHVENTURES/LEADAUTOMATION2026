@@ -1208,17 +1208,17 @@ def level2_process():
         except Exception as e:
             return jsonify({'error': f'Database connection error: {str(e)}'}), 500
 
-        # Use inline selected_place_ids from the request if provided (reliable),
-        # otherwise fall back to the DB flag (selected_for_level2).
-        selected_place_ids = data.get('selected_place_ids', [])
+        # Get all companies for this project first
+        all_companies = get_supabase_client().get_level1_companies(
+            project_name=project_name,
+            selected_only=False,
+            include_excluded=False,
+            limit=500,
+        )
 
+        # If frontend sent selected IDs, filter to just those
+        selected_place_ids = data.get('selected_place_ids', [])
         if selected_place_ids:
-            all_companies = get_supabase_client().get_level1_companies(
-                project_name=project_name,
-                selected_only=False,
-                include_excluded=True,
-                limit=500,
-            )
             id_set = set(str(pid) for pid in selected_place_ids if pid)
             companies = [
                 c for c in all_companies
@@ -1227,13 +1227,9 @@ def level2_process():
             ]
             logger.info(f"Level 2: {len(companies)} companies matched from {len(selected_place_ids)} inline ids")
         else:
-            companies = get_supabase_client().get_level1_companies(
-                project_name=project_name,
-                selected_only=True,
-                include_excluded=True,
-                limit=50,
-            )
-            logger.info(f"Level 2: {len(companies)} selected companies for project '{project_name}' (DB flag)")
+            # No IDs sent (old frontend cache or no selection) — use all companies
+            companies = all_companies
+            logger.info(f"Level 2: using all {len(companies)} companies for project '{project_name}'")
 
         if not companies:
             return jsonify({'error': 'No companies selected for Level 2. Please select companies first.'}), 400
