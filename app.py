@@ -265,6 +265,29 @@ def search_places_progressively(place_name: str, industry: str, max_results: int
                     if companies_found >= max_results:
                         break
 
+        # --- Strategy 3: Grid search — offset coordinates to cover surrounding areas ---
+        if companies_found < max_results and lat is not None:
+            offset = 0.12  # ~13km offset
+            grid_points = [
+                (lat + offset, lng),
+                (lat - offset, lng),
+                (lat, lng + offset),
+                (lat, lng - offset),
+            ]
+            grid_query = f"{industry} in {place_name}" if industry else f"businesses in {place_name}"
+
+            for g_lat, g_lng in grid_points:
+                if companies_found >= max_results:
+                    break
+                for company in _run_text_search_all_pages(
+                    grid_query, g_lat, g_lng, 25000, seen_place_ids, industry,
+                    place_name, 'place', max_results, companies_found
+                ):
+                    companies_found += 1
+                    yield company
+                    if companies_found >= max_results:
+                        break
+
         logger.info(f"Place '{place_name}': total {companies_found} companies found across all strategies")
 
     except Exception as e:
