@@ -2479,16 +2479,20 @@
                 employeeRanges = [];
             }
             
-            // Save selection first
-            const selectionRes = await fetch('/api/level2/selection', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    project_name: currentProject,
-                    selected_place_ids: Array.from(selectedCompanyIds)
-                })
-            });
-            const selectionData = await selectionRes.json();
+            // Save selection (best-effort, don't block processing if it fails)
+            const selectedIds = Array.from(selectedCompanyIds);
+            try {
+                await fetch('/api/level2/selection', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        project_name: currentProject,
+                        selected_place_ids: selectedIds
+                    })
+                });
+            } catch (e) {
+                console.warn('Selection save failed, continuing with inline ids:', e);
+            }
             
             processingModal.classList.add('open');
             const pFill = document.getElementById('progressFill');
@@ -2508,7 +2512,8 @@
                     body: JSON.stringify({
                         project_name: currentProject,
                         designation: designation,
-                        employee_ranges: employeeRanges
+                        employee_ranges: employeeRanges,
+                        selected_place_ids: selectedIds
                     })
                 });
                 

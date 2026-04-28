@@ -1228,16 +1228,28 @@ def level2_process():
         except Exception as e:
             return jsonify({'error': f'Database connection error: {str(e)}'}), 500
 
-        # NOTE: include_excluded=True so that even companies that were previously
-        # marked as excluded can be processed if the user explicitly selects them
-        # for Level 2 on this screen.
-        companies = get_supabase_client().get_level1_companies(
-            project_name=project_name,
-            selected_only=True,
-            include_excluded=True,
-            limit=50,
-        )
-        logger.info(f"Level 2: {len(companies)} selected companies for project '{project_name}'")
+        # Use inline selected_place_ids from the request if provided (reliable),
+        # otherwise fall back to the DB flag (selected_for_level2).
+        selected_place_ids = data.get('selected_place_ids', [])
+
+        if selected_place_ids:
+            all_companies = get_supabase_client().get_level1_companies(
+                project_name=project_name,
+                selected_only=False,
+                include_excluded=True,
+                limit=500,
+            )
+            id_set = set(str(pid) for pid in selected_place_ids if pid)
+            companies = [c for c in all_companies if str(c.get('place_id', '')) in id_set]
+            logger.info(f"Level 2: {len(companies)} companies matched from {len(selected_place_ids)} inline ids")
+        else:
+            companies = get_supabase_client().get_level1_companies(
+                project_name=project_name,
+                selected_only=True,
+                include_excluded=True,
+                limit=50,
+            )
+            logger.info(f"Level 2: {len(companies)} selected companies for project '{project_name}' (DB flag)")
 
         if not companies:
             return jsonify({'error': 'No companies selected for Level 2. Please select companies first.'}), 400
