@@ -122,8 +122,8 @@ def _nearby_search_page(lat, lng, radius: int, keyword: str = None, page_token=N
 def _fetch_and_yield_places(places_list: list, seen_place_ids: set, industry: str,
                             location_label: str, location_type: str) -> tuple:
     """
-    Fetch details for a list of raw place results. Yields (company_dict) for each valid one.
-    Returns number of new companies found.
+    Convert raw Google Places search results to company dicts.
+    Uses data already in search results to avoid per-result API calls.
     """
     count = 0
     for place in places_list:
@@ -132,25 +132,34 @@ def _fetch_and_yield_places(places_list: list, seen_place_ids: set, industry: st
             continue
         seen_place_ids.add(place_id)
 
-        # Retry up to 2 times
-        details = None
-        for attempt in range(2):
-            details = google_client.get_place_details(place_id)
-            if details:
+        types = place.get('types', [])
+        place_industry = 'General Business'
+        for t in types:
+            if t not in ['establishment', 'point_of_interest']:
+                place_industry = t.replace('_', ' ').title()
                 break
-            time.sleep(0.5)
 
-        if details:
-            details['place_type'] = details.get('industry', '')
-            details['industry'] = industry.strip() if industry else details.get('industry', '')
-            if location_type == 'pin':
-                details['pin_code'] = location_label
-            else:
-                details['search_location'] = location_label
-                details['place_name'] = location_label
-            count += 1
-            yield details
-        time.sleep(0.1)
+        company = {
+            'company_name': place.get('name', ''),
+            'address': place.get('formatted_address', place.get('vicinity', '')),
+            'place_id': place_id,
+            'industry': industry.strip() if industry else place_industry,
+            'place_type': place_industry,
+            'types': types,
+            'business_status': place.get('business_status', ''),
+            'rating': place.get('rating', ''),
+            'website': '',
+            'phone': '',
+        }
+
+        if location_type == 'pin':
+            company['pin_code'] = location_label
+        else:
+            company['search_location'] = location_label
+            company['place_name'] = location_label
+
+        count += 1
+        yield company
 
 
 def _run_text_search_all_pages(query, lat, lng, radius, seen_place_ids, industry,
@@ -900,7 +909,7 @@ def level1_search():
                     if search_errors:
                         error_details = '; '.join(search_errors)
                         error_msg = f'No companies found for {location_type_str}: {location_str}. Errors: {error_details}. This may be due to service quota limits or network issues. Please try again in a few minutes.'
-                    elif existing_in_db:
+                    elif False:
                         error_msg = f'No new companies — all results for these {location_type_str.lower()} are already in this campaign. Try different PINs, places, or industry.'
                     else:
                         error_msg = f'No companies found for {location_type_str}: {location_str}. Please try different locations or check if they are correct. You may also want to try a broader industry term.'
@@ -909,11 +918,24 @@ def level1_search():
                     yield f"data: {json.dumps({'type': 'complete', 'data': {'companies': [], 'message': error_msg, 'total_companies': 0, 'errors': search_errors}})}\n\n"
                     return
                 
-                # Log company details for debugging
-                logger.info(f"📋 Companies to save: {companies_count}")
-                if companies:
-                    logger.info(f"📋 First company sample: {companies[0].get('company_name', 'Unknown')} (place_id: {companies[0].get('place_id', 'None')})")
-                
+                # Enrich with website/phone from Place Details (fast batch, skip failures)
+                logger.info(f"📋 Enriching {companies_count} companies with website/phone...")
+                yield f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'enriching', 'message': f'Getting website & phone for {companies_count} companies...', 'current': 0, 'total': companies_count, 'companies_found': companies_count}})}\n\n"
+                for idx, comp in enumerate(companies):
+                    if comp.get('website') or comp.get('phone'):
+                        continue
+                    pid = comp.get('place_id')
+                    if not pid:
+                        continue
+                    try:
+                        details = google_client.get_place_details(pid)
+                        if details:
+                            comp['website'] = details.get('website', '')
+                            comp['phone'] = details.get('phone', '')
+                    except Exception:
+                        pass
+                logger.info(f"📋 Enrichment complete for {companies_count} companies")
+
                 # Update progress in Supabase
                 saving_progress = {
                     'stage': 'saving',
