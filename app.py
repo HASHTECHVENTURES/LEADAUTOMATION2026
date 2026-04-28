@@ -726,12 +726,11 @@ def level1_search():
                 
                 yield f"data: {json.dumps({'type': 'progress', 'data': initial_progress})}\n\n"
                 
-                # Load companies already in DB for this project — don't show or save them again (same search = no duplicates)
-                existing_in_db = get_supabase_client().get_level1_companies(project_name=project_name, selected_only=False, limit=5000)
-                existing_place_ids = {c.get('place_id') for c in existing_in_db if c.get('place_id')}
-                existing_fingerprints = {_company_fingerprint(c) for c in existing_in_db}
-                if existing_in_db:
-                    logger.info(f"Filtering out {len(existing_in_db)} existing companies for project '{project_name}'.")
+                # IMPORTANT: Do NOT filter against previously saved project companies.
+                # Users expect reruns of the same project to refill up to max_companies.
+                # Keep dedupe only within the current run.
+                existing_place_ids = set()
+                existing_fingerprints = set()
                 
                 # Step 1: Search locations based on search type
                 all_companies = []
