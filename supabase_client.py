@@ -702,37 +702,35 @@ class SupabaseClient:
             if not selected_place_ids:
                 return {'success': True, 'count': 0}
 
-            # Set selected_for_level2 = True for the selected ids
-            # Prefer place_id matching; fallback to company_name if a value doesn't look like place_id.
-            place_ids: List[str] = []
-            company_names: List[str] = []
+            # Set selected_for_level2 = True for selected ids.
+            # Do not assume Google-style "ChIJ" ids; projects can store place_id in other formats.
+            selected_values = []
             for pid in selected_place_ids:
-                if not pid:
+                if pid is None:
                     continue
                 s = str(pid).strip()
-                if s.startswith('ChIJ') and (' ' not in s):
-                    place_ids.append(s)
-                else:
-                    company_names.append(s)
+                if s:
+                    selected_values.append(s)
 
             updated = 0
-            if place_ids:
+            if selected_values:
+                # Primary match by place_id (expected path from UI).
                 resp = (
                     self.client.table('level1_companies')
                     .update({'selected_for_level2': True})
                     .eq('project_name', project_name)
-                    .in_('place_id', place_ids)
+                    .in_('place_id', selected_values)
                     .execute()
                 )
                 if resp.data:
                     updated += len(resp.data)
 
-            if company_names:
+                # Backward-compatible fallback for any legacy flows passing company names.
                 resp = (
                     self.client.table('level1_companies')
                     .update({'selected_for_level2': True})
                     .eq('project_name', project_name)
-                    .in_('company_name', company_names)
+                    .in_('company_name', selected_values)
                     .execute()
                 )
                 if resp.data:
