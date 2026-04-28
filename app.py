@@ -1220,7 +1220,11 @@ def level2_process():
                 limit=500,
             )
             id_set = set(str(pid) for pid in selected_place_ids if pid)
-            companies = [c for c in all_companies if str(c.get('place_id', '')) in id_set]
+            companies = [
+                c for c in all_companies
+                if str(c.get('place_id', '')) in id_set
+                or str(c.get('company_name', '')) in id_set
+            ]
             logger.info(f"Level 2: {len(companies)} companies matched from {len(selected_place_ids)} inline ids")
         else:
             companies = get_supabase_client().get_level1_companies(
