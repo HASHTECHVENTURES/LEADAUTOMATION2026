@@ -159,15 +159,23 @@ def _run_text_search_all_pages(query, lat, lng, radius, seen_place_ids, industry
     next_page_token = None
     page = 1
     found = 0
+    invalid_token_retries = 0
 
     while companies_found + found < max_results:
         data = _text_search_page(query, lat, lng, radius, next_page_token)
         status = data.get('status', 'UNKNOWN')
 
         if status != 'OK':
+            # Google page tokens can return INVALID_REQUEST for a short time
+            # before the next page becomes available.
+            if status == 'INVALID_REQUEST' and next_page_token and invalid_token_retries < 3:
+                invalid_token_retries += 1
+                time.sleep(2)
+                continue
             if status == 'OVER_QUERY_LIMIT':
                 logger.warning(f"API quota exceeded on query '{query}'")
             break
+        invalid_token_retries = 0
 
         results = data.get('results', [])
         logger.info(f"TextSearch '{query}' r={radius} p{page}: {len(results)} raw results")
@@ -193,13 +201,19 @@ def _run_nearby_search_all_pages(keyword, lat, lng, radius, seen_place_ids, indu
     next_page_token = None
     page = 1
     found = 0
+    invalid_token_retries = 0
 
     while companies_found + found < max_results:
         data = _nearby_search_page(lat, lng, radius, keyword, next_page_token)
         status = data.get('status', 'UNKNOWN')
 
         if status != 'OK':
+            if status == 'INVALID_REQUEST' and next_page_token and invalid_token_retries < 3:
+                invalid_token_retries += 1
+                time.sleep(2)
+                continue
             break
+        invalid_token_retries = 0
 
         results = data.get('results', [])
         logger.info(f"NearbySearch kw='{keyword}' r={radius} p{page}: {len(results)} raw results")
