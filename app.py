@@ -394,24 +394,16 @@ def _normalize_company_name(name):
     return ' '.join(name.split())
 
 def _is_same_company_by_name_address(company, existing_list, _seen_fingerprints=None):
-    """Deduplication: True if company shares the same core name, ignoring branch address."""
+    """Deduplication: True only if company has the exact same core normalized name."""
     name = _normalize_company_name(company.get('company_name'))
-    if not name or len(name) < 3: # Ignore very short un-normalizable names
+    if not name or len(name) < 3:
         return False
         
     for existing in existing_list:
         ename = _normalize_company_name(existing.get('company_name'))
         if not ename:
             continue
-            
-        # If the core normalized names are exactly the same
         if name == ename:
-            return True
-            
-        # Catch cases where one name is "Company Name" and the other is "Company Name India"
-        base = name if len(name) < len(ename) else ename
-        longer = ename if len(name) < len(ename) else name
-        if len(base) > 4 and longer.startswith(base + ' '):
             return True
             
     return False
